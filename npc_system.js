@@ -1,0 +1,673 @@
+// ============================================================================
+// EMPIRE OF THE 13TH CENTURY - DYNAMIC POPULATION & NPC SYSTEM
+// ============================================================================
+
+const FACTIONS = {
+    "Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.3, south: 0.7, west: 0.4, east: 0.6 } }, // Red
+    "Shahdom of Iransar":    { color: "#00838f", geoWeight: { north: 0.4, south: 0.6, west: 0.9, east: 0.1 } }, // Teal
+    "Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.9, south: 0.1, west: 0.5, east: 0.5 } }, // Blue
+    "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.8, south: 0.2, west: 0.5, east: 0.5 } }, // Slate Grey
+    "Vietan Realm":          { color: "#388e3c", geoWeight: { north: 0.1, south: 0.9, west: 0.3, east: 0.7 } }, // Green
+    "Goryun Kingdom":        { color: "#7b1fa2", geoWeight: { north: 0.7, south: 0.3, west: 0.4, east: 0.8 } }, // Purple
+    "Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.5, south: 0.5, west: 0.7, east: 0.3 } }, // Gold
+    "High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.6, south: 0.4, west: 0.3, east: 0.7 } }, // Earth Brown
+    "Yamato Clans":          { color: "#c2185b", geoWeight: { north: 0.6, south: 0.4, west: 0.2, east: 0.8 } }, // Crimson
+    "Bandits":               { color: "#222222", geoWeight: { north: 0.5, south: 0.5, west: 0.5, east: 0.5 } }  // Black (Independent)
+};
+
+const SYLLABLE_POOLS = {
+    "Hong Dynasty": ["Han","Zhuo","Mei","Ling","Xian","Yue","Lu","Feng","Bai","Shan","Qiao","He","Jin","Dao","Tong","An","Wu","Lin","Nan","Bao","Zi","Rong","Dong","Cheng","Hua","Shou","Yi","Tao","Yan","Gui"],
+    "Jinlord Confederacy": ["Jin","Yan","Guo","Long","Qiu","Qin","Zhou","Jia","Lian","Tian","Zhu","Qiang","Luo","Zhao","Wei","Ping","Song","Bei","Kai","Ren"],
+    "Xiaran Dominion": ["Xi","Ran","Bao","Ling","Tao","Yun","Hai","Shuo","Gu","Lan","Zhi","Min","Qiao","Fen","Jiao","Lei","Yan","Yao","Jun","Qiu"],
+    "Shahdom of Iransar": ["Ar","Dar","Far","Mehr","Var","Sar","Shir","Zar","Rud","Bar","Gan","Tus","Ray","Shap","Horm","Nish","Asp","Pas","Kar","Rash","Yaz","Beh","Fir","Gol","Sam","Vah"],
+    "Great Khaganate": ["Or","Kar","Batu","Sar","Tem","Alt","Bor","Khan","Ur","Tol","Dar","Mur","Nog","Tog","Bal","Kher","Ulan","Tark","Sog","Yar"],
+    "Vietan Realm": ["An","Bao","Cao","Dao","Gia","Hoa","Lam","Long","Minh","Nam","Ninh","Phu","Quang","Son","Tan","Thanh","Thu","Tien","Van","Vinh"],
+    "Goryun Kingdom": ["Gyeong","Han","Nam","Seong","Hae","Jin","Cheon","Su","Yang","Jeon","Gwang","Dong","Seo","Baek","Won","Dae","Hwa","Mun","Gang"],
+    "High Plateau Kingdoms": ["Lha","Tse","Nor","Gar","Ri","Do","Shar","Lang","Zang","Yul","Cham","Phu","Sum","Rin","Tag","Yak","Tso","Ling","Par"],
+    "Yamato Clans": ["Aki","Naga","Hara","Kawa","Matsu","Yama","Saka","Taka","Kiri","Shima","Oka","Tomo","Hoshi","Sora","Kuma","Nori","Fuku","Hida","Ishi"]
+};
+
+let globalNPCs = [];
+let worldMapRef = null; 
+let tSize = 8;
+let maxCols = 0, maxRows = 0;
+
+// ============================================================================
+// CORE HELPER FUNCTIONS
+// ============================================================================
+
+function getRandomLandCoordinate(padX = 0, padY = 0) {
+    if (!worldMapRef) return { x: 5000, y: 5000 };
+    let attempts = 0;
+    while(attempts < 5000) {
+        let cx = Math.floor(Math.random() * ((maxCols * tSize) - 2 * padX)) + padX;
+        let cy = Math.floor(Math.random() * ((maxRows * tSize) - 2 * padY)) + padY;
+        let tx = Math.floor(cx / tSize);
+        let ty = Math.floor(cy / tSize);
+        
+        if (worldMapRef[tx] && worldMapRef[tx][ty]) {
+            let tile = worldMapRef[tx][ty];
+            if(!tile.impassable && tile.name !== "River" && tile.name !== "Coastal" && tile.name !== "Snowy Peaks") {
+                return { x: cx, y: cy };
+            }
+        }
+        attempts++;
+    }
+    return { x: 5000, y: 5000 };
+}
+
+function getFactionByGeography(x, y, worldWidth, worldHeight) {
+    let xNorm = x / worldWidth;
+    let yNorm = y / worldHeight;
+    let bestFaction = "Independent";
+    let bestScore = Infinity;
+    
+    for (const [factionName, data] of Object.entries(FACTIONS)) {
+        if(factionName === "Bandits") continue; 
+        let dist = Math.hypot(xNorm - data.geoWeight.east, yNorm - data.geoWeight.south);
+        let noise = Math.random() * 0.15; 
+        let finalScore = dist + noise;
+        if (finalScore < bestScore) {
+            bestScore = finalScore;
+            bestFaction = factionName;
+        }
+    }
+    return bestFaction;
+}
+
+function generateFactionCityName(faction) {
+    let pool = SYLLABLE_POOLS[faction] || SYLLABLE_POOLS["Hong Dynasty"];
+    let name = "";
+    let numSyllables = Math.random() < 0.95 ? 2 : 3; 
+    for(let i = 0; i < numSyllables; i++) {
+        name += pool[Math.floor(Math.random() * pool.length)];
+    }
+    return name;
+}
+
+function getRandomTargetCity(cities, excludeCity, faction = null) {
+    let valid = cities.filter(c => c !== excludeCity);
+    if(faction) {
+        let factionCities = valid.filter(c => c.faction === faction);
+        if(factionCities.length > 0) return factionCities[Math.floor(Math.random() * factionCities.length)];
+    }
+    return valid[Math.floor(Math.random() * valid.length)];
+}
+
+// ============================================================================
+// CITY INITIALIZATION & ECONOMY
+// ============================================================================
+
+function initializeCityData(city, worldWidth, worldHeight) {
+    let controllingFaction = getFactionByGeography(city.x, city.y, worldWidth, worldHeight);
+    
+    city.faction = controllingFaction;
+    city.color = FACTIONS[controllingFaction].color;
+    city.name = generateFactionCityName(controllingFaction); 
+    city.pop = Math.floor(city.pop * 0.2);
+    
+    city.conscriptionRate = 0.01 + (Math.random() * 0.03);
+    city.militaryPop = Math.floor(city.pop * city.conscriptionRate);
+    city.civilianPop = city.pop - city.militaryPop;
+    city.troops = city.militaryPop; 
+
+    city.gold = Math.floor(city.civilianPop * (Math.random() * 2 + 1)); 
+    city.food = Math.floor(city.pop * (Math.random() * 3 + 2)); 
+}
+
+function updateCityEconomies(cities) {
+    cities.forEach(city => {
+        let foodProduced = city.pop * 0.055; 
+        let foodConsumed = city.pop * 0.050; 
+        city.food += Math.floor(foodProduced - foodConsumed);
+
+        if (city.food < 0) {
+            let starved = Math.floor(Math.abs(city.food) * 0.5); 
+            city.pop = Math.max(100, city.pop - starved);
+            city.civilianPop = Math.max(0, city.civilianPop - starved); 
+            city.food = 0;
+        } else if (city.food > city.pop * 5) {
+            let growth = Math.floor(city.pop * 0.005); 
+            city.pop += growth;
+            city.civilianPop += growth; 
+            city.food -= Math.floor(growth * 2); 
+        }
+
+        let taxRevenue = city.civilianPop * 0.01;
+        let militaryUpkeep = city.militaryPop * 0.02; 
+        city.gold += Math.floor(taxRevenue - militaryUpkeep);
+
+        let maxFood = city.pop * 10;
+        let maxGold = city.pop * 5;
+        if (city.food > maxFood) city.food = maxFood;
+        if (city.gold > maxGold) city.gold = maxGold;
+		
+        let targetGarrison = Math.floor(city.pop * city.conscriptionRate);
+        
+        if (city.militaryPop < targetGarrison) {
+            let draft = Math.min(5, targetGarrison - city.militaryPop); 
+            if (city.civilianPop > draft) { 
+                city.militaryPop += draft;
+                city.civilianPop -= draft;
+            }
+        } 
+        else if (city.militaryPop > city.pop * 0.5) {
+            let retire = 5;
+            city.militaryPop -= retire;
+            city.civilianPop += retire;
+        }
+
+        city.militaryPop = Math.max(0, city.militaryPop);
+        city.civilianPop = Math.max(0, city.civilianPop);
+        city.troops = city.militaryPop; 
+    });
+}
+
+// ============================================================================
+// SMART TARGETING HELPERS
+// ============================================================================
+
+function getEnemyCity(originCity, citiesArr) {
+    let enemies = citiesArr.filter(c => c.faction !== originCity.faction && c.faction !== "Bandits");
+    if (enemies.length === 0) return null;
+    enemies.sort((a, b) => Math.hypot(a.x - originCity.x, a.y - originCity.y) - Math.hypot(b.x - originCity.x, b.y - originCity.y));
+    return enemies[Math.floor(Math.random() * Math.min(3, enemies.length))]; 
+}
+
+function getWealthyCity(citiesArr, excludeCity) {
+    let valid = citiesArr.filter(c => c !== excludeCity);
+    if (valid.length === 0) return null;
+    valid.sort((a, b) => (b.food + b.gold) - (a.food + a.gold));
+    return valid[Math.floor(Math.random() * Math.min(5, valid.length))]; 
+}
+
+// ============================================================================
+// NPC SPAWNING LOGIC 
+// ============================================================================
+
+function spawnNPCFromCity(city, role, citiesArr) {
+    let target = null;
+    let targetX = city.x, targetY = city.y; 
+    let speed = 0.5, count = 0;
+    let carriedGold = 0, carriedFood = 0;
+    let travelDist = 0;
+
+    if (role === "Civilian") {
+        count = Math.min(Math.floor(Math.random() * 35) + 5, city.civilianPop);
+        if (count < 5) return;
+        speed = 0.3;
+        target = getWealthyCity(citiesArr, city); 
+        carriedGold = Math.floor((count / (city.civilianPop || 1)) * city.gold * 0.5);
+        carriedFood = count * 2;
+        city.civilianPop -= count; city.pop -= count;
+        city.gold -= carriedGold; city.food -= carriedFood;
+    } 
+    else if (role === "Commerce") {
+        count = Math.floor(Math.random() * 20) + 10; 
+        if (city.civilianPop < count * 2 || city.food < 100) return;
+
+        speed = 0.5;
+        target = getRandomTargetCity(citiesArr, city);
+        travelDist = Math.hypot(target.x - city.x, target.y - city.y);
+        carriedFood = Math.min(200, Math.floor(city.food * 0.03));
+        carriedGold = Math.min(150, Math.floor(city.gold * 0.05));
+
+        city.food -= carriedFood;
+        city.gold -= carriedGold;
+    }
+    else if (role === "Patrol") {
+        count = Math.min(Math.floor(Math.random() * 20) + 10, city.militaryPop);
+        if (count < 10) return;
+        speed = 0.7;
+        targetX = city.x + (Math.random() - 0.5) * 800;
+        targetY = city.y + (Math.random() - 0.5) * 800;
+        carriedFood = count * 5;
+        city.food -= carriedFood;
+    } 
+    else if (role === "Military") {
+        count = Math.min(Math.floor(Math.random() * 400) + 100, city.militaryPop);
+        if (count < 50) return;
+        speed = 0.6;
+        target = getEnemyCity(city, citiesArr);
+        if (!target) target = getRandomTargetCity(citiesArr, city, city.faction);
+        
+        carriedFood = count * 10;
+        city.militaryPop -= count; city.pop -= count;
+        city.food -= carriedFood;
+    }
+
+    if (target) { targetX = target.x; targetY = target.y; }
+    city.troops = city.militaryPop; 
+
+    globalNPCs.push({
+        id: Math.random().toString(36).substr(2, 9), 
+        role: role, 
+        count: count,
+        faction: city.faction, 
+        color: city.color, 
+        originCity: city, 
+        targetCity: target,
+        travelDist: travelDist, 
+        x: city.x, 
+        y: city.y, 
+        targetX: targetX, 
+        targetY: targetY, 
+        speed: speed,
+        anim: Math.floor(Math.random() * 100), 
+        isMoving: true, 
+        waitTimer: 0,
+        battlingTimer: 0,   
+        battleTarget: null, 
+        gold: carriedGold, 
+        food: carriedFood
+    });
+}
+
+function spawnBandit(padX, padY) {
+    let coords = getRandomLandCoordinate(padX, padY);
+    globalNPCs.push({
+        id: Math.random().toString(36).substr(2, 9),
+        role: "Bandit",
+        count: Math.floor(Math.random() * 16) + 5, 
+        faction: "Bandits",
+        color: FACTIONS["Bandits"].color,
+        originCity: null, targetCity: null,
+        x: coords.x, y: coords.y,
+        targetX: coords.x + (Math.random() - 0.5) * 1000,
+        targetY: coords.y + (Math.random() - 0.5) * 1000,
+        speed: 0.6, 
+        anim: Math.floor(Math.random() * 100), 
+        isMoving: true, 
+        waitTimer: 0,
+        battlingTimer: 0,   
+        battleTarget: null, 
+        gold: 0, 
+        food: 30 
+    });
+}
+
+function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
+    console.log("Drafting Dynamic Populations & Armies...");
+    
+    worldMapRef = mapData;
+    tSize = tileSize;
+    maxCols = cols;
+    maxRows = rows;
+    globalNPCs = []; 
+
+    cities.forEach(city => {
+        let activityLevel = Math.floor(city.pop / 15000) + 1; 
+        
+        for(let i=0; i < activityLevel; i++) {
+            if (Math.random() < 0.6) spawnNPCFromCity(city, "Commerce", cities);
+            if (Math.random() < 0.5) spawnNPCFromCity(city, "Civilian", cities);
+            if (Math.random() < 0.8) spawnNPCFromCity(city, "Patrol", cities);
+        }
+        
+        if(city.pop > 50000 && Math.random() < 0.3) {
+            spawnNPCFromCity(city, "Military", cities);
+        }
+    });
+
+    let banditCount = cities.length * 2; 
+    for(let i=0; i<banditCount; i++) {
+        spawnBandit(padX, padY);
+    }
+    console.log(`Successfully deployed ${globalNPCs.length} dynamic NPCs across the map.`);
+}
+
+// ============================================================================
+// GRAND SIMULATION LOOP (Combat, Sieges, Migration, Trade)
+// ============================================================================
+
+function updateNPCs(cities) {
+	
+    globalNPCs = globalNPCs.filter(npc => npc.count > 0);
+
+    for (let i = 0; i < globalNPCs.length; i++) {
+		
+		
+        let npc = globalNPCs[i];
+
+// --- SURGERY: LIGHTWEIGHT SEPARATION ---
+for (let j = i + 1; j < globalNPCs.length; j++) {
+    let other = globalNPCs[j];
+    let dx = npc.x - other.x;
+    let dy = npc.y - other.y;
+    let distSq = dx * dx + dy * dy;
+
+    if (distSq < 225) { // 15px radius squared (faster than Math.sqrt)
+        let push = 0.5; // How hard they push away
+        npc.x += dx > 0 ? push : -push;
+        npc.y += dy > 0 ? push : -push;
+        other.x += dx > 0 ? -push : push;
+        other.y += dy > 0 ? -push : push;
+    }
+}
+
+// Check Player Collision
+let distToPlayer = Math.hypot(npc.x - player.x, npc.y - player.y);
+if (distToPlayer < 20 && !inCityMode && !inBattleMode && npc.role !== "Civilian" && npc.role !== "Commerce") {
+    // Grab the tile the player is standing on to texture the battlefield
+    let tx = Math.floor(player.x / tSize);
+    let ty = Math.floor(player.y / tSize);
+    let currentTile = (worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : {name: "Plains"};
+    
+    // Trigger the tactical battle!
+    enterBattlefield(npc, player, currentTile);
+}
+
+        // --- 1. COMBAT SEQUENCE (SURGERY: Trickling Troops & Faster Battles) ---
+        if (npc.battlingTimer > 0) {
+            npc.battlingTimer--;
+            npc.isMoving = false;
+
+            if (npc.battleTarget && npc.battleTarget.count > 0) {
+                // Trickle down troops periodically during the battle (every 10 ticks)
+                if (npc.battlingTimer % 10 === 0) {
+                    let other = npc.battleTarget;
+                    let dmgToOther = Math.max(1, Math.floor(npc.count * (Math.random() * 0.05 + 0.01)));
+                    let dmgToNpc = Math.max(1, Math.floor(other.count * (Math.random() * 0.05 + 0.01)));
+
+                    npc.count -= dmgToNpc;
+                    other.count -= dmgToOther;
+
+// --- SURGERY: POST-BATTLE REBOUND ---
+if (npc.count <= 0 || other.count <= 0) {
+    let survivor = npc.count > 0 ? npc : other;
+    let loser = npc.count <= 0 ? npc : other;
+
+    // Transfer loot
+    survivor.gold += loser.gold; 
+    survivor.food += loser.food;
+
+    // REBOUND: "Kick" the survivor away so they don't stay on the corpse
+    let angle = Math.random() * Math.PI * 2;
+    survivor.x += Math.cos(angle) * 20; 
+    survivor.y += Math.sin(angle) * 20;
+    
+    // Reset state and force a brief "scatter" move
+    survivor.waitTimer = 40;
+    survivor.targetX = survivor.x + Math.cos(angle) * 50;
+    survivor.targetY = survivor.y + Math.sin(angle) * 50;
+    
+    npc.battleTarget = null;
+    other.battleTarget = null;
+    npc.battlingTimer = 0;
+    other.battlingTimer = 0;
+}
+                }
+            } else {
+                // Foe is dead or missing, clear lock
+                npc.battleTarget = null;
+                npc.battlingTimer = 0;
+                npc.waitTimer = 30;
+            }
+            continue; 
+        }
+
+        // --- 2. HUMAN MECHANIC (Random Rest) ---
+        if (npc.isMoving && Math.random() < 0.002) {
+            npc.waitTimer = Math.floor(Math.random() * 100) + 50; 
+        }
+
+        // --- 3. AGGRO & EVASION RADAR ---
+        let bestTarget = null;
+        let bestTargetScore = -Infinity; 
+        let closestScaryEnemy = null;    
+        let minScaryDist = 300; 
+
+        for (let j = 0; j < globalNPCs.length; j++) {
+            if (i === j) continue;
+            let other = globalNPCs[j];
+            
+            if (other.count > 0 && npc.faction !== other.faction && (npc.faction !== "Bandits" || other.faction !== "Bandits")) {
+                let dist = Math.hypot(npc.x - other.x, npc.y - other.y);
+                
+                // A. INITIATE COMBAT (SURGERY: Hesitation & Repel Mechanics)
+                if (dist < 25 && !npc.battleTarget && !other.battleTarget && npc.battlingTimer === 0 && other.battlingTimer === 0) {
+                    
+                    // Dice roll to reduce battle frequency (simulates hesitation before clash)
+                    if (Math.random() > 0.1) { // 90% chance per frame to NOT instantly lock in combat
+                        
+                        // Weaker foes will try to actively repel away instead of re-engaging
+                        if (npc.count < other.count * 0.6) {
+                            npc.targetX = npc.x + (npc.x - other.x) * 2; 
+                            npc.targetY = npc.y + (npc.y - other.y) * 2;
+                            npc.waitTimer = 0;
+                        }
+                        break; 
+                    }
+
+                    npc.battlingTimer = 90; // Much faster battles
+                    other.battlingTimer = 90;
+                    npc.battleTarget = other;
+                    other.battleTarget = npc;
+                    npc.waitTimer = 0;
+                    other.waitTimer = 0;
+                    break; 
+                }
+                
+                // B. TRACK FOR CHASE / FLEE
+                let isScary = (other.role === "Military" || other.role === "Bandit" || other.role === "Patrol");
+                let isWeak = (other.role === "Civilian" || other.role === "Commerce");
+
+                if (npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") {
+                    if (dist < 400) { 
+                        let score = -dist; 
+                        if (isWeak) score += 500; 
+                        
+                        // SURGERY: Fine-tuned Bandit vs Patrol targeting
+                        if (npc.role === "Bandit" && (other.role === "Military" || other.role === "Patrol")) score -= 1000;
+                        if (npc.role === "Patrol" && other.role === "Bandit") score += 800;
+
+                        if (score > bestTargetScore) {
+                            bestTargetScore = score;
+                            bestTarget = other;
+                        }
+                    }
+                } 
+                else if (npc.role === "Civilian" || npc.role === "Commerce") {
+                    if (isScary && dist < minScaryDist) {
+                        minScaryDist = dist;
+                        closestScaryEnemy = other;
+                    }
+                }
+            }
+        }
+
+        // --- 4. FLIGHT OR FIGHT LOGIC ---
+        if (!npc.battleTarget) {
+            if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && bestTarget) {
+                npc.targetX = bestTarget.x;
+                npc.targetY = bestTarget.y;
+                npc.waitTimer = 0; 
+                npc.speed = 0.9; 
+            } 
+            else if ((npc.role === "Civilian" || npc.role === "Commerce") && closestScaryEnemy) {
+                let dx = npc.x - closestScaryEnemy.x;
+                let dy = npc.y - closestScaryEnemy.y;
+                let distToScary = Math.hypot(dx, dy) || 1;
+                
+                npc.targetX = npc.x + (dx / distToScary) * 150; 
+                npc.targetY = npc.y + (dy / distToScary) * 150;
+                npc.waitTimer = 0;
+                npc.speed = 0.8; 
+            } 
+            else {
+                if (npc.targetCity) {
+                    npc.targetX = npc.targetCity.x;
+                    npc.targetY = npc.targetCity.y;
+                }
+                if (npc.role === "Civilian" || npc.role === "Commerce") npc.speed = 0.5;
+                else if (npc.role === "Military" || npc.role === "Bandit") npc.speed = 0.6;
+                else if (npc.role === "Patrol") npc.speed = 0.7;
+            }
+        }
+
+        // --- 5. ARMY SUPPLY DRAIN ---
+        if (npc.role === "Military" || npc.role === "Bandit") {
+            if (Math.random() < 0.02) { 
+                npc.food -= (npc.count * 0.01);
+                if (npc.food <= 0) {
+                    npc.food = 0;
+                    npc.count -= Math.floor(npc.count * 0.05) + 1; 
+                }
+            }
+        }
+
+        // --- 6. MOVEMENT LOGIC ---
+        if (npc.waitTimer > 0) {
+            npc.waitTimer--;
+            npc.isMoving = false;
+        } else if (!npc.battleTarget) {
+            let dx = npc.targetX - npc.x;
+            let dy = npc.targetY - npc.y;
+            let dist = Math.hypot(dx, dy);
+
+            if (dist < 10) { 
+                npc.isMoving = false;
+                
+                if (npc.targetCity) {
+                    let tc = npc.targetCity;
+// Before processing logic, "park" the unit in a random spot near the city
+        // so the next unit doesn't stack directly on top of it.
+        npc.x = tc.x + (Math.random() - 0.5) * 40;
+        npc.y = tc.y + (Math.random() - 0.5) * 40;
+                    if (npc.role === "Military" && npc.faction !== tc.faction) {
+                        let siegeDamage = Math.floor(npc.count * 0.2);
+                        let garrisonDamage = Math.floor(tc.militaryPop * 0.15);
+
+                        npc.count -= garrisonDamage;
+                        tc.militaryPop -= siegeDamage;
+                        tc.pop -= siegeDamage;
+
+                        if (tc.militaryPop <= 0) {
+                            tc.faction = npc.faction; tc.color = npc.color;
+                            tc.militaryPop = Math.max(10, Math.floor(npc.count * 0.5)); 
+                            tc.troops = tc.militaryPop; tc.pop += tc.militaryPop;
+                            npc.count -= tc.militaryPop; 
+                            npc.targetCity = null; 
+                        } else {
+                            npc.waitTimer = 50; 
+                            continue; 
+                        }
+                    }
+                    else if (npc.role === "Military" && npc.faction === tc.faction) {
+                        tc.militaryPop += npc.count; tc.pop += npc.count; tc.troops = tc.militaryPop;
+                        tc.food += npc.food; 
+                        npc.count = 0; 
+                    }
+                    else if (npc.role === "Commerce") {
+                     let profit = Math.floor(npc.travelDist * 0.02) + npc.gold;
+                        tc.gold += profit; tc.food += npc.food; 
+                        npc.gold = 0; npc.food = 0; 
+                        
+                        npc.targetCity = npc.originCity; 
+                        npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y;
+                        npc.waitTimer = Math.floor(Math.random() * 100) + 50;
+                    }
+                    else if (npc.role === "Civilian") {
+                        tc.civilianPop += npc.count; tc.pop += npc.count;
+                        tc.gold += npc.gold; tc.food += npc.food;
+                        npc.count = 0; 
+                    }
+                } else {
+                    npc.targetX = npc.x + (Math.random() - 0.5) * 600;
+                    npc.targetY = npc.y + (Math.random() - 0.5) * 600;
+                    npc.waitTimer = Math.floor(Math.random() * 60) + 30;
+                }
+            } else {
+                npc.x += (dx / dist) * npc.speed;
+                npc.y += (dy / dist) * npc.speed;
+                npc.isMoving = true;
+                npc.anim++;
+            }
+        }
+    }
+
+    // --- 7. LONG-TERM RESPONSIVENESS (Mount & Blade style organic respawning) ---
+    // Periodically, thriving cities will spawn new dynamic units into the world
+    if (Math.random() < 0.08 && cities.length > 0) {
+        let rc = cities[Math.floor(Math.random() * cities.length)];
+        if (Math.random() < 0.3 && rc.civilianPop > 50) spawnNPCFromCity(rc, "Commerce", cities);
+        else if (Math.random() < 0.2 && rc.civilianPop > 100) spawnNPCFromCity(rc, "Civilian", cities);
+        else if (Math.random() < 0.4 && rc.militaryPop > 50) spawnNPCFromCity(rc, "Patrol", cities);
+        else if (rc.pop > 20000 && rc.militaryPop > 200 && Math.random() < 0.1) spawnNPCFromCity(rc, "Military", cities);
+    }
+    
+    // Ensure the wilderness is never totally safe by slowly respawning destroyed bandit camps
+    if (Math.random() < 0.02 && globalNPCs.filter(n => n.role === "Bandit").length < cities.length * 1.5) {
+        spawnBandit(0, 0); 
+    }
+}
+
+function drawAllNPCs(ctx, drawCaravanFunc, drawShipFunc, currentZoom) {
+    // Keep units layered correctly by Y position
+    globalNPCs.sort((a, b) => a.y - b.y);
+
+    globalNPCs.forEach(npc => {
+        let tx = Math.floor(npc.x / tSize);
+        let ty = Math.floor(npc.y / tSize);
+
+        // --- SURGERY: WATER/OOB OVERRIDE ---
+        // Attempt to find the tile. If worldMapRef[tx] or [ty] is missing, it's Out of Bounds (null).
+        let tile = (worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : null;
+
+        // Force boat if: 
+        // 1. Tile is null (Out of Bounds)
+        // 2. Tile name is any known water type
+        let useBoat = !tile || 
+                      tile.name === "Coastal" || 
+                      tile.name === "River" || 
+                      tile.name === "Ocean" || 
+                      tile.name === "Sea" || 
+                      tile.name === "Deep Ocean";
+
+        if (useBoat) {
+            drawShipFunc(npc.x, npc.y, npc.isMoving, npc.anim);
+        } else {
+            drawCaravanFunc(npc.x, npc.y, npc.isMoving, npc.anim, npc.color); 
+        }
+
+        // --- UI Rendering ---
+        ctx.save();
+        let fontSize = Math.max(10, 15 / currentZoom); 
+        ctx.font = `bold ${fontSize}px Georgia`;
+        ctx.textAlign = "center";
+        
+        // Shadow/Outline for Role
+        ctx.fillStyle = "rgba(0,0,0,0.8)";
+        ctx.fillText(npc.role, npc.x + 1, npc.y - 24); 
+        
+        ctx.fillStyle = npc.color;
+        ctx.fillText(npc.role, npc.x, npc.y - 25);
+        
+        // Troop/People Count
+        let smallFont = Math.max(8, 12 / currentZoom);
+        ctx.font = `italic ${smallFont}px Georgia`;
+        ctx.fillStyle = "#fff";
+        let label = npc.role === "Commerce" || npc.role === "Civilian" ? "People" : "Troops";
+        ctx.fillText(`${npc.count} ${label}`, npc.x, npc.y - 12);
+        
+        // Gold & Food Display
+        let resourceFont = Math.max(8, 11 / currentZoom);
+        ctx.font = `bold ${resourceFont}px Georgia`;
+        
+        ctx.fillStyle = "#ffd700"; // Gold
+        ctx.fillText(`G: ${Math.floor(npc.gold)}`, npc.x - 14, npc.y - 35);
+        
+        ctx.fillStyle = "#8bc34a"; // Food
+        ctx.fillText(`F: ${Math.floor(npc.food)}`, npc.x + 14, npc.y - 35);
+
+        // Combat Icon
+        if (npc.battlingTimer > 0) {
+            let battleFont = Math.max(16, 24 / currentZoom);
+            ctx.font = `bold ${battleFont}px Arial`;
+            let yBob = Math.sin(npc.battlingTimer * 0.5) * 3;
+            ctx.fillText("⚔️", npc.x, npc.y - 45 + yBob); 
+        }
+
+        ctx.restore();
+    });
+}
