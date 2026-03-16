@@ -619,7 +619,7 @@ function updateBattleUnits() {
 // ---> 1. ADD THIS LINE: Shrink range if they are using melee <---
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
             // Move into range
-            if (dist > effectiveRange*5.5) {
+            if (dist > effectiveRange*1.3) {
                 unit.state = "moving";
                 // Optional: Drain stamina while moving
                 if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
@@ -736,26 +736,26 @@ function getReloadTime(unit) {
     const name = unit.unitType;
 
     // Special
-    if (name === "Rocket") return 1000;
-    if (name === "Repeater Crossbowman") return 700;
+    if (name === "Rocket") return 400;
+    if (name === "Repeater Crossbowman") return 300;
 
     // Archers
     if (role === ROLES.ARCHER || role === ROLES.HORSE_ARCHER)
-        return 200;
+        return 100;
 
     // Crossbows
     if (role === ROLES.CROSSBOW)
-        return 500;
+        return 200;
 
     // Gunpowder
     if (role === ROLES.GUNNER)
-        return 500;
+        return 300;
 
     // Firelance
     if (name === "Firelance")
-        return 500;
+        return 300;
 
-    return 200; // melee attack speed
+    return 60; // melee attack speed
 }
 
 function leaveBattlefield(playerObj) {
