@@ -100,8 +100,8 @@ const UnitRoster = {
             t.meleeDefense = Math.floor(t.meleeDefense * 0.85);
             const isCannonWeapon = t.name.toLowerCase().includes("cannon") || t.name.toLowerCase().includes("fire");
             if (!isCannonWeapon) {
-                t.missileBaseDamage = Math.floor(t.missileBaseDamage * 0.4);
-                t.missileAPDamage = Math.floor(t.missileAPDamage * 0.4);
+                t.missileBaseDamage = Math.floor(t.missileBaseDamage * 0.7);
+                t.missileAPDamage = Math.floor(t.missileAPDamage * 0.7);
             }
         }
         this.allUnits[id] = t;
@@ -120,20 +120,20 @@ const UnitRoster = {
         this.create("Light Two Handed", "Light Two Handed", ROLES.TWO_HANDED, false, { health: 25, meleeAttack: 18, meleeDefense: 10, armor: 5, speed: 0.85, range: 20, morale: 60, magazine: 1, cost: 35 });
 
         // Archers
-        this.create("Archer", "Archer", ROLES.ARCHER, false, { isRanged: true, ammo: 25, health: 40, missileBaseDamage: 9, missileAPDamage: 2, accuracy: 55, armor: 5, speed: 0.8, range: 360, morale: 50, magazine: 1, cost: 25 });
-        this.create("Horse Archer", "Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 25, health: 55, missileBaseDamage: 8, missileAPDamage: 2, accuracy: 60, armor: 12, speed: 1.6, range: 360, morale: 65, magazine: 1, cost: 50 });
-        this.create("Heavy Horse Archer", "Heavy Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 22, health: 70, missileBaseDamage: 9, missileAPDamage: 4, accuracy: 65, armor: 15, speed: 1.4, range: 260, morale: 75, magazine: 1, cost: 70 });
-        this.create("Light Horse Archer", "Light Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 26, health: 50, missileBaseDamage: 7, missileAPDamage: 2, accuracy: 58, armor: 10, speed: 1.7, range: 260, morale: 60, magazine: 1, cost: 45 });
+        this.create("Archer", "Archer", ROLES.ARCHER, false, { isRanged: true, ammo: 25, health: 40, missileBaseDamage: 9, missileAPDamage: 2, accuracy: 55, armor: 5, speed: 0.8, range: 700, morale: 50, magazine: 1, cost: 25 });
+        this.create("Horse Archer", "Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 25, health: 55, missileBaseDamage: 8, missileAPDamage: 2, accuracy: 60, armor: 12, speed: 1.6, range: 700, morale: 65, magazine: 1, cost: 50 });
+        this.create("Heavy Horse Archer", "Heavy Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 22, health: 70, missileBaseDamage: 9, missileAPDamage: 4, accuracy: 65, armor: 15, speed: 1.4, range: 700, morale: 75, magazine: 1, cost: 70 });
+        this.create("Light Horse Archer", "Light Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 26, health: 50, missileBaseDamage: 7, missileAPDamage: 2, accuracy: 58, armor: 10, speed: 1.7, range: 700, morale: 60, magazine: 1, cost: 45 });
 
         // Crossbow Units
-        this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 18, health: 45, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: 18, speed: 0.7, range: 440, morale: 55, magazine: 1, cost: 35 });
-        this.create("Heavy Crossbowman", "Heavy Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 16, health: 55, missileBaseDamage: 15, missileAPDamage: 30, accuracy: 70, armor: 25, speed: 0.65, range: 440, morale: 65, magazine: 1, cost: 50 });
-        this.create("Repeater Crossbowman", "Repeater Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 40, health: 40, missileBaseDamage: 15, missileAPDamage: 2, accuracy: 45, armor: 12, speed: 0.75, range: 200, morale: 50, magazine: 10, cost: 40 });
-        this.create("Poison Crossbowman", "Poison Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 20, health: 40, missileBaseDamage: 100, missileAPDamage: 4, accuracy: 60, armor: 10, speed: 0.75, range: 230, morale: 55, magazine: 1, cost: 45 });
+        this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 18, health: 45, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: 18, speed: 0.7, range: 800, morale: 55, magazine: 1, cost: 35 });
+        this.create("Heavy Crossbowman", "Heavy Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 16, health: 55, missileBaseDamage: 15, missileAPDamage: 30, accuracy: 70, armor: 25, speed: 0.65, range: 800, morale: 65, magazine: 1, cost: 50 });
+        this.create("Repeater Crossbowman", "Repeater Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 40, health: 40, missileBaseDamage: 15, missileAPDamage: 2, accuracy: 45, armor: 12, speed: 0.75, range: 400, morale: 50, magazine: 10, cost: 40 });
+        this.create("Poison Crossbowman", "Poison Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 20, health: 40, missileBaseDamage: 100, missileAPDamage: 4, accuracy: 60, armor: 10, speed: 0.75, range: 400, morale: 55, magazine: 1, cost: 45 });
 
         // Skirmishers
-        this.create("Javelinier", "Javelinier", ROLES.THROWING, false, { isRanged: true, ammo: 4, health: 50, missileBaseDamage: 18, missileAPDamage: 6, accuracy: 55, armor: 15, speed: 0.9, range: 120, morale: 50, magazine: 1, cost: 35 });
-        this.create("Slinger", "Slinger", ROLES.THROWING, false, { isRanged: true, ammo: 30, health: 35, missileBaseDamage: 6, missileAPDamage: 1, accuracy: 50, armor: 5, speed: 0.85, range: 220, morale: 40, magazine: 1, cost: 20 });
+        this.create("Javelinier", "Javelinier", ROLES.THROWING, false, { isRanged: true, ammo: 4, health: 50, missileBaseDamage: 18, missileAPDamage: 6, accuracy: 55, armor: 15, speed: 0.9, range: 1000, morale: 50, magazine: 1, cost: 35 });
+        this.create("Slinger", "Slinger", ROLES.THROWING, false, { isRanged: true, ammo: 30, health: 35, missileBaseDamage: 6, missileAPDamage: 1, accuracy: 50, armor: 5, speed: 0.85, range: 320, morale: 40, magazine: 1, cost: 20 });
 
         // Cavalry
         this.create("Lancer", "Lancer", ROLES.CAVALRY, true, { health: 85, meleeAttack: 20, meleeDefense: 16, armor: 35, speed: 1.4, range: 25, morale: 70, magazine: 1, cost: 60 });
@@ -459,7 +459,12 @@ if (faction === "Great Khaganate") {
             offsetY += tacticalOffset.y;
 
             // Deep copy the class instance so each unit has independent HP/Ammo
-            let unitStats = Object.assign(new Troop(), baseTemplate);
+            let unitStats = Object.assign(
+    new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
+    baseTemplate
+);
+
+			
             unitStats.faction = faction;
 
             battleEnvironment.units.push({
@@ -732,25 +737,25 @@ function getReloadTime(unit) {
 
     // Special
     if (name === "Rocket") return 1000;
-    if (name === "Repeater Crossbowman") return 1300;
+    if (name === "Repeater Crossbowman") return 700;
 
     // Archers
     if (role === ROLES.ARCHER || role === ROLES.HORSE_ARCHER)
-        return 300;
+        return 200;
 
     // Crossbows
     if (role === ROLES.CROSSBOW)
-        return 1000;
+        return 500;
 
     // Gunpowder
     if (role === ROLES.GUNNER)
-        return 1000;
+        return 500;
 
     // Firelance
     if (name === "Firelance")
-        return 1500;
+        return 500;
 
-    return 60; // melee attack speed
+    return 200; // melee attack speed
 }
 
 function leaveBattlefield(playerObj) {
