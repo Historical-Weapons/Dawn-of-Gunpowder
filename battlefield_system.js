@@ -619,7 +619,7 @@ function updateBattleUnits() {
 // ---> 1. ADD THIS LINE: Shrink range if they are using melee <---
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
             // Move into range
-            if (dist > effectiveRange*1.5) {
+            if (dist > effectiveRange*5.5) {
                 unit.state = "moving";
                 // Optional: Drain stamina while moving
                 if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
