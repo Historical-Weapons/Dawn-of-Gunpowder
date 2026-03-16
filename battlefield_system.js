@@ -725,24 +725,32 @@ function isBattleCollision(x, y) {
 // BATTLE RESOLUTION & SUMMARY UI
 // ============================================================================
  
- function getReloadTime(unit) {
-    const type = unit.type; 
-    const name = unit.unitName;
+function getReloadTime(unit) {
 
-    // Fast/Special Logic
-    if (name === "Rocket Launcher") return 1000; 
-    if (name === "Repeater Crossbowman") return 1300; // Long magazine swap
-    if (type === "archer") return 300; // Fast
-    
-    // Moderate Logic
-    if (type === "crossbow") return 1000;
-    if (name === "Hand Cannon") return 1000; // Slow Gunpowder
-    
-    // Terrible Reload Speed
-    if (name === "Firelance") return 1500;
-    
-    // Default Melee
-    return 800; 
+    const role = unit.stats.role;
+    const name = unit.unitType;
+
+    // Special
+    if (name === "Rocket") return 1000;
+    if (name === "Repeater Crossbowman") return 1300;
+
+    // Archers
+    if (role === ROLES.ARCHER || role === ROLES.HORSE_ARCHER)
+        return 300;
+
+    // Crossbows
+    if (role === ROLES.CROSSBOW)
+        return 1000;
+
+    // Gunpowder
+    if (role === ROLES.GUNNER)
+        return 1000;
+
+    // Firelance
+    if (name === "Firelance")
+        return 1500;
+
+    return 60; // melee attack speed
 }
 
 function leaveBattlefield(playerObj) {
