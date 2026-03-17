@@ -8,8 +8,17 @@ const BATTLE_WORLD_HEIGHT = 1600;
 const BATTLE_TILE_SIZE = 8;
 const BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
 const BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+let unitIdCounter = 0;
+const VIEW_PADDING = 200;
 
-
+function isOnScreen(unit, camera) {
+    return (
+        unit.x > camera.x - VIEW_PADDING &&
+        unit.x < camera.x + camera.width + VIEW_PADDING &&
+        unit.y > camera.y - VIEW_PADDING &&
+        unit.y < camera.y + camera.height + VIEW_PADDING
+    );
+}
 
 // Global state for battle exploration
 let inBattleMode = false;
@@ -65,12 +74,18 @@ class Troop {
 
         this.currentStance = "statusmelee"; 
     }
+gainExperience(amount) {
+    let oldLevel = Math.floor(this.experienceLevel);
+    this.experienceLevel += amount;
+    let newLevel = Math.floor(this.experienceLevel);
 
-    gainExperience(amount) {
-        this.experienceLevel += amount;
-        this.meleeAttack += (amount * 0.5);
-        this.accuracy += (amount * 0.2);
+    if (newLevel > oldLevel) {
+        // Only boost stats when the "Whole Number" increases
+        this.meleeAttack += 5; 
+        this.accuracy += 2;
+        console.log(this.name + " LEVELED UP!");
     }
+}
 
     updateStance(targetDistance) {
         if (!this.isRanged) {
@@ -108,7 +123,7 @@ const UnitRoster = {
     },
    init: function() {
         // Basic Infantry
-        this.create("Axe Militia", "Axe Militia", "peasant", false, { health: 10, meleeAttack: 6, meleeDefense: 6, armor: 1, speed: 0.9, range: 15, morale: 35, magazine: 1, cost: 5 });
+        this.create("Militia", "Militia", "peasant", false, { health: 10, meleeAttack: 6, meleeDefense: 6, armor: 1, speed: 0.9, range: 15, morale: 35, magazine: 1, cost: 5 });
         this.create("Shielded Infantry", "Shielded Infantry", ROLES.SHIELD, false, { health: 40, meleeAttack: 12, meleeDefense: 18, armor: 15, shieldBlockChance: 20, speed: 0.8, range: 20, morale: 60, magazine: 1, cost: 30 });
         this.create("Heavy Shielded Spear", "Heavy Shielded Spear", ROLES.PIKE, false, { health: 45, meleeAttack: 15, meleeDefense: 22, armor: 15, bonusVsLarge: 25, speed: 0.7, range: 25, morale: 70, magazine: 1, cost: 50 });
         this.create("Spearman", "Spearman", ROLES.PIKE, false, { health: 15, meleeAttack: 13, meleeDefense: 16, armor: 5, bonusVsLarge: 20, speed: 0.75, range: 30, morale: 65, magazine: 1, cost: 10 });
@@ -150,7 +165,7 @@ const UnitRoster = {
         this.create("War Elephant", "War Elephant", ROLES.CAVALRY, true, { health: 200, meleeAttack: 35, meleeDefense: 18, armor: 60, speed: 0.9, range: 25, morale: 100, magazine: 1, cost: 300 });
     }
 };
-
+// Add this as a safety alias 
 UnitRoster.init(); ///suspicious if bugged; randomly here???
 
 function getTacticalPosition(role, side) {
@@ -167,6 +182,16 @@ function getTacticalPosition(role, side) {
 }
 	
 	
+// Add this near the top of battlefield_system.js
+function isExitAllowed() {
+    if (!inBattleMode) return true; 
+    
+    // Check for remaining enemies (units not on player side with HP > 0)
+    const enemyCount = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
+    const playerDead = player.hp <= 0;
+    
+    return (playerDead || enemyCount === 0);
+}
 
 // --- GENERATE ORGANIC BATTLEFIELD TERRAIN ---
 function generateBattleOrganicFeatures(grid, typeValue, count, maxSize) {
@@ -422,7 +447,7 @@ if (faction === "Great Khaganate") {
 
 } else if (faction === "Bandits") {
     composition = [
-		{		type: "Axe Militia", pct: 0.60},        // Main Horde
+		{		type: "Militia", pct: 0.60},        // Main Horde
         {type: "Spearman", pct: 0.40},           
  
     ];
@@ -468,7 +493,7 @@ if (faction === "Great Khaganate") {
             unitStats.faction = faction;
 
             battleEnvironment.units.push({
-                id: Math.random().toString(36).substr(2, 9),
+				id: unitIdCounter++,
                 side: side,
                 faction: faction,
                 color: factionColor,
@@ -589,6 +614,8 @@ function updateBattleUnits() {
     units = battleEnvironment.units;
 
     units.forEach(unit => {
+		
+
         // 1. Find nearest enemy if no target
         if (!unit.target || unit.target.hp <= 0) {
             let nearestDist = Infinity;
@@ -607,19 +634,19 @@ function updateBattleUnits() {
 
 // Inside your existing updateBattleUnits function:
         // ... (Keep the target finding logic)
-
-        // 2. Act on target
+// 2. Act on target
         if (unit.target) {
             let dx = unit.target.x - unit.x;
             let dy = unit.target.y - unit.y;
-            let dist = Math.hypot(dx, dy);
+            // FIX: Use Math.hypot to get the true linear distance
+			let dist = Math.hypot(dx, dy);
 
             // NEW: Update RPG Stance based on distance
             unit.stats.updateStance(dist);
 // ---> 1. ADD THIS LINE: Shrink range if they are using melee <---
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
             // Move into range
-            if (dist > effectiveRange*1.3) {
+            if (dist > effectiveRange*0.8) {
                 unit.state = "moving";
                 // Optional: Drain stamina while moving
                 if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
@@ -761,9 +788,9 @@ function getReloadTime(unit) {
 function leaveBattlefield(playerObj) {
     // --- 1. CALCULATE EVERYTHING FIRST (While data still exists) ---
     
-    // Get counts before we clear the array
-    let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player").length;
-    let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy").length;
+    // FIX: Ignore the Commander, otherwise the engine thinks you gained a free troop!
+    let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander).length;
+    let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander).length;
     
     // Get the scale and initial counts before we null the data
     let scale = currentBattleData.initialCounts.player > 300 ? 5 : 1; 
@@ -771,6 +798,8 @@ function leaveBattlefield(playerObj) {
     let enemyLost = currentBattleData.initialCounts.enemy - (eUnitsAlive * scale);
 
     let isFleeing = eUnitsAlive > 0;
+    
+    // ... [The rest of the function remains exactly the same] ...
 
     // --- 2. APPLY OVERWORLD CONSEQUENCES (Your full logic) ---
     
@@ -805,6 +834,49 @@ playerObj.troops = Math.max(0, (playerObj.troops || 0) - playerLost);
     currentBattleData = null; // Safe to null now
     battleEnvironment.units = []; // Safe to clear now
     battleEnvironment.projectiles = [];
+	lastBattleTime = Date.now();
+	
+	// --- 4. HOOK BATTLE EXIT (Fixes Teleportation & UI bugs) ---
+const originalLeaveBattlefield = leaveBattlefield;
+
+leaveBattlefield = function(playerObj) {
+    // A. Capture survivors 
+    let pSurvivors = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander); 
+    let eSurvivors = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander);
+    let pScale = (currentBattleData.initialCounts && currentBattleData.initialCounts.player > 300) ? 5 : 1;
+    let eScale = (currentBattleData.initialCounts && currentBattleData.initialCounts.enemy > 300) ? 5 : 1;
+    let enemyRef = currentBattleData.enemyRef;
+
+    // B. Build temporary rosters (DO NOT overwrite playerObj.troops yet!)
+    let newPlayerRoster = [];
+    pSurvivors.forEach(u => {
+        u.stats.experienceLevel += 0.5;
+        for(let i=0; i<pScale; i++) newPlayerRoster.push({ type: u.unitType, exp: u.stats.experienceLevel });
+    });
+
+    let newEnemyRoster = [];
+    if (enemyRef) {
+        eSurvivors.forEach(u => {
+            u.stats.experienceLevel += 0.5;
+            for(let i=0; i<eScale; i++) newEnemyRoster.push({ type: u.unitType, exp: u.stats.experienceLevel });
+        });
+    }
+
+    if (playerObj.hp <= 1) playerObj.hp = 15; 
+
+    // C. Call original (This generates the UI, but will apply flawed math to playerObj.troops)
+    originalLeaveBattlefield(playerObj);
+
+    // D. HARD OVERRIDE: Enforce the strict 1:1 Bannerlord roster arrays as the absolute source of truth
+    playerObj.roster = newPlayerRoster;
+    playerObj.troops = playerObj.roster.length;
+
+    if (enemyRef) {
+        enemyRef.roster = newEnemyRoster;
+        enemyRef.count = enemyRef.roster.length;
+    }
+};
+	
 }
 
 function createBattleSummaryUI(title, pLost, eLost) {
@@ -845,8 +917,15 @@ function drawBattleUnits(ctx) {
     let units = battleEnvironment.units;
     let time = Date.now() / 50;
 
-    // Draw alive units sorted by Y for correct overlap
-    units.sort((a, b) => a.y - b.y).forEach(unit => {
+let lastSortTime = 0;
+const SORT_INTERVAL = 100; // ms
+
+if (performance.now() - lastSortTime > SORT_INTERVAL) {
+    units.sort((a, b) => a.y - b.y);
+    lastSortTime = performance.now();
+}
+
+units.forEach(unit => {
         let isMoving = unit.state === "moving";
         let frame = time + unit.animOffset;
 let isAttacking = unit.state === "attacking" && unit.cooldown > (unit.stats.isRanged ? 30 : 40);
@@ -876,7 +955,7 @@ let isAttacking = unit.state === "attacking" && unit.cooldown > (unit.stats.isRa
             visType = "gun";
         } else if (unit.stats.role === ROLES.BOMB) {
             visType = "bomb";
-        } else if (unit.unitType === "Axe Militia") {
+        } else if (unit.unitType === "Militia") {
             visType = "peasant";
         }
 		
@@ -891,37 +970,76 @@ let isAttacking = unit.state === "attacking" && unit.cooldown > (unit.stats.isRa
             }
         }
 
-// Dispatch to the correct renderer (NOW PASSING unit.unitType)
-        if (["cavalry", "elephant", "camel", "horse_archer"].includes(visType)) {
-            drawCavalryUnit(ctx, unit.x, unit.y, isMoving, frame, unit.color, isAttacking, visType, unit.side, unit.unitType);
-        } else {
-            drawInfantryUnit(ctx, unit.x, unit.y, isMoving, frame, unit.color, visType, isAttacking, unit.side, unit.unitType);
-        }
-// Draw Unit Name
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "4px Georgia";
-        ctx.textAlign = "center";
-        ctx.fillText(unit.unitType, unit.x, unit.y - 21);
+// 1. Dispatch to the correct renderer (No logic changes here)
+if (["cavalry", "elephant", "camel", "horse_archer"].includes(visType)) {
+    drawCavalryUnit(ctx, unit.x, unit.y, isMoving, frame, unit.color, isAttacking, visType, unit.side, unit.unitType);
+} else {
+    drawInfantryUnit(ctx, unit.x, unit.y, isMoving, frame, unit.color, visType, isAttacking, unit.side, unit.unitType);
+}
 
-       const barWidth = 24;
-    const barHeight = 4;
-    const barY = unit.y - 30; // Positions bar above the unit's head
+// 2. SURGICAL NAME OVERRIDE: Show "PLAYER" if it's the commander
+ctx.fillStyle = "#ffffff";
+ctx.font = unit.isCommander ? "bold 6px Georgia" : "4px Georgia"; // Bolder for player
+ctx.textAlign = "center";
+let displayName = unit.isCommander ? "PLAYER" : unit.unitType;
+ctx.fillText(displayName, unit.x, unit.y - 21);
 
-    // Draw Background (Red/Empty)
-    ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
-    ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+// 3. HEALTH BAR CONFIG
+const barWidth = 24;
+const barHeight = 4;
+const barY = unit.y - 30; 
 
-    // Draw Health Fill (Green)
-    const healthPercent = Math.max(0, unit.hp / unit.stats.health);
-    ctx.fillStyle = "#4caf50";
-    ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
+// --- SURGICAL DEBUG UI OVERRIDE ---
+// --- SURGICAL DEBUG UI OVERRIDE ---
+// Changed from 'unit.isCommander' so ALL player troops show stats
+if (unit.side === "player") {
+    ctx.save();
+    
+    // 1. Configure Debug Font (Slightly smaller for troops so it doesn't clutter)
+    ctx.textAlign = "center";
+    ctx.font = unit.isCommander ? "bold 8px monospace" : "6px monospace"; 
+    
+    // Change color based on Level (Gold for Level 3+, White for recruits)
+    let lvl = unit.stats.experienceLevel || 1;
+    ctx.fillStyle = lvl >= 3 ? "#ffca28" : "#ffffff"; 
 
-    // Optional: Draw Border
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
-    });
+    // 2. Build the Debug String
+    let ma = unit.stats.meleeAttack;
+    let df = unit.stats.armor;    
+    let acc = unit.stats.accuracy;
 
+    let debugText = `LVL:${Math.floor(lvl)} | ATK:${ma} | DF:${df} | ACC:${acc}`;
+
+    // 3. Draw the Label
+    ctx.fillText(debugText, unit.x, barY - 10);
+
+    // 4. SATISFACTION / EXP BAR
+    const expProgress = lvl % 1; 
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth, 2); // EXP Background
+    
+    // Blue for Commander, Green for regular troops
+    ctx.fillStyle = unit.isCommander ? "#4fc3f7" : "#81c784"; 
+    ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth * expProgress, 2); // EXP Fill
+
+    ctx.restore();
+}
+
+// 5. HEALTH BAR RENDERING
+// Draw Background (Red/Empty)
+ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
+ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+
+// Draw Health Fill (Green for Allies, Orange/Red for Enemies)
+const healthPercent = Math.max(0, unit.hp / unit.stats.health);
+ctx.fillStyle = unit.side === "player" ? "#4caf50" : "#ff5722"; 
+ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
+
+// Draw Border
+ctx.strokeStyle = "#000";
+ctx.lineWidth = 1;
+ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+}); // <--- ADD THIS LINE HERE to close the units.forEach loop
     // Draw Projectiles
     battleEnvironment.projectiles.forEach(p => {
         let angle = Math.atan2(p.ty - p.y, p.tx - p.x);
@@ -1034,24 +1152,44 @@ function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttack
     let weaponBob = isAttacking ? Math.sin(frame * 0.8) * 4 * dir : 0;
     
 if (type === "peasant") {
-        let tipX = (12 + weaponBob) * dir;
-        let tipY = -12 + weaponBob;
+    let tipX = (12 + weaponBob) * dir;
+    let tipY = -12 + weaponBob;
 
-        // Draw the wooden shaft
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(-2 * dir, -4); ctx.lineTo(tipX, tipY); ctx.stroke();
+    // Draw the wooden shaft
+    ctx.strokeStyle = "#5d4037"; 
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); 
+    ctx.moveTo(-2 * dir, -4); 
+    ctx.lineTo(tipX, tipY); 
+    ctx.stroke();
 
-        // ---> ADD THE IRON BLADE FOR THE HOE <---
-        if (unitName === "Hoe Militia") {
-            ctx.strokeStyle = "#9e9e9e"; // Iron color
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.moveTo(tipX, tipY);
-            // Draw the blade hooking downwards and slightly inwards
-            ctx.lineTo(tipX - (2 * dir), tipY + 5); 
-            ctx.stroke();
-        }
-    }
+    // Check for specific Militia weapon head (INSIDE the peasant block)
+if (unitName === "Militia") {
+    ctx.fillStyle = "#9e9e9e";   // Iron color
+    ctx.strokeStyle = "#444444"; // Dark outline
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    // 1. The Neck (Connecting handle to blade)
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX + (1.5 * dir), tipY + 1); 
+
+    // 2. The Blade (Half the height and width)
+    ctx.lineTo(tipX + (2.5 * dir), tipY + 6);   // Bottom front corner
+    ctx.lineTo(tipX - (0.5 * dir), tipY + 6.5); // Bottom back corner
+    ctx.lineTo(tipX - (1 * dir), tipY + 1.5);   // Top back corner
+    
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Small dot to show the handle tip
+    ctx.fillStyle = "#333";
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 1, 0, Math.PI * 2);
+    ctx.fill();
+}
+} // This closes the 'if (type === "peasant")' block
 	else if (type === "spearman") {
         let isGlaive = unitName === "Glaiveman";
         ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2.5;
@@ -1351,9 +1489,14 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
     ctx.save();
     ctx.translate(x, y);
     
+	// SURGERY: If frame is missing or 0, use a global time to keep animation alive
+    let animFrame = frame || (Date.now() / 100);
+	
     let dir = side === "player" ? 1 : -1;
     ctx.scale(dir, 1);
-    
+    // SURGERY: Ensure legs move if there is velocity, even if 'moving' boolean is glitchy
+    let isMoving = moving || (typeof vx !== 'undefined' && (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1));
+	
     let legSwing = moving ? Math.sin(frame * 0.4) * 8 : 0;
     let bob = moving ? Math.sin(frame * 0.4) * 2 : 0;
     let riderBob = moving ? Math.sin(frame * 0.4 + 0.5) * 1.5 : 0;
@@ -1404,16 +1547,57 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.quadraticCurveTo(0, -13, -8, -11); ctx.fill(); ctx.stroke();
         
         let weaponBob = isAttacking ? Math.sin(frame * 0.8) * 4 : 0;
-        
-        if (type === "horse_archer") {
-            ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(2 + weaponBob, -14);
-            ctx.quadraticCurveTo(8 + weaponBob, -10, 4 + weaponBob, -6);
-            ctx.quadraticCurveTo(8 + weaponBob, -2, 2 + weaponBob, 2);
-            ctx.stroke();
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"; ctx.lineWidth = 0.5;
-            ctx.beginPath(); ctx.moveTo(2 + weaponBob, -14); ctx.lineTo(2 + weaponBob, 2); ctx.stroke();
-        } else if (type === "camel") {
+// Catches "Horse Archer", "Heavy Horse Archer", and "Light Horse Archer"
+if (type === "horse_archer") {
+    // 1. TIMING & STATE (Replace with your game's fire-timer if available)
+    let time = Date.now() / 200; 
+    let pull = (Math.sin(time) * 0.5 + 0.5); // Ranges 0 to 1 (0 = idle, 1 = full draw)
+    
+    // Khatra: The bow rotates forward/down slightly during the "release" 
+    // This triggers when 'pull' is low (after the snap)
+    let khatra = (1 - pull) * 0.4; 
+
+    // 2. POSITIONING
+    // Shifted base X further right (+4px from your original)
+    let handX = 6 + weaponBob;
+    let handY = -6; // The pivot point (the grip)
+
+    ctx.save();
+    
+    // 3. APPLY KHATRA ROTATION
+    // Pivot around the hand grip
+    ctx.translate(handX, handY);
+    ctx.rotate(khatra); 
+    ctx.translate(-handX, -handY);
+
+    // 4. DRAW THE BOW (The Wood)
+    ctx.strokeStyle = "#3e2723"; 
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    // Top Limb
+    ctx.moveTo(handX - 4, -14); 
+    ctx.quadraticCurveTo(handX + 6, -10, handX, handY); 
+    // Bottom Limb
+    ctx.quadraticCurveTo(handX + 6, -2, handX - 4, 2); 
+    ctx.stroke();
+
+    // 5. DRAW THE STRING (Dynamic Pull)
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.6)"; 
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(handX - 4, -14); // String top
+    
+    // The "Nocking Point" moves back based on the pull
+    let stringX = (handX - 4) - (pull * 8); 
+    ctx.lineTo(stringX, handY); // Pull point
+    
+    ctx.lineTo(handX - 4, 2);   // String bottom
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+else if (type === "camel") {
             ctx.strokeStyle = "#212121"; ctx.lineWidth = 3.5;
             ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(12 + weaponBob, -5); ctx.stroke();
             if (isAttacking) { 
@@ -1476,6 +1660,7 @@ document.addEventListener("keydown", (event) => {
             console.log("Command 1: Select All Infantry");
             // Example: Highlight infantry
             battleEnvironment.units.forEach(u => {
+				
                 u.selected = (u.side === "player" && !u.stats.isLarge && !u.stats.isRanged);
             });
             break;
@@ -1486,5 +1671,25 @@ document.addEventListener("keydown", (event) => {
                 if (u.side === "player") u.state = "holding"; // You'll need to add a check in updateBattleUnits to stop moving if state is 'holding'
             });
             break;
+			
+case "Tab":
+    // 1. Calculate the condition
+    const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
+    const playerDead = player.hp <= 0;
+
+    // 2. Only allow exit if one of these is true
+    if (playerDead || aliveEnemies === 0) {
+        console.log("Battle concluded. Exiting...");
+        
+        // --- FIX STARTS HERE ---
+        // Don't just set inBattleMode = false! 
+        // Call the official leave function so your position is restored.
+        leaveBattlefield(player); 
+        // --- FIX ENDS HERE ---
+        
+    } else {
+        event.preventDefault(); // Block exit if battle is still raging
+        console.log(`Exit blocked: ${aliveEnemies} enemies remaining.`);
     }
+    break;}
 });

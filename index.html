@@ -139,7 +139,10 @@
 <script src="npc_system.js"></script>
 <script src="city_system.js"></script>
 <script src="battlefield_system.js"></script>
-<script src="player_overlay_system.js"></script> 
+<script src="player_overlay_system.js"></script>
+ <script src="campaign_expansion.js"></script>  
+ <script src="menu.js"></script>  
+
 <script>
 const canvas = document.getElementById('gameCanvas');
  
@@ -180,7 +183,8 @@ const PADDING_Y = WORLD_HEIGHT * 0.05;  // 5% of height
  
 async function setLoading(percent, text) {
     document.getElementById('loading').innerText = `${text} (${percent}%)`;
-    await new Promise(r => setTimeout(r, 0)); // allow browser to repaint
+    // Double requestAnimationFrame forces the browser to physically render the text
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
     // --- NOISE GENERATOR ---
     function hash(x, y) {
@@ -304,9 +308,8 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
             if (!worldMap[tx] || !worldMap[tx][ty]) continue;
             let tile = worldMap[tx][ty];
 
-            // CRITICAL CHECK: No cities in oceans, coastal waters, rivers, or snowy impassable mountains
-            if(!tile.impassable && tile.name !== "River" && tile.name !== "Coastal" && tile.name !== "Snowy Peaks") {
-                
+// CRITICAL CHECK: Fixed to prevent Atlantis (no cities in the Ocean!)
+                if(!tile.impassable && tile.name !== "River" && tile.name !== "Coastal" && tile.name !== "Snowy Peaks" && tile.name !== "Ocean") { 
                 // Check distance to other cities (Prevent clumping / overlapping)
                 let tooClose = false;
                 for(let c of cities) {
@@ -367,33 +370,33 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
                     // OCEAN: Fast travel for ships, no longer impassable
                     tile.name = "Ocean"; 
                     tile.color = PALETTE.ocean; 
-                    tile.speed = 0.39; // High speed for open-sea sailing
+                    tile.speed = 1.0; // High speed for open-sea sailing
                     tile.impassable = false; 
                 } else if (e < 0.3) {
                     // COASTAL: Transition zone
                     tile.name = "Coastal"; 
                     tile.color = PALETTE.coastal; 
-                    tile.speed = 0.35; // Slightly slower due to shallows/reefs
+                    tile.speed = 0.9; // Slightly slower due to shallows/reefs
                     tile.impassable = false;
                 } else {
                     if (r < 0.03 && e < 0.6) {
-                        tile.name = "River"; tile.color = PALETTE.coastal; tile.speed = 0.24;
+                        tile.name = "River"; tile.color = PALETTE.coastal; tile.speed = 1.0;
                     } else if (e > 0.7) {
                         tile.name = m > 0.6 ? "Snowy Peaks" : "Mountains";
-                        tile.color = m > 0.6 ? PALETTE.snow : PALETTE.mountains; tile.speed = 0.04;
+                        tile.color = m > 0.6 ? PALETTE.snow : PALETTE.mountains; tile.speed = 0.2;
                     } else if (e > 0.55) {
-                        tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.14;
+                        tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.4;
                   } else {
                         // --- REVISION: Use fuzzyDist for organic border ---
                         if (fuzzyDist < 0.38) {
                             tile.name = e > 0.42 ? "Dunes" : "Desert";
-                            tile.color = e > 0.42 ? PALETTE.dune : PALETTE.desert; tile.speed = 0.1;
+                            tile.color = e > 0.42 ? PALETTE.dune : PALETTE.desert; tile.speed = 0.53;
                         } else if (m > 0.6) {
-                            tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.14;
+                            tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.24;
                         } else if (m > 0.45) {
-                            tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.17;
+                            tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.47;
                         } else {
-                            tile.name = "Plains"; tile.color = PALETTE.plains; tile.speed = 0.2;
+                            tile.name = "Plains"; tile.color = PALETTE.plains; tile.speed = 0.55;
                         }
                     }
                 }
@@ -506,6 +509,7 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     const player = {
         x: WORLD_WIDTH * 0.5,
         y: WORLD_HEIGHT * 0.45,
+		baseSpeed: 15, // Store the original speed here
         speed: 15,
         size: 24,
         isMoving: false,
@@ -515,7 +519,11 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     troops: 10,
     food: 100,
     gold: 500,
-    hp: 100
+    hp: 100,
+	
+	// ---> SURGICAL FIX: PRE-LOAD STARTING ROSTER <---
+        // This gives you 10 actual Axe Militia recruits at Level 1
+        roster: Array.from({ length: 10 }, () => ({ type: "Militia", exp: 1 }))
     };
 
 	const keys = {};
@@ -660,18 +668,39 @@ let economyTick = 0;
 function update() {
     if (inBattleMode) {
         // --- 1. BATTLEFIELD MODE ---
-        calculateMovement(player.speed/6, null, BATTLE_TILE_SIZE, null, null, true); 
+     calculateMovement(player.baseSpeed / 7, null, BATTLE_TILE_SIZE, null, null, true); 
         updateBattleUnits();
         
-        if (keys['tab']) {
-            leaveBattlefield(player);
+	if (keys['tab']) {
+            // 1. SURGICAL CONDITION: Check for living enemies and player health
+            const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
+            const isPlayerDead = player.hp <= 0;
+
+            if (isPlayerDead || aliveEnemies === 0) {
+                // Only allow leaving if battle is "over"
+                leaveBattlefield(player);
+            } else {
+                console.log("Cannot retreat while enemies remain!");
+            }
+            
+            // 2. Always reset the key to prevent rapid-fire triggering
             keys['tab'] = false;
+        }
+		
+		// --- 2. UPDATE UI TEXT (Optional but recommended) ---
+        // Add this here if you want the "Press Tab" hint to only appear when ready
+        const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
+        if (player.hp <= 0 || aliveEnemies === 0) {
+            ctx.fillStyle = "#ffca28";
+            ctx.font = "bold 18px Georgia";
+            ctx.textAlign = "center";
+            ctx.fillText("BATTLE OVER - Press [TAB] to Exit", canvas.width / 2, canvas.height - 50);
         }
     } 
     else if (inCityMode) {
         // --- 2. LOCAL CITY MODE ---
-        calculateMovement(player.speed/9, null, TILE_SIZE, null, null, true);
-        
+       calculateMovement(player.baseSpeed / 9, null, TILE_SIZE, null, null, true);
+        // ... 
         if (typeof updateCityCosmeticNPCs === 'function') {
             updateCityCosmeticNPCs(currentActiveCityFaction);
         }
@@ -688,7 +717,9 @@ function update() {
             economyTick = 0;
         }
 
-        calculateMovement(player.speed/2, worldMap, TILE_SIZE, COLS, ROWS, false);
+    player.speed = 15; 
+        
+        calculateMovement(player.speed / 2, worldMap, TILE_SIZE, COLS, ROWS, false);
         updateNPCs(cities);	
         
         let tx = Math.floor(player.x / TILE_SIZE);
@@ -752,20 +783,14 @@ function update() {
 
         drawBattleUnits(ctx);
 
-        let pColor = "#d32f2f"; 
-        if (typeof FACTIONS !== 'undefined' && player.faction && FACTIONS[player.faction]) {
-            pColor = FACTIONS[player.faction].color;
-        }
-        if (typeof drawHuman === 'function') {
-            drawHuman(ctx, player.x, player.y, player.isMoving, player.anim, pColor);
-        }
+ 
 		        ctx.save();
         ctx.font = "bold 16px Georgia";
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
         ctx.fillRect(canvas.width / 2 - 150, 20, 300, 30);
         ctx.fillStyle = "#f5d76e";
         ctx.textAlign = "center";
-        ctx.fillText("Press TAB to exit", canvas.width / 2, 40);
+        ctx.fillText("Press TAB to exit when battle is over", canvas.width / 2, 40);
         ctx.restore();
     } 
     else if (inCityMode) {
@@ -802,7 +827,21 @@ function update() {
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(bgCanvas, 0, 0);
 
+// SURGERY: Calculate what the camera can actually see right now
+let halfWidth = (canvas.width / 2) / zoom;
+let halfHeight = (canvas.height / 2) / zoom;
+// Add 150px padding so things don't pop out abruptly at the edges
+let camLeft = player.x - halfWidth - 150; 
+let camRight = player.x + halfWidth + 150;
+let camTop = player.y - halfHeight - 150;
+let camBottom = player.y + halfHeight + 150;
+
+
         cities.forEach(c => {
+		
+		// SURGERY: If the city is outside the camera view, skip rendering entirely!
+    if (c.x < camLeft || c.x > camRight || c.y < camTop || c.y > camBottom) return;
+	
             ctx.lineWidth = 3;
             ctx.fillStyle = c.color;
             ctx.strokeStyle = "#ffca28"; 
@@ -834,12 +873,9 @@ function update() {
             ctx.fillStyle = c.color; 
             ctx.fillText(c.name, c.x, c.y - 20);
         });
-// Step 2: Enforce NPC Bounds (Using WORLD_WIDTH/HEIGHT from your map gen)
-if (typeof globalNPCs !== 'undefined') {
-    globalNPCs.forEach(npc => enforceNPCBounds(npc, WORLD_WIDTH, WORLD_HEIGHT));
-}
-        drawAllNPCs(ctx, drawCaravan, drawShip, zoom);
-
+ 
+       // SURGERY: Pass the camera bounds to the NPC rendering system
+		drawAllNPCs(ctx, drawCaravan, drawShip, zoom, camLeft, camRight, camTop, camBottom);
         let tx = Math.floor(player.x / TILE_SIZE);
         let ty = Math.floor(player.y / TILE_SIZE);
         let currentTile = (worldMap[tx] && worldMap[tx][ty]) ? worldMap[tx][ty] : {name: "Plains"};
@@ -851,15 +887,35 @@ if (typeof globalNPCs !== 'undefined') {
 		
  
             drawCaravan(player.x, player.y, player.isMoving, player.anim);
-        }		
+        }	
+
+// ---> SURGICAL FIX: PLAYER LABEL <---
+        ctx.fillStyle = "#ffca28"; // Matches your UI Gold
+        ctx.font = "bold 14px Georgia";
+        ctx.textAlign = "center";
+        ctx.fillText("PLAYER", player.x, player.y - 30);
+		
     }
 // ADD THIS LINE HERE:
 drawPlayerOverlay(ctx, player, zoom);
     ctx.restore();
     requestAnimationFrame(() => { update(); draw(); });
 }
-		
-initGame();
+	 //initGame();
+	showMainMenu();
+// Define the missing function to stop the background crashing
+function enforceNPCBounds(npc, maxWidth, maxHeight) {
+    if (npc.x < 0) npc.x = 0;
+    if (npc.x > maxWidth) npc.x = maxWidth;
+    if (npc.y < 0) npc.y = 0;
+    if (npc.y > maxHeight) npc.y = maxHeight;
+}
+// Optimized: Run bounds check every 100ms instead of every frame (Lag Fix)
+setInterval(() => {
+    if (typeof globalNPCs !== 'undefined') {
+        globalNPCs.forEach(npc => enforceNPCBounds(npc, WORLD_WIDTH, WORLD_HEIGHT));
+    }
+}, 100);
 </script>
 </body>
 </html>

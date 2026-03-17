@@ -16,96 +16,133 @@ let mouseX = 0;
 let mouseY = 0;
 let isHoveringPlayer = false;
 
+// 1. Declare these at the TOP of the file so drawAllNPCs can see them
+let worldMouseX = 0;
+let worldMouseY = 0;
+
 window.addEventListener('mousemove', (e) => {
-    // Convert screen mouse to world coordinates based on camera zoom/offset
-    // This assumes you have access to 'player' and 'zoom' from index.html
+	if (!canvas || !player) return;
+    // Convert screen mouse to world coordinates
     const rect = canvas.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
 
-    // Calculate world position relative to player (center of screen)
-    const worldMouseX = (screenX - canvas.width / 2) / zoom + player.x;
-    const worldMouseY = (screenY - canvas.height / 2) / zoom + player.y;
+    // 2. REMOVED 'const' here. 
+    // We are now updating the global variables we declared above.
+    worldMouseX = (screenX - canvas.width / 2) / zoom + player.x;
+    worldMouseY = (screenY - canvas.height / 2) / zoom + player.y;
 
-    // Check if mouse is near player icon (approx 20px radius)
+    // 3. Keep your player hover logic exactly as it was
     const dist = Math.hypot(worldMouseX - player.x, worldMouseY - player.y);
     isHoveringPlayer = dist < 25;
 });
- 
-// 3. RENDER PLAYER OVERLAY
+
 function drawPlayerOverlay(ctx, player, zoom) {
-	
-	// Only display if NOT in battle and NOT in city exploration
-    if (inBattleMode || inCityMode) return;
-	
+    if (typeof inBattleMode !== 'undefined' && (inBattleMode || inCityMode)) return;
+
+    // 1. MASTER UI OVERRIDE
+    const htmlUI = document.getElementById('ui');
+    if (!isHoveringPlayer) {
+        if (htmlUI) htmlUI.style.display = "block"; 
+        return;
+    }
+    if (htmlUI) htmlUI.style.display = "none";
+
     ctx.save();
-    
-    // Position text below player icon
-    const labelY = player.y + 45;
-    
-    // A. ALWAYS VISIBLE NAME
-    // Slightly smaller base font (14 instead of 18)
-    const nameFontSize = Math.max(10, 14 / zoom); 
-    ctx.font = `bold ${nameFontSize}px Georgia`;
-    ctx.textAlign = "center";
-    
-    // Shadow & Text for "Player"
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillText("Player", player.x + 2, labelY + 2); 
-    ctx.fillStyle = "#f5d76e"; 
-    ctx.fillText("Player", player.x, labelY);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
 
-    // B. HOVER-ONLY DETAILED STATS
-    if (isHoveringPlayer) {
-        const stats = [
-            `Troops: ${player.troops || 0}`,
-            `Food: ${Math.floor(player.food || 0)}`,
-            `Gold: ${Math.floor(player.gold || 0)}`,
-            `Health: ${Math.floor(player.hp || 100)}%`
-        ];
+    const W = ctx.canvas.width;
+    const H = ctx.canvas.height;
 
-        if (player.unitType) {
-            stats.push(`Type: ${player.unitType}`);
-            if (typeof UNIT_TYPES !== 'undefined' && UNIT_TYPES[player.unitType]) {
-                stats.push(`Atk: ${UNIT_TYPES[player.unitType].dmg}`);
-            }
+    // 2. DYNAMIC ROSTER DATA (Confirmed: player.roster)
+    let armySource = player.roster || [];
+    
+    // VARIETY GANG FIX: If roster is empty but troops exist, don't show an empty list
+    if (armySource.length === 0 && player.troops > 0) {
+        // This is just a temporary visual display for the overlay 
+        // until the Campaign Expansion officially populates the roster.
+        armySource = [{ type: "Default Retinue", exp: 1.0, count: player.troops }];
+    }
+
+    const troopGroups = {};
+    armySource.forEach(u => {
+        const l = Math.floor(u.exp || 1);
+        const e = ((u.exp % 1) * 100).toFixed(0);
+        const key = `${u.type || 'Unit'}|${l}|${e}`;
+        if (!troopGroups[key]) {
+            troopGroups[key] = { type: u.type || 'Unit', lvl: l, exp: e, count: 0 };
+        }
+        // Use u.count if it exists (for the fallback), otherwise increment by 1
+        troopGroups[key].count += (u.count || 1);
+    });
+
+    // 3. BACKGROUND & FRAME
+    ctx.fillStyle = "rgba(10, 8, 5, 0.98)"; 
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#d4b886";
+    ctx.lineWidth = 15;
+    ctx.strokeRect(10, 10, W - 20, H - 20);
+
+    // 4. PLAYER DATA HEADER
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#ffca28";
+    ctx.font = "bold 44px Georgia";
+    ctx.fillText("PLAYER DATA", 80, 100);
+
+    // 5. PLAYER CHARACTER STATUS
+    const pLvl = player.stats ? (player.stats.experienceLevel || 1) : 1;
+    const pExp = (pLvl % 1);
+    
+    ctx.font = "bold 22px Georgia";
+    ctx.fillStyle = "#d4b886";
+    ctx.fillText("CHARACTER STATUS", 80, 160);
+
+    ctx.font = "16px monospace";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(`LEVEL: ${Math.floor(pLvl)} (${(pExp * 100).toFixed(0)}% EXP)`, 80, 195);
+    ctx.fillText(`HEALTH: ${Math.floor(player.hp || 100)}% | SPEED: ${player.speed || 2}`, 80, 220);
+    ctx.fillText(`GOLD: ${Math.floor(player.gold || 0)} | FOOD: ${Math.floor(player.food || 0)}`, 80, 245);
+
+    // EXP Bar
+    ctx.fillStyle = "#222";
+    ctx.fillRect(80, 260, 400, 8);
+    ctx.fillStyle = "#ffca28";
+    ctx.fillRect(80, 260, 400 * pExp, 8);
+
+    // 6. ARMY ROSTER (Variety Gang)
+    ctx.font = "bold 22px Georgia";
+    ctx.fillStyle = "#d4b886";
+    ctx.fillText("ARMY ROSTER", 80, 330);
+
+    const margin = 80;
+    let cursorX = margin;
+    let cursorY = 370;
+    const colGap = 45; 
+    const rowGap = 65;
+
+    const units = Object.values(troopGroups);
+    units.forEach((unit) => {
+        ctx.font = "bold 15px monospace";
+        const name = unit.type.toUpperCase();
+        const stats = `LVL ${unit.lvl} [EXP ${unit.exp}%] x${unit.count}`;
+        const entryWidth = Math.max(ctx.measureText(name).width, ctx.measureText(stats).width);
+
+        if (cursorX + entryWidth > W - margin) {
+            cursorX = margin;
+            cursorY += rowGap;
         }
 
-        // 1. Calculate the dynamic text size
-        const statFontSize = Math.max(10, 14 / zoom);
-        const lineHeight = statFontSize * 1.4;
-        const padding = statFontSize * 0.8;
-        
-        // 2. Tie the box dimensions to the text size so they never mismatch
-        const boxWidth = statFontSize * 9.5; // 9.5 chars wide (fits Monospace text)
-        const boxHeight = (stats.length * lineHeight) + padding;
-        
-        // 3. Position the box above the "Player" label, adapting to zoom
-        const boxX = player.x - boxWidth / 2;
-        const boxY = labelY - boxHeight - (20 / zoom) - nameFontSize;
-        
-        // Draw background box
-        ctx.fillStyle = "rgba(25, 15, 5, 0.9)";
-        ctx.strokeStyle = "#5d4037";
-        ctx.lineWidth = 2 / zoom; // Ensure border thickness scales cleanly too
-        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-        ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(name, cursorX, cursorY);
+        ctx.fillStyle = "#8bc34a"; 
+        ctx.font = "12px monospace";
+        ctx.fillText(stats, cursorX, cursorY + 20);
 
-        // Draw Stats Text
-        ctx.textAlign = "left";
-        ctx.font = `${statFontSize}px monospace`;
-        
-        stats.forEach((text, i) => {
-            ctx.fillStyle = text.includes("Food") ? "#8bc34a" : (text.includes("Gold") ? "#ffd700" : "#fff");
-            // Calculate exact vertical placement for each line
-            const textY = boxY + padding + (i * lineHeight) + (statFontSize * 0.75);
-            ctx.fillText(text, boxX + padding, textY);
-        });
-    }
+        cursorX += entryWidth + colGap;
+    });
 
     ctx.restore();
 }
-
 // 4. INTEGRATION HELPER
 // Call this inside your main update/draw loop
 function updateAndDrawPlayerSystems(ctx, player, zoom, worldW, worldH, npcs) {

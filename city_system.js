@@ -7,11 +7,12 @@ const CITY_WORLD_HEIGHT = 3200;
 const CITY_TILE_SIZE = 8;
 const CITY_COLS = Math.floor(CITY_WORLD_WIDTH / CITY_TILE_SIZE);
 const CITY_ROWS = Math.floor(CITY_WORLD_HEIGHT / CITY_TILE_SIZE);
-
 async function initAllCities(factions) {
     const factionList = Array.isArray(factions) ? factions : Object.keys(factions);
     for (let f of factionList) {
         generateCity(f);
+        // Yield to the browser for 10ms so it doesn't crash from memory spikes
+        await new Promise(r => setTimeout(r, 10)); 
     }
 }
 
@@ -160,7 +161,7 @@ function generateCity(factionName) {
 
     // 3. Scatter Buildings Radially (Dense center, sparse edges)
     const buildings = [];
-    let numBuildingAttempts = 58000; 
+    let numBuildingAttempts = 11000; 
 
     for (let i = 0; i < numBuildingAttempts; i++) {
         let bx = Math.floor(Math.random() * CITY_COLS);
@@ -212,13 +213,13 @@ function generateCity(factionName) {
     }
 
     // Add Organic Features (Trees=3, Water=4)
-    generateOrganicFeatures(grid, 3, 80, 18); 
-    generateOrganicFeatures(grid, 4, 25, 12); 
+generateOrganicFeatures(grid, 3, 40, 18);
+generateOrganicFeatures(grid, 4, 12, 12);
 
-    // --- Render Canvas with Texture Noise ---
+    // --- Render Canvas with Texture Noise --- 
     const canvas = document.createElement('canvas');
-    canvas.width = CITY_WORLD_WIDTH;
-    canvas.height = CITY_WORLD_HEIGHT;
+    canvas.width = CITY_WORLD_WIDTH;  // FIX: Use full pixel width
+    canvas.height = CITY_WORLD_HEIGHT; // FIX: Use full pixel height
     const ctx = canvas.getContext('2d');
 
     // Paint Ground
@@ -345,14 +346,27 @@ function leaveCity(playerObj) {
     inCityMode = false;
     currentActiveCityFaction = null;
     
+    // 1. CLEAR KEY BUFFER: This stops the "natural" velocity increase 
+    // caused by keys being "stuck" during the transition.
+    for (let key in keys) {
+        keys[key] = false;
+    }
+
     if (typeof activeCity !== 'undefined') activeCity = null;
     const panel = document.getElementById('city-panel');
     if (panel) panel.style.display = 'none';
     
+    // 2. Reset Position
     playerObj.x = savedWorldPlayerState.x;
     playerObj.y = savedWorldPlayerState.y;
-}
+    
+    // 3. Reset Physics
+    playerObj.speed = 15; 
+    playerObj.isMoving = false;
+    playerObj.anim = 0; // Reset animation frame to prevent jitter
 
+    console.log("Returned to world map: Physics and Input cleared.");
+}
 
 // ============================================================================
 // NEW HUMAN DRAWING & NPC SYSTEM
@@ -405,8 +419,14 @@ function generateCityCosmeticNPCs(factionName, grid) {
     let spawned = 0;
     let attempts = 0;
     
-    // Massive population increase, heavily biased toward the center plaza and dense roads
-    while (spawned < 150 && attempts < 1000) { 
+	// --- STEP 1: Define the random target ---
+    // Math.random() * 16 gives 0-15.99. + 5 makes it 5-20.99. 
+    // Math.floor turns it into an integer (5, 6, 7... up to 20).
+    const targetPopulation = Math.floor(Math.random() * 16) + 5;
+	
+	
+    // Massive population decrease, heavily biased toward the center plaza and dense roads
+while (spawned < targetPopulation && attempts < 200){
         attempts++;
         
         // Random angle and a squiggly radius pushes them closer to the middle naturally

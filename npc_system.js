@@ -12,7 +12,9 @@ const FACTIONS = {
     "Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.5, south: 0.5, west: 0.7, east: 0.3 } }, // Gold
     "High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.6, south: 0.4, west: 0.3, east: 0.7 } }, // Earth Brown
     "Yamato Clans":          { color: "#c2185b", geoWeight: { north: 0.6, south: 0.4, west: 0.2, east: 0.8 } }, // Crimson
-    "Bandits":               { color: "#222222", geoWeight: { north: 0.5, south: 0.5, west: 0.5, east: 0.5 } }  // Black (Independent)
+    "Bandits":               { color: "#222222", geoWeight: { north: 0.5, south: 0.5, west: 0.5, east: 0.5 } },  // Black (Independent)
+"Independent": { color: "#777777", geoWeight: { north: 0.5, south: 0.5, west: 0.5, east: 0.5 }} // Add this line
+
 };
 
 const SYLLABLE_POOLS = {
@@ -31,7 +33,8 @@ let globalNPCs = [];
 let worldMapRef = null; 
 let tSize = 8;
 let maxCols = 0, maxRows = 0;
-
+let lastBattleTime = 0;
+const BATTLE_COOLDOWN = 3000; // 5 seconds
 // ============================================================================
 // CORE HELPER FUNCTIONS
 // ============================================================================
@@ -45,12 +48,12 @@ function getRandomLandCoordinate(padX = 0, padY = 0) {
         let tx = Math.floor(cx / tSize);
         let ty = Math.floor(cy / tSize);
         
-        if (worldMapRef[tx] && worldMapRef[tx][ty]) {
-            let tile = worldMapRef[tx][ty];
-            if(!tile.impassable && tile.name !== "River" && tile.name !== "Coastal" && tile.name !== "Snowy Peaks") {
-                return { x: cx, y: cy };
-            }
-        }
+		if (worldMapRef[tx] && worldMapRef[tx][ty]) {
+                    let tile = worldMapRef[tx][ty];
+                    if(!tile.impassable && tile.name !== "River" && tile.name !== "Coastal" && tile.name !== "Snowy Peaks" && tile.name !== "Ocean") {
+                        return { x: cx, y: cy };
+                    }
+                }
         attempts++;
     }
     return { x: 5000, y: 5000 };
@@ -296,15 +299,15 @@ function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
     globalNPCs = []; 
 
     cities.forEach(city => {
-        let activityLevel = Math.floor(city.pop / 15000) + 1; 
+        let activityLevel = Math.floor(city.pop / 1500) + 1; 
         
         for(let i=0; i < activityLevel; i++) {
-            if (Math.random() < 0.6) spawnNPCFromCity(city, "Commerce", cities);
-            if (Math.random() < 0.5) spawnNPCFromCity(city, "Civilian", cities);
-            if (Math.random() < 0.8) spawnNPCFromCity(city, "Patrol", cities);
+            if (Math.random() < 0.3) spawnNPCFromCity(city, "Commerce", cities);
+            if (Math.random() < 0.3) spawnNPCFromCity(city, "Civilian", cities);
+            if (Math.random() < 0.3) spawnNPCFromCity(city, "Patrol", cities);
         }
         
-        if(city.pop > 50000 && Math.random() < 0.3) {
+        if(city.pop > 5000 && Math.random() < 0.4) {
             spawnNPCFromCity(city, "Military", cities);
         }
     });
@@ -347,16 +350,26 @@ for (let j = i + 1; j < globalNPCs.length; j++) {
 
 // Check Player Collision
 let distToPlayer = Math.hypot(npc.x - player.x, npc.y - player.y);
-if (distToPlayer < 20 && !inCityMode && !inBattleMode && npc.role !== "Civilian" && npc.role !== "Commerce") {
-    // Grab the tile the player is standing on to texture the battlefield
-    let tx = Math.floor(player.x / tSize);
-    let ty = Math.floor(player.y / tSize);
-    let currentTile = (worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : {name: "Plains"};
-    
-    // Trigger the tactical battle!
-    enterBattlefield(npc, player, currentTile);
-}
+const now = Date.now();
 
+// --- Inside npc_system.js -> updateNPCs() ---
+
+if (
+    distToPlayer < 20 &&
+    !inCityMode &&         // FIX: Removed 'window.'
+    !inBattleMode &&       // FIX: Removed 'window.'
+    (now - lastBattleTime > BATTLE_COOLDOWN) &&
+    npc.role !== "Civilian" &&
+    npc.role !== "Commerce"
+) {
+    // Grab the tile the player is standing on to texture the battlefield
+// Inside drawAllNPCs in npc_system.js:
+let tx = Math.floor(npc.x / tSize); // Change TILE_SIZE to tSize
+let ty = Math.floor(npc.y / tSize);
+// Match the name 'currentTile' so enterBattlefield can find it
+let currentTile = (worldMapRef && worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : {name: "Plains"}; 
+enterBattlefield(npc, player, currentTile);
+}
         // --- 1. COMBAT SEQUENCE (SURGERY: Trickling Troops & Faster Battles) ---
         if (npc.battlingTimer > 0) {
             npc.battlingTimer--;
@@ -482,7 +495,7 @@ if (npc.count <= 0 || other.count <= 0) {
                 npc.targetX = bestTarget.x;
                 npc.targetY = bestTarget.y;
                 npc.waitTimer = 0; 
-                npc.speed = 0.9; 
+                npc.speed = 1.4; 
             } 
             else if ((npc.role === "Civilian" || npc.role === "Commerce") && closestScaryEnemy) {
                 let dx = npc.x - closestScaryEnemy.x;
@@ -492,16 +505,16 @@ if (npc.count <= 0 || other.count <= 0) {
                 npc.targetX = npc.x + (dx / distToScary) * 150; 
                 npc.targetY = npc.y + (dy / distToScary) * 150;
                 npc.waitTimer = 0;
-                npc.speed = 0.8; 
+                npc.speed = 1.6; 
             } 
             else {
                 if (npc.targetCity) {
                     npc.targetX = npc.targetCity.x;
                     npc.targetY = npc.targetCity.y;
                 }
-                if (npc.role === "Civilian" || npc.role === "Commerce") npc.speed = 0.5;
-                else if (npc.role === "Military" || npc.role === "Bandit") npc.speed = 0.6;
-                else if (npc.role === "Patrol") npc.speed = 0.7;
+                if (npc.role === "Civilian" || npc.role === "Commerce") npc.speed = 0.9;
+                else if (npc.role === "Military" || npc.role === "Bandit") npc.speed = 1;
+                else if (npc.role === "Patrol") npc.speed = 1;
             }
         }
 
@@ -577,23 +590,45 @@ if (npc.count <= 0 || other.count <= 0) {
                     npc.targetY = npc.y + (Math.random() - 0.5) * 600;
                     npc.waitTimer = Math.floor(Math.random() * 60) + 30;
                 }
-            } else {
-                npc.x += (dx / dist) * npc.speed;
-                npc.y += (dy / dist) * npc.speed;
+            } 
+			 else {
+                // --- TILE SPEED SURGERY ---
+                // 1. Identify current tile coordinates
+                let tx = Math.floor(npc.x / tSize);
+                let ty = Math.floor(npc.y / tSize);
+                
+                // 2. Fetch tile data (falling back to Plains speed of 0.55)
+                let currentTile = (worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : { speed: 0.55 };
+                
+                // 3. Calculate move step: (Role Base Speed) * (Terrain Modifier)
+                let moveStep = npc.speed * (currentTile.speed || 1.55);
+
+                // 4. Apply movement
+                npc.x += (dx / dist) * moveStep;
+                npc.y += (dy / dist) * moveStep;
                 npc.isMoving = true;
-                npc.anim++;
+                
+                // 5. Sync animation speed to the terrain (slows legs/sails in mud/snow)
+                npc.anim += moveStep * 1.5; 
             }
         }
     }
 
     // --- 7. LONG-TERM RESPONSIVENESS (Mount & Blade style organic respawning) ---
     // Periodically, thriving cities will spawn new dynamic units into the world
-    if (Math.random() < 0.08 && cities.length > 0) {
+// --- 7. LONG-TERM RESPONSIVENESS (Lowered for 1k-10k Pop) ---
+    if (Math.random() < 0.04 && cities.length > 0) {
         let rc = cities[Math.floor(Math.random() * cities.length)];
-        if (Math.random() < 0.3 && rc.civilianPop > 50) spawnNPCFromCity(rc, "Commerce", cities);
-        else if (Math.random() < 0.2 && rc.civilianPop > 100) spawnNPCFromCity(rc, "Civilian", cities);
-        else if (Math.random() < 0.4 && rc.militaryPop > 50) spawnNPCFromCity(rc, "Patrol", cities);
-        else if (rc.pop > 20000 && rc.militaryPop > 200 && Math.random() < 0.1) spawnNPCFromCity(rc, "Military", cities);
+        
+        // Ratios dropped to ensure smaller towns still trade/patrol
+        if (Math.random() < 0.3 && rc.civilianPop > 20) spawnNPCFromCity(rc, "Commerce", cities);
+        else if (Math.random() < 0.2 && rc.civilianPop > 50) spawnNPCFromCity(rc, "Civilian", cities);
+        else if (Math.random() < 0.4 && rc.militaryPop > 30) spawnNPCFromCity(rc, "Patrol", cities);
+        
+        // SURGERY: Military respawn threshold dropped from 20k/200 to 5k/80
+        else if (rc.pop > 5000 && rc.militaryPop > 80 && Math.random() < 0.15) {
+            spawnNPCFromCity(rc, "Military", cities);
+        }
     }
     
     // Ensure the wilderness is never totally safe by slowly respawning destroyed bandit camps
@@ -601,73 +636,69 @@ if (npc.count <= 0 || other.count <= 0) {
         spawnBandit(0, 0); 
     }
 }
+function drawAllNPCs(ctx, drawCaravanFunc, drawShipFunc, zoom, camLeft, camRight, camTop, camBottom) {
+    // 1. SAFETY: Check for necessary globals
+    if (!player || !worldMap) return; 
 
-function drawAllNPCs(ctx, drawCaravanFunc, drawShipFunc, currentZoom) {
-    // Keep units layered correctly by Y position
+    // 2. Y-SORTING
     globalNPCs.sort((a, b) => a.y - b.y);
 
-    globalNPCs.forEach(npc => {
-        let tx = Math.floor(npc.x / tSize);
-        let ty = Math.floor(npc.y / tSize);
+    const SPOTTING_RANGE_SQ = 1500 * 1500;
 
-        // --- SURGERY: WATER/OOB OVERRIDE ---
-        // Attempt to find the tile. If worldMapRef[tx] or [ty] is missing, it's Out of Bounds (null).
-        let tile = (worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : null;
+    // 3. CULLING
+    const visibleNPCs = globalNPCs.filter(npc => {
+        if (npc.x < camLeft || npc.x > camRight || npc.y < camTop || npc.y > camBottom) return false;
+        let distSq = Math.pow(npc.x - player.x, 2) + Math.pow(npc.y - player.y, 2);
+        return distSq <= SPOTTING_RANGE_SQ;
+    });
 
-        // Force boat if: 
-        // 1. Tile is null (Out of Bounds)
-        // 2. Tile name is any known water type
-        let useBoat = !tile || 
-                      tile.name === "Coastal" || 
-                      tile.name === "River" || 
-                      tile.name === "Ocean" || 
-                      tile.name === "Sea" || 
-                      tile.name === "Deep Ocean";
+    // --- PASS 1: DRAW SPRITES ---
+    visibleNPCs.forEach(npc => {
+        let tx = Math.floor(npc.x / TILE_SIZE); 
+        let ty = Math.floor(npc.y / TILE_SIZE);
+        let tile = (worldMap[tx] && worldMap[tx][ty]) ? worldMap[tx][ty] : null;
+        let useBoat = !tile || ["Coastal", "River", "Ocean", "Sea", "Deep Ocean"].includes(tile.name);
 
         if (useBoat) {
             drawShipFunc(npc.x, npc.y, npc.isMoving, npc.anim);
         } else {
             drawCaravanFunc(npc.x, npc.y, npc.isMoving, npc.anim, npc.color); 
         }
+    });
 
-        // --- UI Rendering ---
-        ctx.save();
-        let fontSize = Math.max(10, 15 / currentZoom); 
-        ctx.font = `bold ${fontSize}px Georgia`;
-        ctx.textAlign = "center";
-        
-        // Shadow/Outline for Role
+    // --- PASS 2: BATCHED TEXT (NAMES) ---
+    let nameFontSize = Math.max(10, 14 / zoom); 
+    ctx.font = `bold ${nameFontSize}px Georgia`;
+    ctx.textAlign = "center";
+
+    visibleNPCs.forEach(npc => {
         ctx.fillStyle = "rgba(0,0,0,0.8)";
         ctx.fillText(npc.role, npc.x + 1, npc.y - 24); 
-        
         ctx.fillStyle = npc.color;
         ctx.fillText(npc.role, npc.x, npc.y - 25);
-        
-        // Troop/People Count
-        let smallFont = Math.max(8, 12 / currentZoom);
-        ctx.font = `italic ${smallFont}px Georgia`;
-        ctx.fillStyle = "#fff";
-        let label = npc.role === "Commerce" || npc.role === "Civilian" ? "People" : "Troops";
-        ctx.fillText(`${npc.count} ${label}`, npc.x, npc.y - 12);
-        
-        // Gold & Food Display
-        let resourceFont = Math.max(8, 11 / currentZoom);
-        ctx.font = `bold ${resourceFont}px Georgia`;
-        
-        ctx.fillStyle = "#ffd700"; // Gold
-        ctx.fillText(`G: ${Math.floor(npc.gold)}`, npc.x - 14, npc.y - 35);
-        
-        ctx.fillStyle = "#8bc34a"; // Food
-        ctx.fillText(`F: ${Math.floor(npc.food)}`, npc.x + 14, npc.y - 35);
+    });
 
-        // Combat Icon
-        if (npc.battlingTimer > 0) {
-            let battleFont = Math.max(16, 24 / currentZoom);
-            ctx.font = `bold ${battleFont}px Arial`;
-            let yBob = Math.sin(npc.battlingTimer * 0.5) * 3;
-            ctx.fillText("⚔️", npc.x, npc.y - 45 + yBob); 
+    // --- PASS 3: CONDITIONAL DETAILS ---
+    let detailFontSize = Math.max(8, 12 / zoom); // Renamed from smallFont to avoid conflict
+    ctx.font = `italic ${detailFontSize}px Georgia`;
+    
+    visibleNPCs.forEach(npc => {
+        const distToPlayerSq = Math.pow(npc.x - player.x, 2) + Math.pow(npc.y - player.y, 2);
+        let mx = (typeof worldMouseX !== 'undefined') ? worldMouseX : 0;
+        let my = (typeof worldMouseY !== 'undefined') ? worldMouseY : 0;
+        const isMouseOver = Math.hypot(npc.x - mx, npc.y - my) < 30;
+
+        if (distToPlayerSq < 40000 || isMouseOver || npc.battlingTimer > 0) {
+            ctx.fillStyle = "#fff";
+            let label = (npc.role === "Commerce" || npc.role === "Civilian") ? "People" : "Troops";
+            ctx.fillText(`${npc.count} ${label}`, npc.x, npc.y - 12);
+            
+            if (distToPlayerSq < 10000 || isMouseOver) {
+                ctx.fillStyle = "#ffd700";
+                ctx.fillText(`G: ${Math.floor(npc.gold)}`, npc.x - 14, npc.y - 35);
+                ctx.fillStyle = "#8bc34a";
+                ctx.fillText(`F: ${Math.floor(npc.food)}`, npc.x + 14, npc.y - 35);
+            }
         }
-
-        ctx.restore();
     });
 }
