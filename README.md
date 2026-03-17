@@ -1,4 +1,4 @@
-**LAUNCHER:** [[Click here for the latest version](https://historical-weapons.github.io/Dawn-of-Gunpowder/?v=1.0.1)](https://historical-weapons.github.io/Dawn-of-Gunpowder)
+**LAUNCHER:** https://historical-weapons.github.io/Dawn-of-Gunpowder
 ## Unit System Overview
 
 Dawn of Gunpowder features a diverse roster of military units representing the warfare of the 13th century, a time when traditional medieval combat began to mix with early experimental gunpowder technology.
