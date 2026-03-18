@@ -15,6 +15,13 @@ function enforceNPCBounds(npc, worldWidth, worldHeight) {
 let mouseX = 0;
 let mouseY = 0;
 let isHoveringPlayer = false;
+let overlayLocked = false; // <--- NEW FLAG
+// Listen for the T key
+window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 't') {
+        overlayLocked = !overlayLocked;
+    }
+});
 
 // 1. Declare these at the TOP of the file so drawAllNPCs can see them
 let worldMouseX = 0;
@@ -42,7 +49,7 @@ function drawPlayerOverlay(ctx, player, zoom) {
 
     // 1. MASTER UI OVERRIDE
     const htmlUI = document.getElementById('ui');
-    if (!isHoveringPlayer) {
+if (!isHoveringPlayer && !overlayLocked) {
         if (htmlUI) htmlUI.style.display = "block"; 
         return;
     }
@@ -140,7 +147,10 @@ function drawPlayerOverlay(ctx, player, zoom) {
 
         cursorX += entryWidth + colGap;
     });
-
+ctx.textAlign = "center";
+ctx.font = "14px monospace";
+ctx.fillStyle = "#aaaaaa";
+ctx.fillText("Press T to exit Troop Menu", W / 2, H - 30);
     ctx.restore();
 }
 // 4. INTEGRATION HELPER

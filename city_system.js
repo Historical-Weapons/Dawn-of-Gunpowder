@@ -5,8 +5,10 @@
 const CITY_WORLD_WIDTH = 3200; 
 const CITY_WORLD_HEIGHT = 3200; 
 const CITY_TILE_SIZE = 8;
+const city_system_troop_storage = {};
 const CITY_COLS = Math.floor(CITY_WORLD_WIDTH / CITY_TILE_SIZE);
 const CITY_ROWS = Math.floor(CITY_WORLD_HEIGHT / CITY_TILE_SIZE);
+const cityTroopNPCs = {};
 async function initAllCities(factions) {
     const factionList = Array.isArray(factions) ? factions : Object.keys(factions);
     for (let f of factionList) {
@@ -15,6 +17,129 @@ async function initAllCities(factions) {
         await new Promise(r => setTimeout(r, 10)); 
     }
 }
+ 
+function city_system_generateTroops(factionName, grid) {
+	let maxTroops = 15; // Hard limit for optimization
+    city_system_troop_storage[factionName] = [];
+    
+    // --- FIX: Reliable Troop Spawning ---
+    // 1. Find all valid road (1) and plaza (5) tiles across the city
+    let validSpots = [];
+    for (let x = 0; x < CITY_COLS; x++) {
+        for (let y = 0; y < CITY_ROWS; y++) {
+            if (grid[x][y] === 1 || grid[x][y] === 5) {
+                validSpots.push({ x: x, y: y });
+            }
+        }
+    }
+
+    let targetTroops = Math.floor(Math.random() * 10) + 15; 
+    const city_weapon_pool = ["spearman", "sword_shield", "archer", "crossbow", "shortsword"];
+
+    // 2. Pick random valid spots until target is reached
+    while (city_system_troop_storage[factionName].length < targetTroops && validSpots.length > 0) {
+        // Grab a random valid index
+        let rIndex = Math.floor(Math.random() * validSpots.length);
+        
+        // Splice removes it from the array so we don't spawn two troops on the exact same tile
+        let spot = validSpots.splice(rIndex, 1)[0]; 
+
+        city_system_troop_storage[factionName].push({
+            x: spot.x * CITY_TILE_SIZE,
+            y: spot.y * CITY_TILE_SIZE,
+            vx: (Math.random() - 0.5) * 0.8, 
+            vy: (Math.random() - 0.5) * 0.8,
+            animOffset: Math.random() * 100,
+            weapon: city_weapon_pool[Math.floor(Math.random() * city_weapon_pool.length)],
+            dir: Math.random() > 0.5 ? 1 : -1
+        });
+    }
+	if (city_system_troop_storage[factionName].length > maxTroops) return;
+}
+
+function city_system_renderTroops(ctx, factionName) {
+    let troops = city_system_troop_storage[factionName];
+    if (!troops) return;
+    
+    let fColor = (typeof ARCHITECTURE !== 'undefined' && ARCHITECTURE[factionName]) 
+                 ? ARCHITECTURE[factionName].roofs[0] : "#4a4a4a";
+
+    for (let t of troops) {
+        if (isCityCollision(t.x + t.vx, t.y + t.vy, factionName)) {
+            t.vx *= -1; t.vy *= -1;
+            t.dir = t.vx > 0 ? 1 : -1;
+        } else {
+            t.x += t.vx; t.y += t.vy;
+        }
+
+        let frame = (Date.now() / 60) + t.animOffset;
+        let bob = Math.abs(Math.sin(frame * 0.2)) * 2;
+
+        drawHuman(ctx, t.x, t.y, true, frame, fColor);
+
+        ctx.save();
+        ctx.translate(t.x, t.y - bob);
+        ctx.scale(t.dir, 1);
+        
+        // Localized weapon drawing logic
+        let type = t.weapon;
+        if (type === "spearman") {
+            ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(-6, 4); ctx.lineTo(28, -24); ctx.stroke();
+        } else if (type === "sword_shield") {
+            ctx.fillStyle = "#5d4037"; ctx.beginPath(); ctx.arc(6, -4, 7.5, 0, Math.PI * 2); ctx.fill();
+        } // ... (rest of weapon types)
+        ctx.restore();
+    }
+}
+function city_system_renderGateOverlays(ctx) {
+    if (typeof overheadCityGates === 'undefined') return;
+    
+    for (let g of overheadCityGates) {
+        let gx = g.x * CITY_TILE_SIZE;
+        let gy = g.y * CITY_TILE_SIZE;
+        let roofColor = g.arch.roofs[0];
+        
+        // --- Draw the Roof ---
+        ctx.fillStyle = roofColor;
+        let roofWidth = (8 * CITY_TILE_SIZE) + 48; 
+        ctx.fillRect(gx - roofWidth/2, gy - 30, roofWidth, 24);
+        ctx.fillRect(gx - roofWidth/3, gy - 45, roofWidth * 0.66, 15);
+        ctx.fillStyle = "rgba(0,0,0,0.4)";
+        ctx.fillRect(gx - roofWidth/2, gy - 6, roofWidth, 6); 
+
+        // --- Draw Exit Prompt ---
+        // Only show if player (assumed global 'player') is near the gate
+        let dist = Math.hypot(player.x - gx, player.y - gy);
+        if (dist < 100) {
+            ctx.save();
+            ctx.fillStyle = "#ffeb3b"; // RPG Yellow
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = "black";
+            let bounce = Math.sin(Date.now() / 200) * 4;
+            ctx.fillText("PRESS [P] TO EXIT", gx, gy - 60 + bounce);
+            ctx.restore();
+        }
+    }
+}
+
+// Add this listener to your main input handler or the bottom of city_system.js
+window.addEventListener('keydown', (e) => {
+ if ((e.key === 'p' || e.key === 'P') && inCityMode) {
+        e.preventDefault(); // Stop the browser from switching focus
+        
+        // Check if player is near any gate before letting them leave
+        for (let g of overheadCityGates) {
+            let dist = Math.hypot(player.x - (g.x * CITY_TILE_SIZE), player.y - (g.y * CITY_TILE_SIZE));
+            if (dist < 100) {
+                leaveCity(player);
+                break;
+            }
+        }
+    }
+});
 
 // Global state for city exploration
 let inCityMode = false;
@@ -35,7 +160,8 @@ const ARCHITECTURE = {
     },
     "Shahdom of Iransar": { 
         roofs: ["#00838f", "#006064", "#d2b48c", "#c2a37c", "#a88c69", "#eebd86"], 
-        walls: ["#cfae7e", "#bfa373", "#d6bc94", "#a68a5c", "#e3cca6"],            
+        // Fixed: Replaced #cfae7e with #f4e4c1 (Light cream adobe) for contrast
+        walls: ["#f4e4c1", "#bfa373", "#d6bc94", "#a68a5c", "#e3cca6"],            
         ground: "#cfae7e", road: "#eebd86", plaza: "#d9ae75", water: "#3ba3ab", 
         trees: ["#5c6b3e", "#4a5732", "#6e804a"] 
     },
@@ -47,7 +173,8 @@ const ARCHITECTURE = {
     },
     "Jinlord Confederacy": { 
         roofs: ["#455a64", "#37474f", "#263238", "#546e7a", "#1c262b"],            
-        walls: ["#607d8b", "#4f6a78", "#3f5461", "#7693a1", "#2e404a"],            
+        // Fixed: Replaced #607d8b with #8fa3ad (Light slate) for contrast
+        walls: ["#8fa3ad", "#4f6a78", "#3f5461", "#7693a1", "#2e404a"],            
         ground: "#607d8b", road: "#708090", plaza: "#596a75", water: "#345c73", 
         trees: ["#1f3b2f", "#152b22", "#2a5241"] 
     },
@@ -65,7 +192,8 @@ const ARCHITECTURE = {
     },
     "Xiaran Dominion": {
         roofs: ["#fbc02d", "#f9a825", "#f57f17", "#c28e0e", "#d4a017"],            
-        walls: ["#e6c280", "#d4ad68", "#c29b55", "#b08a45", "#f0d097"],            
+        // Fixed: Replaced #d4ad68 with #ffecb3 (Light sandstone) for contrast
+        walls: ["#e6c280", "#ffecb3", "#c29b55", "#b08a45", "#f0d097"],            
         ground: "#d4ad68", road: "#e6c280", plaza: "#c29b55", water: "#345c73",
         trees: ["#5c6b3e", "#4a5732", "#6e804a"] 
     },
@@ -83,7 +211,8 @@ const ARCHITECTURE = {
     },
     "Bandits": {
         roofs: ["#3e2723", "#212121", "#424242", "#111111", "#2e2e2e"],            
-        walls: ["#2c1c19", "#3e2723", "#1a100e", "#4a3329", "#33231c"],            
+        // Fixed: Replaced invisible/muddy blacks with lighter browns for contrast against #222222 ground
+        walls: ["#5c4033", "#4e342e", "#6e4b3c", "#4a3329", "#523a28"],            
         ground: "#222222", road: "#333333", plaza: "#1a1a1a", water: "#1a332c",
         trees: ["#1a2412", "#121a0d", "#233318"] 
     }
@@ -284,13 +413,29 @@ generateOrganicFeatures(grid, 4, 12, 12);
         ctx.fillStyle = "rgba(0,0,0,0.3)";
         ctx.fillRect(b.x * CITY_TILE_SIZE, (b.y + b.h) * CITY_TILE_SIZE - 6, b.w * CITY_TILE_SIZE, 2);
     }
+if (typeof buildCityWalls === 'function') {
+    buildCityWalls(grid, arch, ctx, factionName);
+}
+    cityDimensions[factionName] = {
+        bgCanvas: canvas,
+        grid: grid
+    };
+	
+	
+	
 
     cityDimensions[factionName] = {
         bgCanvas: canvas,
         grid: grid
     };
 
+// FIXED: Calling the correctly renamed functions
     generateCityCosmeticNPCs(factionName, grid);
+    city_system_generateTroops(factionName, grid); // Renamed call
+    
+  // Note: city_system_renderGateOverlays is usually called in the main 
+    // animation loop, not during generation, but if you need it here:
+    city_system_renderGateOverlays(ctx);  
 }
 
 // --- Collision Detection API ---
@@ -302,7 +447,8 @@ function isCityCollision(x, y, factionName = currentActiveCityFaction) {
 
     if (tileX < 0 || tileX >= CITY_COLS || tileY < 0 || tileY >= CITY_ROWS) return true;
     let tile = cityDimensions[factionName].grid[tileX][tileY];
-	return tile === 2 || tile === 3 || tile === 4;
+	// Include 6 (Wall) and 7 (Tower) in the collision check
+    return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7;
 }
 
 // --- City Entry/Exit ---
@@ -315,6 +461,12 @@ function enterCity(factionName, playerObj) {
     
     inCityMode = true;
     currentActiveCityFaction = factionName;
+	
+	// ---> PASTE HERE <---
+    // Play the specific faction's scale, fallback to City_Ambient if independent
+ 
+        AudioManager.playMusic("City_Ambient");
+    
     
  // Find a safe spot (Road=1 or Plaza=5) near the center
     let foundSafeSpot = false;
@@ -366,13 +518,63 @@ function leaveCity(playerObj) {
     playerObj.anim = 0; // Reset animation frame to prevent jitter
 
     console.log("Returned to world map: Physics and Input cleared.");
+	
+	// ---> PASTE HERE <---
+    AudioManager.playMusic("WorldMap_Calm");
 }
-
 // ============================================================================
-// NEW HUMAN DRAWING & NPC SYSTEM
+// NEW HUMAN DRAWING & NPC SYSTEM (DIVERSIFIED CIVILIAN WARDROBE)
 // ============================================================================
 
-function drawHuman(ctx, x, y, moving, frame, factionColor) {
+// --- FACTION CIVILIAN STYLES DEFINITION ---
+const CIVILIAN_STYLES = {
+    "Hong Dynasty": { 
+        hats: ["conical", "conical", "skullcap", "topknot", "bamboo_hat", "scholar"], 
+        clothes: ["#4e6b5d", "#3a4f41", "#7a5c53", "#5c5c5c", "#8b6914", "#2e2e2e"] 
+    },
+    "Shahdom of Iransar": { 
+        hats: ["turban", "turban", "wrapped", "skullcap", "hood", "flat_cap"], 
+        clothes: ["#8b5a2b", "#cd853f", "#556b2f", "#8b7500", "#a0522d", "#d2b48c"] 
+    },
+    "Great Khaganate": { 
+        hats: ["fur_cap", "fur_cap", "pointed_fur", "leather_hood", "topknot", "skullcap"], 
+        clothes: ["#8b4513", "#a0522d", "#5c4033", "#4a3329", "#6b4421", "#d2b48c"] 
+    },
+    "Jinlord Confederacy": { 
+        hats: ["fur_cap", "conical", "skullcap", "hood", "bamboo_hat"], 
+        clothes: ["#4f6a78", "#3f5461", "#2e404a", "#546e7a", "#1c262b", "#607d8b"] 
+    },
+    "Vietan Realm": { 
+        hats: ["conical", "bamboo_hat", "bamboo_hat", "bandana", "topknot"], 
+        clothes: ["#4e342e", "#3e2723", "#5d4037", "#2e4a1f", "#1f3315", "#8d6e63"] 
+    },
+    "Goryun Kingdom": { 
+        hats: ["tall_hat", "bamboo_hat", "skullcap", "topknot", "bandana"], 
+        clothes: ["#4a148c", "#380b6b", "#424242", "#616161", "#212121", "#303030"] 
+    },
+    "Xiaran Dominion": {
+        hats: ["turban", "hood", "skullcap", "wrapped", "bamboo_hat"],            
+        clothes: ["#c29b55", "#b08a45", "#a67b27", "#8b5a2b", "#d4ad68", "#5c6b3e"] 
+    },
+    "High Plateau Kingdoms": {
+        hats: ["fur_cap", "hood", "hood", "pointed_fur", "wrapped"],            
+        clothes: ["#5d4037", "#8b0000", "#7a1a1a", "#4e342e", "#3e2723", "#2c1c19"] 
+    },
+    "Yamato Clans": {
+        hats: ["topknot", "topknot", "bamboo_hat", "conical", "bandana"],            
+        clothes: ["#454545", "#383838", "#2c2c2c", "#5c4a3d", "#4a3c31", "#881c2e"] 
+    },
+    "Bandits": {
+        hats: ["hood", "bandana", "bandana", "skullcap", "topknot"],            
+        clothes: ["#212121", "#111111", "#2e2e2e", "#3e2723", "#1a100e", "#33231c"] 
+    },
+    "Default": {
+        hats: ["conical", "skullcap", "hood", "topknot"],
+        clothes: ["#666666", "#888888", "#555555", "#444444"]
+    }
+};
+
+function drawHuman(ctx, x, y, moving, frame, baseColor, hatType = "conical", clothColor = null) {
     ctx.save();
     ctx.translate(x, y);
     
@@ -392,18 +594,77 @@ function drawHuman(ctx, x, y, moving, frame, factionColor) {
     ctx.save();
     ctx.translate(0, -bob); 
     
-    ctx.fillStyle = factionColor; 
+    // Use specific clothing color if provided (civilians), otherwise fallback to baseColor (troops)
+    ctx.fillStyle = clothColor || baseColor; 
     ctx.strokeStyle = "#1a1a1a";
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(2, -9); ctx.lineTo(-2, -9);
     ctx.closePath(); ctx.fill(); ctx.stroke();
     
+    // Head/Face
     ctx.fillStyle = "#d4b886"; 
     ctx.beginPath(); ctx.arc(0, -11, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     
-    ctx.fillStyle = "#a1887f";
-    ctx.beginPath(); ctx.moveTo(-9, -11); ctx.lineTo(0, -18); ctx.lineTo(9, -11);
-    ctx.quadraticCurveTo(0, -10, -9, -11); ctx.fill(); ctx.stroke();
+    // --- DYNAMIC HAT RENDERING ---
+    switch(hatType) {
+        case "turban":
+            ctx.fillStyle = "#eeeeee";
+            ctx.beginPath(); ctx.arc(0, -13, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(-2, -12, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            break;
+        case "fur_cap":
+            ctx.fillStyle = "#5c4033";
+            ctx.fillRect(-6, -15, 12, 5);
+            ctx.strokeRect(-6, -15, 12, 5);
+            break;
+        case "pointed_fur":
+            ctx.fillStyle = "#4a3329";
+            ctx.beginPath(); ctx.moveTo(-6, -11); ctx.lineTo(0, -18); ctx.lineTo(6, -11); ctx.fill(); ctx.stroke();
+            break;
+        case "skullcap":
+            ctx.fillStyle = "#222222";
+            ctx.beginPath(); ctx.arc(0, -11, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
+            break;
+        case "bamboo_hat":
+            ctx.fillStyle = "#e8c37b";
+            ctx.beginPath(); ctx.ellipse(0, -11, 10, 3, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(0, -12, 5, 2, 0, 0, Math.PI * 2); ctx.fill();
+            break;
+        case "topknot":
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(-2, -15, 4, 3); // Just hair, no hat
+            break;
+        case "hood":
+            ctx.fillStyle = clothColor || baseColor; // Matches clothing
+            ctx.beginPath(); ctx.arc(0, -11, 4.5, Math.PI, 0); ctx.fill(); ctx.stroke();
+            ctx.fillRect(-4.5, -11, 9, 3);
+            break;
+        case "wrapped":
+            ctx.fillStyle = "#8b7355";
+            ctx.fillRect(-5, -14, 10, 4);
+            ctx.strokeRect(-5, -14, 10, 4);
+            break;
+        case "tall_hat":
+            ctx.fillStyle = "#111111";
+            ctx.beginPath(); ctx.moveTo(-6, -11); ctx.lineTo(-4, -18); ctx.lineTo(4, -18); ctx.lineTo(6, -11); ctx.fill(); ctx.stroke();
+            break;
+        case "scholar":
+            ctx.fillStyle = "#222222";
+            ctx.fillRect(-6, -13, 12, 3);
+            ctx.fillRect(-2, -16, 4, 3);
+            break;
+        case "bandana":
+            ctx.fillStyle = "#8b0000";
+            ctx.beginPath(); ctx.arc(0, -11, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
+            ctx.fillRect(-4, -11, 8, 2);
+            break;
+        case "conical":
+        default:
+            ctx.fillStyle = "#a1887f";
+            ctx.beginPath(); ctx.moveTo(-9, -11); ctx.lineTo(0, -18); ctx.lineTo(9, -11);
+            ctx.quadraticCurveTo(0, -10, -9, -11); ctx.fill(); ctx.stroke();
+            break;
+    }
     
     ctx.restore();
     ctx.restore();
@@ -419,17 +680,15 @@ function generateCityCosmeticNPCs(factionName, grid) {
     let spawned = 0;
     let attempts = 0;
     
-	// --- STEP 1: Define the random target ---
-    // Math.random() * 16 gives 0-15.99. + 5 makes it 5-20.99. 
-    // Math.floor turns it into an integer (5, 6, 7... up to 20).
-    const targetPopulation = Math.floor(Math.random() * 16) + 5;
-	
+    const targetPopulation = Math.floor(Math.random() * 55) + 5;
+    
+    // Grab styles based on faction or use default
+    let fStyles = CIVILIAN_STYLES[factionName] || CIVILIAN_STYLES["Default"];
 	
     // Massive population decrease, heavily biased toward the center plaza and dense roads
-while (spawned < targetPopulation && attempts < 200){
+    while (spawned < targetPopulation && attempts < 1000){
         attempts++;
         
-        // Random angle and a squiggly radius pushes them closer to the middle naturally
         let angle = Math.random() * Math.PI * 2;
         let radius = (Math.random() * Math.random()) * (CITY_COLS / 2); 
         
@@ -440,25 +699,31 @@ while (spawned < targetPopulation && attempts < 200){
             let newX = tx * CITY_TILE_SIZE;
             let newY = ty * CITY_TILE_SIZE;
 
-            // --- ADDED: SPAWN PROXIMITY CHECK ---
-            // Don't spawn if someone is already standing within 20px
             let tooCrowded = cityCosmeticNPCs[factionName].some(other => 
                 Math.hypot(other.x - newX, other.y - newY) < 20
             );
 
             if (!tooCrowded && (grid[tx][ty] < 2 || grid[tx][ty] === 5)) {
+                
+                // --- Assign random hat and clothing to each civilian ---
+                let randomHat = fStyles.hats[Math.floor(Math.random() * fStyles.hats.length)];
+                let randomCloth = fStyles.clothes[Math.floor(Math.random() * fStyles.clothes.length)];
+
                 cityCosmeticNPCs[factionName].push({
                     x: newX,
                     y: newY,
                     vx: (Math.random() - 0.5) * 1.2,
                     vy: (Math.random() - 0.5) * 1.2,
-                    animOffset: Math.random() * 100 
+                    animOffset: Math.random() * 100,
+                    hat: randomHat,
+                    clothing: randomCloth
                 });
                 spawned++;
             }
         }
     }
 }
+
 function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
     let npcs = cityCosmeticNPCs[factionName];
     if (!npcs) return;
@@ -467,7 +732,6 @@ function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
                        ? FACTIONS[factionName].color : "#ffffff";
 
     for (let npc of npcs) {
-        // 1. EMERGENCY CHECK: If stuck inside a wall, nudge toward map center
         if (isCityCollision(npc.x, npc.y, factionName)) {
             let dirX = (CITY_WORLD_WIDTH / 2) - npc.x;
             let dirY = (CITY_WORLD_HEIGHT / 2) - npc.y;
@@ -481,17 +745,13 @@ function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
         let nx = npc.x + npc.vx;
         let ny = npc.y + npc.vy;
 
-        // 2. SOCIAL DISTANCING: Check if the next move hits another human
-        // We use a small radius (12px) to let them get close but not overlap
         let hitHuman = npcs.some(other => 
             other !== npc && Math.hypot(other.x - nx, other.y - ny) < 12
         );
 
-        // 3. NORMAL COLLISION: Bounce off walls OR other humans
         if (isCityCollision(nx, ny, factionName) || hitHuman) {
             npc.vx *= -1; 
             npc.vy *= -1;
-            // Add chaos wiggle so they don't get stuck in a perfect bounce loop
             npc.vx += (Math.random() - 0.5) * 0.4;
             npc.vy += (Math.random() - 0.5) * 0.4;
         } else {
@@ -499,7 +759,11 @@ function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
             npc.y = ny;
         }
 
-        // Draw the walking human
-        drawHuman(ctx, npc.x, npc.y, true, (Date.now() / 50) + npc.animOffset, factionColor);
+        // Draw the walking civilian with their assigned unique hat and clothing
+        drawHuman(ctx, npc.x, npc.y, true, (Date.now() / 50) + npc.animOffset, factionColor, npc.hat, npc.clothing);
+        
+        if (typeof fortification_system_renderDynamic === 'function') {
+            fortification_system_renderDynamic(ctx, currentActiveCityFaction, player);
+        }   
     }
 }

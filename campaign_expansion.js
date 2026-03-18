@@ -63,8 +63,17 @@ deployArmy = function(faction, totalTroops, side) {
         for (let i = 0; i < entity.roster.length; i += visualScale) {
             let unitData = entity.roster[i];
             if (!unitData) continue;
-            let baseTemplate = UnitRoster.allUnits[unitData.type] || UnitRoster.allUnits["Militia"];
-
+			
+			// 1. Safely resolve the template, falling back to a hardcoded default if the Roster fails
+            let safeType = unitData.type || "Militia";
+            let baseTemplate = (typeof UnitRoster !== 'undefined' && UnitRoster.allUnits) 
+                ? (UnitRoster.allUnits[safeType] || UnitRoster.allUnits["Militia"]) 
+                : null;
+			
+// 2. Ultimate safety net: If it's STILL undefined, force a generic template
+            if (!baseTemplate) {
+                baseTemplate = { name: "Militia", role: "infantry", isLarge: false, health: 100 };
+            }
             let offsetX = (Math.random() - 0.5) * 600;
             let offsetY = (Math.random() - 0.5) * 50;
             let tacticalOffset = getTacticalPosition(baseTemplate.role, side);
@@ -117,7 +126,7 @@ deployArmy = function(faction, totalTroops, side) {
             faction: faction,
             color: "#ffca28", 
             unitType: "Horse Archer", 
-            stats: player.stats, // <--- DIRECT LINK TO OVERWORLD
+            stats: player.stats,  
             hp: player.stats.health,
             x: battleSpawnX, 
             y: battleSpawnY,
@@ -195,7 +204,7 @@ drawBattleUnits = function(ctx) {
         
         ctx.font = "italic 18px Georgia";
         ctx.fillStyle = "#ffca28"; 
-        ctx.fillText("Press [TAB] to return to the world map", canvas.width / 2, canvas.height / 2 + 60);
+        ctx.fillText("Press [P] to return to the world map", canvas.width / 2, canvas.height / 2 + 60);
 
         ctx.restore();
     } else if (inBattleMode && avatar && avatar.hp > 0) {
@@ -207,7 +216,7 @@ drawBattleUnits = function(ctx) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
  
         ctx.fillStyle = "#ffca28"; 
-        ctx.fillText("Press [TAB] to exit when battle is over", canvas.width - 20, 30);
+        ctx.fillText("Press [P] to exit when battle is over", canvas.width - 20, 30);
         ctx.restore();
     }
 };
@@ -231,17 +240,15 @@ leaveBattlefield = function(playerObj) {
             exp: u.stats.experienceLevel 
         });
     });
-    
-    // Sync the overworld troop count to the new roster size
-    playerObj.troops = playerObj.roster.length;
+     
 
     // --- COMMANDER PROGRESSION ---
     if (cachedCommander && playerObj.stats) {
         // Gain Commander XP
         if (typeof playerObj.stats.gainExperience === 'function') {
-            playerObj.stats.gainExperience(0.3);
+            playerObj.stats.gainExperience(0.6);
         } else {
-            playerObj.stats.experienceLevel += 0.3;
+            playerObj.stats.experienceLevel += 0.6;
         }
         
         // Sync HP back to the overworld
@@ -261,11 +268,16 @@ leaveBattlefield = function(playerObj) {
         enemyRef.count = enemyRef.roster.length;
     }
 
-    // Safety floor for HP
-    if (playerObj.hp <= 1) playerObj.hp = 15; 
+// Safety floor for HP and reset persistent ammo
+if (playerObj.hp <= 1) playerObj.hp = 100;
+if (playerObj.stats) {
+    playerObj.stats.ammo = 30; // Resets the actual stat used in battle
+}
 
     // D. Call original engine cleanup
     originalLeaveBattlefield(playerObj);
+	
+	playerObj.troops = playerObj.roster.length;
 
     // E. Cleanup the reference for the next battle
     cachedCommander = null;
@@ -298,7 +310,7 @@ createBattleSummaryUI = function(...args) {
         // FIX: Safe string checking so game doesn't crash on wipeout
         let text = "RETREAT: You have left the battlefield.";
         if (currentBattleData && currentBattleData.playerDefeatedText) {
-            text = "You were struck down, but your men dragged you to safety.";
+            text = "They left you to die but you were saved by a villager";
         } else if (args[0] && typeof args[0] === 'string' && args[0].includes("Victory")) {
             text = "VICTORY: Your forces have secured the field!";
         }

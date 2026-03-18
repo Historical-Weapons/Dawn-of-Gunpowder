@@ -18,13 +18,13 @@ const FACTIONS = {
 };
 
 const SYLLABLE_POOLS = {
-    "Hong Dynasty": ["Han","Zhuo","Mei","Ling","Xian","Yue","Lu","Feng","Bai","Shan","Qiao","He","Jin","Dao","Tong","An","Wu","Lin","Nan","Bao","Zi","Rong","Dong","Cheng","Hua","Shou","Yi","Tao","Yan","Gui"],
-    "Jinlord Confederacy": ["Jin","Yan","Guo","Long","Qiu","Qin","Zhou","Jia","Lian","Tian","Zhu","Qiang","Luo","Zhao","Wei","Ping","Song","Bei","Kai","Ren"],
+    "Hong Dynasty": ["Han","Zhuo","Mei","Ling","Xian","Yue","Lu","Feng","Bai","Shan","Qiao","He","Jin","Dao","Tong","An","Wu","Lin","Wan","Bao","Zi","Rong","Dong","Cheng","Hua","Shou","Yi","Tao","Yan","Gui"],
+    "Jinlord Confederacy": ["Aisin","Nara","Guda","Baqa","Hada","Mukden","Tara","Sirin","Fuka","Hulan","Qara","Bolo","Dorgi","Chila","Bi","Sengge","Ulan","Bayan","Kiyen","Nurhaci"],
     "Xiaran Dominion": ["Xi","Ran","Bao","Ling","Tao","Yun","Hai","Shuo","Gu","Lan","Zhi","Min","Qiao","Fen","Jiao","Lei","Yan","Yao","Jun","Qiu"],
-    "Shahdom of Iransar": ["Ar","Dar","Far","Mehr","Var","Sar","Shir","Zar","Rud","Bar","Gan","Tus","Ray","Shap","Horm","Nish","Asp","Pas","Kar","Rash","Yaz","Beh","Fir","Gol","Sam","Vah"],
+    "Shahdom of Iransar": ["Sham","Dar","Far","Mehr","Var","Sar","Shir","Zar","Rud","Bar","Gan","Tus","Ray","Shap","Horm","Nish","Asp","Pas","Kar","Rash","Yaz","Beh","Fir","Gol","Sam","Vah"],
     "Great Khaganate": ["Or","Kar","Batu","Sar","Tem","Alt","Bor","Khan","Ur","Tol","Dar","Mur","Nog","Tog","Bal","Kher","Ulan","Tark","Sog","Yar"],
-    "Vietan Realm": ["An","Bao","Cao","Dao","Gia","Hoa","Lam","Long","Minh","Nam","Ninh","Phu","Quang","Son","Tan","Thanh","Thu","Tien","Van","Vinh"],
-    "Goryun Kingdom": ["Gyeong","Han","Nam","Seong","Hae","Jin","Cheon","Su","Yang","Jeon","Gwang","Dong","Seo","Baek","Won","Dae","Hwa","Mun","Gang"],
+    "Vietan Realm": ["An","Bao","Suk","Dao","Gia","Hoa","Lam","Pho","Minh","Nam","Ninh","Phu","Quang","Son","Dik","Thanh","Thu","Tien","Van","Vinh"],
+    "Goryun Kingdom": ["Gyeong","Han","Nam","Seong","Hae","Pak","Cheon","Il","Sung","Jeon","Gwang","Dong","Seo","Baek","Won","Dae","Hwa","Mun","Kim"],
     "High Plateau Kingdoms": ["Lha","Tse","Nor","Gar","Ri","Do","Shar","Lang","Zang","Yul","Cham","Phu","Sum","Rin","Tag","Yak","Tso","Ling","Par"],
     "Yamato Clans": ["Aki","Naga","Hara","Kawa","Matsu","Yama","Saka","Taka","Kiri","Shima","Oka","Tomo","Hoshi","Sora","Kuma","Nori","Fuku","Hida","Ishi"]
 };
@@ -189,8 +189,12 @@ function getWealthyCity(citiesArr, excludeCity) {
 // ============================================================================
 
 function spawnNPCFromCity(city, role, citiesArr) {
-    let target = null;
-    let targetX = city.x, targetY = city.y; 
+
+// 1. FIX: Removed the floating 'id:' line. 
+    // 2. FIX: Properly declare targetX and targetY with 'let' so they exist safely.
+    let target = null; 
+    let targetX = city.x; 
+    let targetY = city.y;
     let speed = 0.5, count = 0;
     let carriedGold = 0, carriedFood = 0;
     let travelDist = 0;
@@ -490,7 +494,24 @@ if (npc.count <= 0 || other.count <= 0) {
         }
 
         // --- 4. FLIGHT OR FIGHT LOGIC ---
+// SURGICAL REPLACEMENT:
+        // --- 4. FLIGHT OR FIGHT LOGIC ---
         if (!npc.battleTarget) {
+            
+            // NEW: DESPERATION/HUNGER OVERRIDE
+            if (npc.food < 20 && npc.role !== "Commerce" && npc.role !== "Civilian") {
+                bestTarget = null; // Drop enemy aggro to focus on survival
+                
+                // Find nearest friendly city to buy food. (Bandits just look for any close city to raid).
+                if (!npc.targetCity || (npc.faction !== "Bandits" && npc.targetCity.faction !== npc.faction)) {
+                    let potentialCities = npc.faction === "Bandits" ? cities : cities.filter(c => c.faction === npc.faction);
+                    if (potentialCities.length > 0) {
+                        potentialCities.sort((a,b) => Math.hypot(npc.x-a.x, npc.y-a.y) - Math.hypot(npc.x-b.x, npc.y-b.y));
+                        npc.targetCity = potentialCities[0];
+                    }
+                }
+            }
+
             if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && bestTarget) {
                 npc.targetX = bestTarget.x;
                 npc.targetY = bestTarget.y;
@@ -518,14 +539,25 @@ if (npc.count <= 0 || other.count <= 0) {
             }
         }
 
-        // --- 5. ARMY SUPPLY DRAIN ---
-        if (npc.role === "Military" || npc.role === "Bandit") {
-            if (Math.random() < 0.02) { 
-                npc.food -= (npc.count * 0.01);
+// SURGICAL REPLACEMENT:
+        // --- 5. ARMY SUPPLY DRAIN & FORAGING ---
+        if (npc.isMoving) {
+            if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && Math.random() < 0.002) { 
+                let consumption = 1 + Math.floor(npc.count / 25);
+                npc.food -= consumption;
+                
                 if (npc.food <= 0) {
                     npc.food = 0;
-                    npc.count -= Math.floor(npc.count * 0.05) + 1; 
+                    npc.count -= Math.max(1, Math.floor(npc.count * 0.02)); 
                 }
+            }
+            
+            // NEW: Wilderness Foraging (Slower rate, triggers if food is critically low)
+            if (npc.food < 20 && Math.random() < 0.005) {
+                // Find a small amount of food. Bandits are better at living off the land.
+                let forageAmount = Math.max(2, Math.floor(npc.count * 0.01));
+                if (npc.role === "Bandit") forageAmount *= 2; 
+                npc.food += forageAmount;
             }
         }
 
@@ -547,7 +579,9 @@ if (npc.count <= 0 || other.count <= 0) {
         // so the next unit doesn't stack directly on top of it.
         npc.x = tc.x + (Math.random() - 0.5) * 40;
         npc.y = tc.y + (Math.random() - 0.5) * 40;
-                    if (npc.role === "Military" && npc.faction !== tc.faction) {
+                    // SURGICAL REPLACEMENT:
+// SURGICAL REPLACEMENT:
+                    if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && npc.faction !== tc.faction) {
                         let siegeDamage = Math.floor(npc.count * 0.2);
                         let garrisonDamage = Math.floor(tc.militaryPop * 0.15);
 
@@ -566,11 +600,47 @@ if (npc.count <= 0 || other.count <= 0) {
                             continue; 
                         }
                     }
-                    else if (npc.role === "Military" && npc.faction === tc.faction) {
-                        tc.militaryPop += npc.count; tc.pop += npc.count; tc.troops = tc.militaryPop;
-                        tc.food += npc.food; 
-                        npc.count = 0; 
+                    // FIX: Added "Bandit" so they can use friendly bases too
+                    else if ((npc.role === "Military" || npc.role === "Patrol" || npc.role === "Bandit") && npc.faction === tc.faction) {
+                        
+                        // NEW: Resupply & Trade Mechanic
+                        let foodNeeded = (npc.count * 10) - npc.food;
+                        
+                        // FIX: Take what we need, or whatever the city has left (whichever is smaller)
+                        let foodToTake = Math.min(foodNeeded, tc.food);
+                        
+                        if (foodToTake > 0) {
+                            tc.food -= foodToTake;
+                            npc.food += foodToTake;
+                            
+                            // Pay for the food if they have gold, simulating military budget flowing into local economy
+                            // (Note: If gold < cost, they just "requisition" it for free, which is historically accurate!)
+                            let cost = Math.floor(foodToTake * 0.05);
+                            if (npc.gold >= cost) {
+                                npc.gold -= cost;
+                                tc.gold += cost;
+                            }
+                        }
+
+                        // Only dissolve troops if the city is critically undefended
+                        let targetGarrison = Math.floor(tc.pop * tc.conscriptionRate);
+                        if (tc.militaryPop < targetGarrison) {
+                            let absorb = Math.min(npc.count, targetGarrison - tc.militaryPop);
+                            tc.militaryPop += absorb; tc.pop += absorb; tc.troops = tc.militaryPop;
+                            npc.count -= absorb;
+                        }
+
+                        // If the army is still standing, give them a new mission so they don't get stuck
+                        if (npc.count > 0) {
+                            npc.targetCity = getEnemyCity(tc, cities) || getRandomTargetCity(cities, tc);
+                            if (npc.targetCity) {
+                                npc.targetX = npc.targetCity.x; 
+                                npc.targetY = npc.targetCity.y;
+                            }
+                            npc.waitTimer = Math.floor(Math.random() * 100) + 50; 
+                        }
                     }
+                    // ... (Commerce and Civilian logic remains identical below this)
                     else if (npc.role === "Commerce") {
                      let profit = Math.floor(npc.travelDist * 0.02) + npc.gold;
                         tc.gold += profit; tc.food += npc.food; 

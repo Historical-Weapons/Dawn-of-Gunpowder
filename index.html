@@ -88,7 +88,7 @@
         <div class="stat"><span>Speed:</span> <span id="speed-text" class="val">1.0x</span></div>
         <div class="stat"><span>Coordinates:</span> <span id="loc-text" class="val">0, 0</span></div>
         <div class="stat"><span>Zoom Level:</span> <span id="zoom-text" class="val">1.0x</span></div>
-        <div class="hint">Scroll to Zoom (0.1x - 3x)<br>WASD to explore the vastness.</div>
+        <div class="hint">Scroll to Zoom (0.1x - 3x)<br>WASD to explore the vastness. <br> Press T for troops. P to exit battles or cities.</div>
     </div>
 
 <div id="city-panel">
@@ -105,31 +105,49 @@
         
     <div id="recruit-box" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
 
-			<button class="menu-btn" onclick="if(player.gold >= 20) { 
-				player.troops += 5; 
-				player.gold -= 20; 
-				console.log('Recruited 5. Troops:', player.troops, 'Gold Left:', player.gold);
-			} else {
-				alert('Not enough gold!');
-			}">
-				Recruit 5 Troops (20 Gold)
-			</button>
+<button class="menu-btn" onclick="
+    if(player.gold >= 20) { 
+        AudioManager.playSound('gold_buy');
+        player.troops += 5; 
+        
+        // Push actual Militia to the persistent array!
+        if(!player.roster) player.roster = [];
+        for(let i=0; i<5; i++) {
+            player.roster.push({ type: 'Militia', exp: 1 });
+        }
+        
+        player.gold -= 20; 
+    } else {
+        AudioManager.playSound('error');
+        alert('Not enough gold!'); 
+    }
+">
+    Recruit 5 Troops (20 Gold)
+</button>
 
-			<button class="menu-btn" 
-				onclick="if(activeCity) { enterCity(activeCity.faction, player); document.getElementById('city-panel').style.display = 'none'; }">
-				Visit Settlement
-			</button>
+<button class="menu-btn" 
+    onclick="if(activeCity) { 
+        AudioManager.playSound('ui_click'); 
+        enterCity(activeCity.faction, player); 
+        document.getElementById('city-panel').style.display = 'none'; 
+    }">
+    Visit Settlement
+</button>
 
 
-			<button class="menu-btn" onclick="if(player.gold >= 10) { 
-				player.food += 10; 
-				player.gold -= 10; 
-				console.log('Bought 10 Rations. Food:', player.food, 'Gold Left:', player.gold);
-			} else {
-				alert('Not enough gold for rations!');
-			}">
-				Buy Food (10 Gold)
-			</button>
+<button class="menu-btn" onclick="
+    if(player.gold >= 10) { 
+        AudioManager.playSound('gold_buy');
+        player.food += 10; 
+        player.gold -= 10; 
+        console.log('Bought 10 Rations. Food:', player.food, 'Gold Left:', player.gold);
+    } else {
+        AudioManager.playSound('error');
+        alert('Not enough gold for rations!'); 
+    }
+">
+    Buy Food (10 Gold)
+</button>
 
 			 </div>
 </div>
@@ -137,10 +155,13 @@
     <canvas id="gameCanvas"></canvas>
 
 <script src="npc_system.js"></script>
+<script src="fortification_system.js"></script>
 <script src="city_system.js"></script>
+<script src="troop_system.js"></script>
 <script src="battlefield_system.js"></script>
 <script src="player_overlay_system.js"></script>
  <script src="campaign_expansion.js"></script>  
+ <script src="audio_system.js"></script>
  <script src="menu.js"></script>  
 
 <script>
@@ -502,6 +523,9 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
 		 
 		document.getElementById('loading').style.display = 'none';
         document.getElementById('ui').style.display = 'block';
+		
+		// ---> PASTE HERE <---
+AudioManager.playMusic("WorldMap_Calm");
  
     }
 
@@ -509,23 +533,23 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     const player = {
         x: WORLD_WIDTH * 0.5,
         y: WORLD_HEIGHT * 0.45,
-		baseSpeed: 15, // Store the original speed here
+        baseSpeed: 15, // Store the original speed here
         speed: 15,
         size: 24,
         isMoving: false,
         anim: 0,
-		
-		// Add these lines:
-    troops: 10,
-    food: 100,
-    gold: 500,
-    hp: 100,
-	
-	// ---> SURGICAL FIX: PRE-LOAD STARTING ROSTER <---
+        
+        // Add these lines:
+        troops: 10,
+        food: 100,
+        gold: 500,
+        hp: 100,
+        distTrack: 0, // <--- NEW: Track distance for food mechanic
+        
+        // ---> SURGICAL FIX: PRE-LOAD STARTING ROSTER <---
         // This gives you 10 actual Axe Militia recruits at Level 1
         roster: Array.from({ length: 10 }, () => ({ type: "Militia", exp: 1 }))
     };
-
 	const keys = {};
 
 // 1. ADD THIS: Tell the game when a key is pressed!
@@ -671,7 +695,7 @@ function update() {
      calculateMovement(player.baseSpeed / 7, null, BATTLE_TILE_SIZE, null, null, true); 
         updateBattleUnits();
         
-	if (keys['tab']) {
+	if (keys['p']) {
             // 1. SURGICAL CONDITION: Check for living enemies and player health
             const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
             const isPlayerDead = player.hp <= 0;
@@ -684,17 +708,17 @@ function update() {
             }
             
             // 2. Always reset the key to prevent rapid-fire triggering
-            keys['tab'] = false;
+            keys['p'] = false;
         }
 		
 		// --- 2. UPDATE UI TEXT (Optional but recommended) ---
-        // Add this here if you want the "Press Tab" hint to only appear when ready
+        // Add this here if you want the "Press p" hint to only appear when ready
         const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
         if (player.hp <= 0 || aliveEnemies === 0) {
             ctx.fillStyle = "#ffca28";
             ctx.font = "bold 18px Georgia";
             ctx.textAlign = "center";
-            ctx.fillText("BATTLE OVER - Press [TAB] to Exit", canvas.width / 2, canvas.height - 50);
+            ctx.fillText("BATTLE OVER - Press [p] to Exit", canvas.width / 2, canvas.height - 50);
         }
     } 
     else if (inCityMode) {
@@ -704,23 +728,109 @@ function update() {
         if (typeof updateCityCosmeticNPCs === 'function') {
             updateCityCosmeticNPCs(currentActiveCityFaction);
         }
-        if (player.y > CITY_WORLD_HEIGHT - 20 || keys['tab']) {
+        if (player.y > CITY_WORLD_HEIGHT - 20 || keys['p']) {
             leaveCity(player);
-            keys['tab'] = false; 
+            keys['p'] = false; 
         }
     } 
     else {
-        // --- 3. WORLD MAP MODE ---
+// --- 3. WORLD MAP MODE ---
         economyTick++;
         if (economyTick > 300) { 
             updateCityEconomies(cities);
             economyTick = 0;
         }
 
-    player.speed = 15; 
+// --- PRO MODE: PLAYER FOOD & ATTRITION ---
+        let oldX = player.x;
+        let oldY = player.y;
+
+        // Starvation Penalty: 40% speed reduction if food is empty
+        player.speed = player.food > 0 ? player.baseSpeed : player.baseSpeed * 0.6; 
         
         calculateMovement(player.speed / 2, worldMap, TILE_SIZE, COLS, ROWS, false);
-        updateNPCs(cities);	
+        
+        let step = Math.hypot(player.x - oldX, player.y - oldY);
+        if (step > 0) {
+            player.distTrack += step;
+            if (player.distTrack >= 1000) { 
+                player.distTrack = 0;
+
+                if (player.food > 0) {
+                    // Normal Consumption
+                    let consumption = 1 + Math.floor(player.troops / 5); 
+                    player.food = Math.max(0, player.food - consumption);
+                } else {
+                    // --- ATTRITION: Food is 0, men start leaving ---
+                    if (player.troops > 0) {
+                        player.troops--; 
+                        // Remove the last person added to the roster to keep count in sync
+                        if (player.roster.length > 0) player.roster.pop();
+                        
+                        console.log("A soldier has deserted due to starvation!");
+                    }
+                }
+            }
+        }
+
+        updateNPCs(cities);
+		
+		// --- ADVANCED PROXIMITY AUDIO SYSTEM ---
+if (typeof globalNPCs !== 'undefined' && player) {
+    let closestDist = 1000;
+    let closestEnemy = null;
+
+    // 1. Find the nearest hostile entity
+    for (let npc of globalNPCs) {
+        if (npc.faction !== player.faction) {
+            let d = Math.hypot(npc.x - player.x, npc.y - player.y);
+            if (d < closestDist) {
+                closestDist = d;
+                closestEnemy = npc;
+            }
+        }
+    }
+
+    // 2. Define State Thresholds
+    // Danger (<250), Alert (250-600), Safe (>600)
+    if (closestDist < 0) {
+       //  TRIGGER: HIGH TENSION
+       if (AudioManager.currentTrack !== "WorldMap_Tension") {
+            AudioManager.playMusic("WorldMap_Tension");
+            AudioManager.playSound('ui_click'); // Small percussive 'heartbeat' sync
+        }
+        
+        // FACTION-SPECIFIC ENCOUNTER STINGERS (Plays once per encounter)
+        if (!player.lastEncounteredFaction || player.lastEncounteredFaction !== closestEnemy.faction) {
+            player.lastEncounteredFaction = closestEnemy.faction;
+            
+            // Surgical sound selection based on faction identity
+            if (closestEnemy.faction === "Great Khaganate") {
+                AudioManager.playSound('charge'); // Horse-lords warcry
+            } else if (closestEnemy.faction === "Hong Dynasty") {
+                AudioManager.playSound('firelance'); // Gunpowder crackle
+            } else if (closestEnemy.faction === "Shahdom of Iransar") {
+                AudioManager.playSound('sword_clash'); // Steel ring
+            }
+        }
+
+    } else if (closestDist < 1) {
+        // TRIGGER: ALERT/LOW TENSION 
+        // We use the "Bandits" track here as a low-level threat ambient
+        if (AudioManager.currentTrack !== "Bandits") {
+            AudioManager.playMusic("Bandits");
+        }
+        player.lastEncounteredFaction = null; // Reset stinger so it can trigger if you move back in
+
+    } else {
+        // TRIGGER: SAFE/CALM
+        if (AudioManager.currentTrack !== "WorldMap_Calm") {
+            AudioManager.playMusic("WorldMap_Calm");
+        }
+        player.lastEncounteredFaction = null;
+    }
+}
+// --- END AUDIO SYSTEM ---
         
         let tx = Math.floor(player.x / TILE_SIZE);
         let ty = Math.floor(player.y / TILE_SIZE);
@@ -790,7 +900,7 @@ function update() {
         ctx.fillRect(canvas.width / 2 - 150, 20, 300, 30);
         ctx.fillStyle = "#f5d76e";
         ctx.textAlign = "center";
-        ctx.fillText("Press TAB to exit when battle is over", canvas.width / 2, 40);
+        ctx.fillText("Press P to exit when battle is over", canvas.width / 2, 40);
         ctx.restore();
     } 
     else if (inCityMode) {
@@ -819,7 +929,7 @@ function update() {
         ctx.fillRect(canvas.width / 2 - 150, 20, 300, 30);
         ctx.fillStyle = "#f5d76e";
         ctx.textAlign = "center";
-        ctx.fillText("Press TAB or walk South to exit", canvas.width / 2, 40);
+        ctx.fillText("Press P or walk South to exit", canvas.width / 2, 40);
         ctx.restore();
     } 
     else {
@@ -889,11 +999,31 @@ let camBottom = player.y + halfHeight + 150;
             drawCaravan(player.x, player.y, player.isMoving, player.anim);
         }	
 
-// ---> SURGICAL FIX: PLAYER LABEL <---
-        ctx.fillStyle = "#ffca28"; // Matches your UI Gold
-        ctx.font = "bold 14px Georgia";
-        ctx.textAlign = "center";
-        ctx.fillText("PLAYER", player.x, player.y - 30);
+// ---> SURGICAL FIX: PLAYER LABEL (TIGHT STACK, NO WHITE TEXT) <---
+let nameFontSize = Math.max(10, 14 / zoom);
+let detailFontSize = Math.max(8, 12 / zoom);
+ctx.textAlign = "center";
+
+// 1. TOP STATS (Gold & Food - Ultra Tight)
+ctx.font = `italic ${detailFontSize}px Georgia`;
+let goldText = `G: ${Math.floor(player.gold)}`;
+let foodText = `F: ${Math.floor(player.food)}`;
+let statGap = 8; 
+
+ctx.fillStyle = "#ffca28"; 
+ctx.fillText(goldText, player.x - (ctx.measureText(foodText).width / 2) - (statGap / 2), player.y - 38);
+ctx.fillStyle = "#8bc34a"; 
+ctx.fillText(foodText, player.x + (ctx.measureText(goldText).width / 2) + (statGap / 2), player.y - 38);
+
+// 2. NAME ("YOU") - Now the bottom-most line, sits right above hat tip
+ctx.font = `bold ${nameFontSize}px Georgia`;
+ctx.fillStyle = "#ffca28"; 
+ctx.fillText("YOU", player.x, player.y - 26);
+
+ctx.font = "14px Arial"; // Reset
+    // Optional: Add a small sub-label for Food/Gold to match the NPC vibe
+    ctx.font = "10px Arial";
+ 
 		
     }
 // ADD THIS LINE HERE:

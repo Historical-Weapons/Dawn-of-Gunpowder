@@ -4,9 +4,67 @@
     let backgroundUnits = [];
     let particles = [];
 
-    window.showMainMenu = function () {
+window.showMainMenu = function () {
         if (menuActive) return;
         menuActive = true;
+		
+// --- SELF-CONTAINED MINI MUSIC ENGINE (No AudioManager needed) ---
+        const startStandaloneMusic = () => {
+            const AudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (AudioCtx.state === 'suspended') AudioCtx.resume();
+
+            const masterGain = AudioCtx.createGain();
+            masterGain.gain.value = 0.15; // Volume
+            masterGain.connect(AudioCtx.destination);
+
+            let step = 0;
+            const tempo = 120;
+            const beatTime = 60 / tempo;
+            // A heroic minor melody (Midi notes)
+            const melody = [55, 58, 60, 62, 55, 58, 60, 63, 62, 60, 58, 55]; 
+
+   const playNote = (time) => {
+                // Important: Only play if the menu is still active
+                if (!menuActive) return;
+                const osc = AudioCtx.createOscillator();
+                const g = AudioCtx.createGain();
+                
+                // Use a 'square' wave for that retro 8-bit RPG feel
+                osc.type = 'square';
+                const freq = 440 * Math.pow(2, (melody[step] - 69) / 12);
+                osc.frequency.setValueAtTime(freq, time);
+
+                g.gain.setValueAtTime(0, time);
+                g.gain.linearRampToValueAtTime(0.2, time + 0.05);
+                g.gain.exponentialRampToValueAtTime(0.001, time + beatTime - 0.05);
+
+                osc.connect(g);
+                g.connect(masterGain);
+
+                osc.start(time);
+                osc.stop(time + beatTime);
+
+                step = (step + 1) % melody.length;
+                // Schedule the next note
+                setTimeout(() => playNote(AudioCtx.currentTime + beatTime), beatTime * 1000);
+            };
+			playNote(AudioCtx.currentTime);
+
+           window.addEventListener('menuDestroyed', () => {
+                AudioCtx.close();
+            }, { once: true });
+
+            // Remove listeners so it doesn't try to start twice
+            window.removeEventListener('mousedown', startStandaloneMusic);
+            window.removeEventListener('keydown', startStandaloneMusic);
+        };
+
+        // 2. ATTACH the listeners inside showMainMenu
+        // Use 'mousedown' instead of 'click'—it's more responsive!
+        window.addEventListener('mousedown', startStandaloneMusic);
+        window.addEventListener('keydown', startStandaloneMusic);
+
+        // --- REST OF YOUR MENU CODE ---
         
         // PAUSE NPC MOVEMENT: Set a global flag that index.html can check
         window.isPaused = true; 
@@ -106,6 +164,9 @@ title.style.borderBottom = "none";
         }
 
         function destroyMenu() {
+			// Trigger the stop signal for the standalone music
+            window.dispatchEvent(new Event('menuDestroyed'));
+			
             menu.style.opacity = "0";
             if (menuAnimFrameId) {
                 cancelAnimationFrame(menuAnimFrameId);
@@ -123,20 +184,45 @@ title.style.borderBottom = "none";
         }
 
         const playBtn = createBtn("Enter World", () => {
+			AudioManager.init();
             destroyMenu();
             startGameSafe();
         });
+// 1. HIDDEN BY DEFAULT
+        playBtn.style.display = "none";
+		
+		const instrBtn = createBtn("Manual", () => {
+            // 2. MAKE PLAY BUTTON VISIBLE ON CLICK
+            playBtn.style.display = "block";
+            
+            // Optional: Give the user feedback that they "unlocked" the game
+            instrBtn.innerText = "Manual";
+            instrBtn.style.opacity = "0.7";
 
-        const instrBtn = createBtn("Manual", () => {
-            alert(`COMMANDS:\nWASD - Travel\nSCROLL - Zoom Map\nHOVER PLAYER - View Army & EXP\nTAB - Retreat / End Battle`);
+alert(`DAWN OF GUNPOWDER: EMPIRE OF THE 13TH CENTURY
+
+COMMANDS:
+• WASD: Travel
+• SCROLL: Zoom Map
+• HOVER PLAYER: View Army & EXP
+• TAB: Retreat / End Battle
+
+Dawn of Gunpowder is a tactical strategy experience set across the diverse landscapes of 13th-century Asia. Players navigate a living world map contested by six powerful factions, including the Great Khaganate, the Hong Dynasty, and the Shahdom of Iransar.
+
+The game features a persistent army management system where recruited units gain experience and level up through engagement. Mechanics emphasize geographic exploration, with the player’s party seamlessly transitioning between land caravans and naval vessels based on terrain. When conflict arises, the game shifts to a tactical battlefield engine.
+
+`);
         });
+		
+		
+ 
 
-        uiContainer.appendChild(title);
-        uiContainer.appendChild(playBtn);
-        uiContainer.appendChild(instrBtn);
+uiContainer.appendChild(title);
+        uiContainer.appendChild(instrBtn); // Manual stays at the top
+        uiContainer.appendChild(playBtn);  // This will "pop" in below it
+        
         menu.appendChild(uiContainer);
         document.body.appendChild(menu);
-
         // ==========================================
         // EPIC BACKGROUND ANIMATION LOGIC
         // ==========================================
