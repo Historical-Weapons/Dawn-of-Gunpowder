@@ -78,8 +78,9 @@ deployArmy = function(faction, totalTroops, side) {
             let offsetY = (Math.random() - 0.5) * 50;
             let tacticalOffset = getTacticalPosition(baseTemplate.role, side);
 
-            let unitStats = Object.assign(new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction), baseTemplate);
+let unitStats = Object.assign(new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction), baseTemplate);
             unitStats.experienceLevel = unitData.exp; 
+            unitStats.morale = 20; // Ensure veterans start fresh with full morale
 
             battleEnvironment.units.push({
                 id: Math.random().toString(36).substr(2, 9),
@@ -301,6 +302,17 @@ createBattleSummaryUI = function(...args) {
         summaryDiv.style.left = "50%";
         summaryDiv.style.top = "50%";
         summaryDiv.style.transform = "translate(-50%, -50%)";
+
+      let fledReport = document.createElement('div');
+fledReport.style.marginTop = "10px";
+fledReport.style.color = "#ff9800"; // Orange for caution/cowardice
+fledReport.style.fontSize = "14px";
+
+let pFled = currentBattleData.fledCounts.player;
+let eFled = currentBattleData.fledCounts.enemy;
+
+fledReport.innerHTML = `DESERTIONS: ${pFled} Allies fled | ${eFled} Enemies broke formation`;
+summaryDiv.appendChild(fledReport);
 
         let p = document.createElement('p');
         p.style.color = "#ffca28";

@@ -45,8 +45,11 @@ window.addEventListener('mousemove', (e) => {
 });
 
 function drawPlayerOverlay(ctx, player, zoom) {
-    if (typeof inBattleMode !== 'undefined' && (inBattleMode || inCityMode)) return;
-
+    if (typeof inBattleMode !== 'undefined' && (inBattleMode || inCityMode)) {
+        isHoveringPlayer = false;
+        overlayLocked = false;
+        return;
+    }
     // 1. MASTER UI OVERRIDE
     const htmlUI = document.getElementById('ui');
 if (!isHoveringPlayer && !overlayLocked) {

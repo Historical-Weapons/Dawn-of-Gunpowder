@@ -139,10 +139,12 @@ function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     savedWorldPlayerState_Battle.y = playerObj.y;
     
     inBattleMode = true;
-    currentBattleData = {
+currentBattleData = {
         enemyRef: enemyNPC,
-        playerFaction: playerObj.faction || "Hong Dynasty", // Default player faction if undefined
-        enemyFaction: enemyNPC.faction
+        playerFaction: playerObj.faction || "Hong Dynasty",
+        enemyFaction: enemyNPC.faction,
+        // STEP 2: Initialize counts here so they are ready for deployArmy
+        initialCounts: { player: 0, enemy: 0 } 
     };
 
     generateBattlefield(currentWorldMapTile.name || "Plains");
@@ -356,7 +358,10 @@ if (faction === "Great Khaganate") {
     new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
     baseTemplate
 );
-
+// PERSISTENCE FIX:
+unitStats.experienceLevel = baseTemplate.experienceLevel || 1;
+unitStats.morale = 20;    // Reset to current max for the new battle
+unitStats.maxMorale = 20; // Ensure the cap is consistent
 			
             unitStats.faction = faction;
 
@@ -444,20 +449,18 @@ function calculateDamageReceived(attacker, defender, stateString) {
 
 
 
-    } else {
-
-        // Melee Damage Calculation (Now also applies to ranged units in 'statusmelee')
-
+} else {
+        // Melee Damage Calculation
         let hitChance = Math.max(10, Math.min(90, 40 + (attackValue - defenseValue)));
-
+        
         if (Math.random() * 100 < hitChance) {
-
-            let weaponDamage = 20 + (defender.isLarge ? attacker.bonusVsLarge : 0);
-
-            totalDamage = Math.max(1, weaponDamage - (defender.armor * 0.3));
-
+            // FIX: Replace hardcoded 20 with the attacker's actual melee stat
+            let weaponDamage = attacker.meleeAttack + (defender.isLarge ? attacker.bonusVsLarge : 0);
+            
+            // FIX: Buff armor mitigation so heavy troops feel like actual tanks
+            // Changed from 0.3 to 0.6 so 20 armor = 12 damage blocked
+            totalDamage = Math.max(1, weaponDamage - (defender.armor * 0.6));
         }
-
     }
 
     
@@ -481,7 +484,82 @@ function updateBattleUnits() {
     battleEnvironment.units = units.filter(u => u.hp > 0);
     units = battleEnvironment.units;
 
-    units.forEach(unit => {
+// Initialize Flee Tracker for the UI
+    if (!currentBattleData.fledCounts) currentBattleData.fledCounts = { player: 0, enemy: 0 };
+
+units.forEach(unit => {
+    // Only process morale for living, non-commander troops
+    if (!unit.isCommander && unit.hp > 0) {
+        let hpPct = unit.hp / unit.stats.health;
+        
+        // 1. BRAVERY FACTOR MATH
+        // Armor of 50 = 1.0 (Full resistance). 
+        // We cap it so higher armor (like Elephants at 60) doesn't break the game, 
+        // just treats them as maximum bravery.
+        let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
+        
+        // 2. DEFINE BASE TICK (How fast morale drops based on health)
+        // If they are critically wounded (<10% HP), the panic is faster.
+let baseTick = (hpPct <= 0.1) ? 0.22 : (hpPct <= 0.6 ? 0.11 : 0);
+        // 3. APPLY ARMOR MITIGATION
+        // (1.1 - armorEffect) means:
+        // - 0 Armor loses 1.1x base tick (~20-25 seconds to flee)
+        // - 25 Armor loses 0.6x base tick (~50-60 seconds to flee)
+        // - 50+ Armor loses 0.1x base tick (~5 minutes to flee)
+        if (baseTick > 0) {
+            unit.stats.morale -= baseTick * (1.1 - armorEffect);
+        }
+
+// 4. FLEEING STATE (Morale hits 0 - The "Shameful Display")
+        if (unit.stats.morale <= 0) {
+            unit.state = "moving"; 
+            
+            // A. Initialize escape point if they just started routing
+            if (!unit.escapePoint) {
+                let distToLeft = unit.x;
+                let distToRight = BATTLE_WORLD_WIDTH - unit.x;
+                let distToTop = unit.y;
+                let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
+
+                let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+
+                // Set target point 100px outside the map for a clean exit
+                if (minDist === distToLeft) unit.escapePoint = { x: -100, y: unit.y };
+                else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH + 100, y: unit.y };
+                else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: -100 };
+                else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT + 100 };
+            }
+
+            // B. Move toward the escape point (with 50% adrenaline speed boost)
+            let dx = unit.escapePoint.x - unit.x;
+            let dy = unit.escapePoint.y - unit.y;
+            let dist = Math.hypot(dx, dy);
+
+            if (dist > 5) {
+                unit.x += (dx / dist) * (unit.stats.speed * 1.5);
+                unit.y += (dy / dist) * (unit.stats.speed * 1.5);
+            }
+
+            // C. DESERTION CONDITION: Remove only once they touch the "Black Border"
+            let isOffMap = (unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || 
+                            unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT);
+
+            if (isOffMap) { 
+                unit.hp = 0; // This triggers your .filter clean-up on the next frame
+                if (currentBattleData && currentBattleData.fledCounts) {
+                    currentBattleData.fledCounts[unit.side]++;
+                }
+            }
+
+            return; // Skip combat/targeting logic because they've thrown down their weapons
+        }
+    }
+    
+    // ... rest of your combat/movement logic
+ 
+        // -----------------------
+
+        // 1. Find nearest enemy if no target
 		
 
         // 1. Find nearest enemy if no target
@@ -514,9 +592,8 @@ function updateBattleUnits() {
 // ---> 1. ADD THIS LINE: Shrink range if they are using melee <---
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
             // Move into range
-            if (dist > effectiveRange*0.8) {
+           if (dist > effectiveRange*0.8) {
                 unit.state = "moving";
-                // Optional: Drain stamina while moving
                 if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
                 
                 let speedMod = 1.0;
@@ -525,8 +602,21 @@ function updateBattleUnits() {
                 if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4;
                 if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6;
 
-                unit.x += (dx / dist) * (unit.stats.speed * speedMod);
-                unit.y += (dy / dist) * (unit.stats.speed * speedMod);
+                // --- MORALE BACK-OFF LOGIC (Morale 1 to 9) ---
+                if (!unit.isCommander && unit.stats.morale > 0 && unit.stats.morale < 10) {
+                    let dir = unit.side === "player" ? 1 : -1;
+                    let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100; // Keep them in bounds
+                    let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
+                    
+                    if (notAtEdge) {
+                        unit.y += (unit.stats.speed * speedMod * 0.5) * dir; // Slowly drift backward
+                        unit.x += (Math.random() - 0.5); // Slight nervous wiggle
+                    }
+                } else {
+                    // Normal Advance
+                    unit.x += (dx / dist) * (unit.stats.speed * speedMod);
+                    unit.y += (dy / dist) * (unit.stats.speed * speedMod);
+                }
             } else {
                 // In range: Attack
 unit.state = "attacking";
@@ -581,7 +671,11 @@ let targetY = unit.target.y + (Math.random() - 0.5) * spread;
                         
                         let dmg = calculateDamageReceived(unit.stats, unit.target.stats, stateStr);
                         unit.target.hp -= dmg;
-                        
+                        // ---> ADD THIS SHOCK DAMAGE <---
+// If the hit takes away more than 25% of their total health in one swing, they lose chunk of morale instantly
+if (dmg > (unit.target.stats.health * 0.25)) {
+    unit.target.stats.morale -= 5; // Instant 25% morale drop
+}
 						// ---> PASTE HERE <---
         if (unit.unitType === "War Elephant") {
             AudioManager.playSound('elephant');
