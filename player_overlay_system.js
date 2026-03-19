@@ -17,9 +17,12 @@ let mouseY = 0;
 let isHoveringPlayer = false;
 let overlayLocked = false; // <--- NEW FLAG
 // Listen for the T key
+// Replace the listener in player_overlay_system.js
 window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 't') {
-        overlayLocked = !overlayLocked;
+        // Use the variable that index.html actually checks
+        window.isRosterOpen = !window.isRosterOpen; 
+        console.log("Roster Status:", window.isRosterOpen);
     }
 });
 
@@ -28,13 +31,13 @@ let worldMouseX = 0;
 let worldMouseY = 0;
 
 window.addEventListener('mousemove', (e) => {
-	if (!canvas || !player) return;
+    // Safely check if variables exist before touching them
+	if (typeof canvas === 'undefined' || typeof player === 'undefined' || !player) return;
     // Convert screen mouse to world coordinates
     const rect = canvas.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
 
-    // 2. REMOVED 'const' here. 
     // We are now updating the global variables we declared above.
     worldMouseX = (screenX - canvas.width / 2) / zoom + player.x;
     worldMouseY = (screenY - canvas.height / 2) / zoom + player.y;
@@ -44,19 +47,25 @@ window.addEventListener('mousemove', (e) => {
     isHoveringPlayer = dist < 25;
 });
 
+// ... (NPC Bounds and Mouse listeners remain the same) ...
+
+// Inside player_overlay_system.js
 function drawPlayerOverlay(ctx, player, zoom) {
     if (typeof inBattleMode !== 'undefined' && (inBattleMode || inCityMode)) {
         isHoveringPlayer = false;
-        overlayLocked = false;
+        window.isRosterOpen = false; // Reset state when entering battle/city
         return;
     }
-    // 1. MASTER UI OVERRIDE
+    
     const htmlUI = document.getElementById('ui');
-if (!isHoveringPlayer && !overlayLocked) {
+    
+    // FIX: Check window.isRosterOpen instead of overlayLocked
+    if (!isHoveringPlayer && !window.isRosterOpen) {
         if (htmlUI) htmlUI.style.display = "block"; 
         return;
     }
     if (htmlUI) htmlUI.style.display = "none";
+    // ... rest of the function remains the same
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0); 
@@ -64,13 +73,14 @@ if (!isHoveringPlayer && !overlayLocked) {
     const W = ctx.canvas.width;
     const H = ctx.canvas.height;
 
-    // 2. DYNAMIC ROSTER DATA (Confirmed: player.roster)
+    // --- NEW: COMPACT OVERLAY DIMENSIONS ---
+    const boxW = W * 0.8;  // 80% width
+    const boxH = H * 0.7;  // 70% height
+    const startX = (W - boxW) / 2; // Center horizontally
+    const startY = (H - boxH) / 2; // Center vertically
+
     let armySource = player.roster || [];
-    
-    // VARIETY GANG FIX: If roster is empty but troops exist, don't show an empty list
     if (armySource.length === 0 && player.troops > 0) {
-        // This is just a temporary visual display for the overlay 
-        // until the Campaign Expansion officially populates the roster.
         armySource = [{ type: "Default Retinue", exp: 1.0, count: player.troops }];
     }
 
@@ -82,80 +92,86 @@ if (!isHoveringPlayer && !overlayLocked) {
         if (!troopGroups[key]) {
             troopGroups[key] = { type: u.type || 'Unit', lvl: l, exp: e, count: 0 };
         }
-        // Use u.count if it exists (for the fallback), otherwise increment by 1
         troopGroups[key].count += (u.count || 1);
     });
 
-    // 3. BACKGROUND & FRAME
-    ctx.fillStyle = "rgba(10, 8, 5, 0.98)"; 
-    ctx.fillRect(0, 0, W, H);
+    // BACKGROUND & FRAME (Slightly more transparent so game is visible)
+    ctx.fillStyle = "rgba(10, 8, 5, 0.90)"; 
+    ctx.fillRect(startX, startY, boxW, boxH);
     ctx.strokeStyle = "#d4b886";
-    ctx.lineWidth = 15;
-    ctx.strokeRect(10, 10, W - 20, H - 20);
+    ctx.lineWidth = 5;
+    ctx.strokeRect(startX + 5, startY + 5, boxW - 10, boxH - 10);
 
+    // Padding inside the new smaller box
+    const paddingX = startX + 40;
+    
     // 4. PLAYER DATA HEADER
     ctx.textAlign = "left";
     ctx.fillStyle = "#ffca28";
-    ctx.font = "bold 44px Georgia";
-    ctx.fillText("PLAYER DATA", 80, 100);
+    ctx.font = "bold 28px Georgia";
+    ctx.fillText("PLAYER DATA", paddingX, startY + 50);
 
     // 5. PLAYER CHARACTER STATUS
     const pLvl = player.stats ? (player.stats.experienceLevel || 1) : 1;
     const pExp = (pLvl % 1);
     
-    ctx.font = "bold 22px Georgia";
+    ctx.font = "bold 16px Georgia";
     ctx.fillStyle = "#d4b886";
-    ctx.fillText("CHARACTER STATUS", 80, 160);
+    ctx.fillText("CHARACTER STATUS", paddingX, startY + 95);
 
-    ctx.font = "16px monospace";
+    ctx.font = "14px monospace";
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(`LEVEL: ${Math.floor(pLvl)} (${(pExp * 100).toFixed(0)}% EXP)`, 80, 195);
-    ctx.fillText(`HEALTH: ${Math.floor(player.hp || 100)}% | SPEED: ${player.speed || 2}`, 80, 220);
-    ctx.fillText(`GOLD: ${Math.floor(player.gold || 0)} | FOOD: ${Math.floor(player.food || 0)}`, 80, 245);
+    ctx.fillText(`LEVEL: ${Math.floor(pLvl)} (${(pExp * 100).toFixed(0)}% EXP)`, paddingX, startY + 120);
+    ctx.fillText(`HEALTH: ${Math.floor(player.hp || 100)}% | SPEED: ${player.speed || 2}`, paddingX, startY + 145);
+    ctx.fillText(`GOLD: ${Math.floor(player.gold || 0)} | FOOD: ${Math.floor(player.food || 0)} | FORCE: ${player.troops}`, paddingX, startY + 170);
 
-    // EXP Bar
+    // EXP Bar 
     ctx.fillStyle = "#222";
-    ctx.fillRect(80, 260, 400, 8);
+    ctx.fillRect(paddingX, startY + 185, 300, 6);
     ctx.fillStyle = "#ffca28";
-    ctx.fillRect(80, 260, 400 * pExp, 8);
+    ctx.fillRect(paddingX, startY + 185, 300 * pExp, 6);
 
-    // 6. ARMY ROSTER (Variety Gang)
-    ctx.font = "bold 22px Georgia";
+    // 6. ARMY ROSTER (Anchored inside the compact box)
+    const rosterStartY = startY + 230; 
+    ctx.font = "bold 16px Georgia"; 
     ctx.fillStyle = "#d4b886";
-    ctx.fillText("ARMY ROSTER", 80, 330);
+    ctx.fillText(`ARMY ROSTER (${player.troops} Men)`, paddingX, rosterStartY);
 
-    const margin = 80;
-    let cursorX = margin;
-    let cursorY = 370;
-    const colGap = 45; 
-    const rowGap = 65;
+    let cursorX = paddingX;
+    let cursorY = rosterStartY + 30;
+    const colGap = 30; 
+    const rowGap = 45; 
 
     const units = Object.values(troopGroups);
     units.forEach((unit) => {
-        ctx.font = "bold 15px monospace";
+        ctx.font = "bold 11px monospace"; 
         const name = unit.type.toUpperCase();
         const stats = `LVL ${unit.lvl} [EXP ${unit.exp}%] x${unit.count}`;
         const entryWidth = Math.max(ctx.measureText(name).width, ctx.measureText(stats).width);
 
-        if (cursorX + entryWidth > W - margin) {
-            cursorX = margin;
+        // Word wrap within the new compact box bounds
+        if (cursorX + entryWidth > startX + boxW - 40) {
+            cursorX = paddingX;
             cursorY += rowGap;
         }
 
         ctx.fillStyle = "#fff";
         ctx.fillText(name, cursorX, cursorY);
         ctx.fillStyle = "#8bc34a"; 
-        ctx.font = "12px monospace";
-        ctx.fillText(stats, cursorX, cursorY + 20);
+        ctx.font = "9px monospace"; 
+        ctx.fillText(stats, cursorX, cursorY + 14); 
 
         cursorX += entryWidth + colGap;
     });
-ctx.textAlign = "center";
-ctx.font = "14px monospace";
-ctx.fillStyle = "#aaaaaa";
-ctx.fillText("Press T to exit Troop Menu", W / 2, H - 30);
+
+    ctx.textAlign = "center";
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "#888";
+    // Footer text stays at the bottom of the compact box
+    ctx.fillText("Press T to exit Troop Menu", startX + (boxW / 2), startY + boxH - 20);
     ctx.restore();
 }
+
 // 4. INTEGRATION HELPER
 // Call this inside your main update/draw loop
 function updateAndDrawPlayerSystems(ctx, player, zoom, worldW, worldH, npcs) {

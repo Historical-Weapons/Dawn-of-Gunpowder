@@ -1,6 +1,13 @@
 // ============================================================================
 // DAWN OF GUNPOWDER - CAMPAIGN EXPANSION (Bannerlord Rosters & Player Avatar)
 // ============================================================================
+// Add these at the very top of campaign_expansion.js
+if (typeof drawBattleUnits === 'undefined') {
+    var drawBattleUnits = function() { console.warn("Original drawBattleUnits not found."); };
+}
+if (typeof getTacticalPosition === 'undefined') {
+    var getTacticalPosition = () => ({ x: 0, y: 0 }); // Fallback so it doesn't crash
+}
 
 // SURGERY: Cache the player avatar to stop array searching every frame
 let cachedCommander = null; 
@@ -8,8 +15,12 @@ let cachedCommander = null;
 
 const originalDeployArmy = deployArmy;
 
+
 // --- 1. OVERRIDE DEPLOY ARMY (Persistent Rosters & Player Avatar Injection) ---
 deployArmy = function(faction, totalTroops, side) {
+	// Add this at the very start of deployArmy
+ 
+
     let entity = side === "player" ? player : currentBattleData.enemyRef;
     let expectedCount = side === "player" ? entity.troops : entity.count;
 
@@ -20,24 +31,25 @@ deployArmy = function(faction, totalTroops, side) {
     // Ensure entity exists and has a roster array initialized
     if (entity && !entity.roster) entity.roster = [];
 
-    // SCENARIO A: First time fighting (Roster is empty)
-    if (entity && entity.roster.length === 0 && expectedCount > 0) {
-        // Let the original game generate the 11-faction composition visually
-        originalDeployArmy(faction, totalTroops, side); 
+  // SCENARIO A: First time fighting (Roster is empty)
+        if (entity && entity.roster.length === 0 && expectedCount > 0) {
+            originalDeployArmy(faction, totalTroops, side); 
 
-        // Scrape the newly generated units into permanent memory
-        let justSpawned = battleEnvironment.units.filter(u => u.side === side);
-        let visualScale = totalTroops > 300 ? 5 : 1;
+            let justSpawned = battleEnvironment.units.filter(u => u.side === side);
+            
+            // ---> SURGERY 2: Grab the ACTUAL scale to rebuild roster perfectly <---
+            let actualScale = expectedCount > 300 ? 5 : 1; 
 
-        justSpawned.forEach(u => {
-            for(let i = 0; i < visualScale; i++) {
-                entity.roster.push({ type: u.unitType, exp: 1 });
+            justSpawned.forEach(u => {
+                for(let i = 0; i < actualScale; i++) {
+                    entity.roster.push({ type: u.unitType, exp: 1 });
+                }
+            });
+            
+            if (entity.roster.length > expectedCount) {
+                entity.roster.length = expectedCount; 
             }
-        });
-        
-        // Trim to exact count to prevent rounding errors from visual scaling
-        if (entity.roster.length > expectedCount) entity.roster.splice(expectedCount); 
-    } 
+        }
     
     // SCENARIO B: Returning veteran army
     else if (entity && entity.roster.length > 0) {
@@ -53,8 +65,8 @@ deployArmy = function(faction, totalTroops, side) {
         // 2. Spawn them physically
         let spawnY = side === "player" ? BATTLE_WORLD_HEIGHT - 300 : 300;
         let spawnXCenter = BATTLE_WORLD_WIDTH / 2;
-        let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[faction]) ? FACTIONS[faction].color : "#ffffff";
-
+// This forces white if the side is 'player', otherwise it uses the faction color
+let factionColor = (side === "player") ? "#ffffff" : ((typeof FACTIONS !== 'undefined' && FACTIONS[faction]) ? FACTIONS[faction].color : "#ffffff");
         if (!currentBattleData.initialCounts) currentBattleData.initialCounts = { player: 0, enemy: 0 };
         currentBattleData.initialCounts[side] += entity.roster.length;
 
@@ -81,7 +93,7 @@ deployArmy = function(faction, totalTroops, side) {
 let unitStats = Object.assign(new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction), baseTemplate);
             unitStats.experienceLevel = unitData.exp; 
             unitStats.morale = 20; // Ensure veterans start fresh with full morale
-
+unitStats.factionColor=factionColor;
             battleEnvironment.units.push({
                 id: Math.random().toString(36).substr(2, 9),
                 side: side,
@@ -125,7 +137,7 @@ let unitStats = Object.assign(new Troop(baseTemplate.name, baseTemplate.role, ba
             side: "player",
             isCommander: true, 
             faction: faction,
-            color: "#ffca28", 
+            color: "#ffffff", 
             unitType: "Horse Archer", 
             stats: player.stats,  
             hp: player.stats.health,
@@ -234,7 +246,7 @@ leaveBattlefield = function(playerObj) {
     playerObj.roster = [];
     pSurvivors.forEach(u => {
         // Increment unit experience
-        u.stats.experienceLevel = (u.stats.experienceLevel || 1) + 0.1;
+        u.stats.experienceLevel = (u.stats.experienceLevel || 1) + 0.05;
         
         playerObj.roster.push({ 
             type: u.unitType, 
@@ -247,51 +259,92 @@ leaveBattlefield = function(playerObj) {
     if (cachedCommander && playerObj.stats) {
         // Gain Commander XP
         if (typeof playerObj.stats.gainExperience === 'function') {
-            playerObj.stats.gainExperience(0.6);
+            playerObj.stats.gainExperience(0.1);
         } else {
-            playerObj.stats.experienceLevel += 0.6;
+            playerObj.stats.experienceLevel += 0.1;
         }
         
         // Sync HP back to the overworld
         playerObj.hp = cachedCommander.hp;
     }
 
-    // C. Rebuild Enemy Roster - One survivor = One entry
+// C. Rebuild Enemy Roster - One survivor = One entry
     if (enemyRef) {
         enemyRef.roster = [];
         eSurvivors.forEach(u => {
+            // Apply XP gain for survivors
             u.stats.experienceLevel = (u.stats.experienceLevel || 1) + 0.05;
             enemyRef.roster.push({ 
                 type: u.unitType, 
                 exp: u.stats.experienceLevel 
             });
         });
+        // Set count initially, but we will force-sync it again after the original engine call
         enemyRef.count = enemyRef.roster.length;
     }
 
-// Safety floor for HP and reset persistent ammo
-if (playerObj.hp <= 1) playerObj.hp = 100;
-if (playerObj.stats) {
-    playerObj.stats.ammo = 30; // Resets the actual stat used in battle
-}
+    // --- PLAYER STAT FEATURES (KEPT) ---
+    // Safety floor for HP
+    if (playerObj.hp <= 1) playerObj.hp = 100;
+    
+    // Commander Ammo Reset (Your requested feature)
+    if (playerObj.stats) {
+        playerObj.stats.ammo = 30; // Resets the actual stat used in battle
+    }
 
-    // D. Call original engine cleanup
-    originalLeaveBattlefield(playerObj);
+// --- NEW: LOOT & BOUNTY SYSTEM ---
+    if (enemyRef) {
+        let eInitial = (currentBattleData.initialCounts && currentBattleData.initialCounts.enemy) ? currentBattleData.initialCounts.enemy : 0;
+        let eLost = Math.max(0, eInitial - eSurvivors.length);
+        
+        // Base Loot: 3 gold for every enemy fallen
+        let totalLoot = eLost * 3;
+
+        // Bounties based on NPC Role
+        if (enemyRef.role === "Bandit") {
+            totalLoot += 50; // Flat bounty for clearing a bandit party
+        } else if (enemyRef.role === "Trader") {
+            totalLoot += 300; // High reward for raiding caravans (but you'd usually lose rep!)
+        } else if (enemyRef.role === "Patrol") {
+            totalLoot += 10; // Small military bonus
+        }
+
+        playerObj.gold += totalLoot;
+        
+        // Store loot amount temporarily so the UI can show it
+        currentBattleData.lastLootEarned = totalLoot;
+    }
 	
-	playerObj.troops = playerObj.roster.length;
+    // D. Call original engine cleanup
+    // Note: This cleans up memory/UI, but its count math might be wrong...
+    originalLeaveBattlefield(playerObj);
+
+    // E. FINAL TRUTH SYNC: Overwrite engine math with the Roster reality
+    // This ensures that if 1 man survives, the count is EXACTLY 1.
+    playerObj.troops = playerObj.roster.length;
+    if (enemyRef) {
+        enemyRef.count = enemyRef.roster.length;
+    }
 
     // E. Cleanup the reference for the next battle
     cachedCommander = null;
 };
-
 // --- 5. OVERRIDE BATTLE SUMMARY UI (Center Text & Map Return) ---
 const originalCreateBattleSummaryUI = createBattleSummaryUI;
 
 createBattleSummaryUI = function(...args) {
+    // 1. Run the base function to trigger background events and generate the button
     originalCreateBattleSummaryUI(...args);
 
     let summaryDiv = document.getElementById('battle-summary');
     if (summaryDiv) {
+        // 2. Save the close button (crucial for returning to the map)
+        let closeBtn = summaryDiv.querySelector('button');
+        
+        // 3. WIPE the div completely to remove the original base-game text
+        summaryDiv.innerHTML = ''; 
+
+        // 4. Apply your layout styling
         summaryDiv.style.textAlign = "center";
         summaryDiv.style.display = "flex";
         summaryDiv.style.flexDirection = "column";
@@ -303,37 +356,45 @@ createBattleSummaryUI = function(...args) {
         summaryDiv.style.top = "50%";
         summaryDiv.style.transform = "translate(-50%, -50%)";
 
-      let fledReport = document.createElement('div');
-fledReport.style.marginTop = "10px";
-fledReport.style.color = "#ff9800"; // Orange for caution/cowardice
-fledReport.style.fontSize = "14px";
+        // --- 5. COMBINED CASUALTY & DESERTION REPORT (The Reliable Data) ---
+        let pSurvivors = battleEnvironment.units.filter(u => u.side === "player" && u.hp > 0 && !u.isCommander).length;
+        let eSurvivors = battleEnvironment.units.filter(u => u.side === "enemy" && u.hp > 0).length;
+        
+        let pInitial = (currentBattleData.initialCounts && currentBattleData.initialCounts.player) ? currentBattleData.initialCounts.player : pSurvivors;
+        let eInitial = (currentBattleData.initialCounts && currentBattleData.initialCounts.enemy) ? currentBattleData.initialCounts.enemy : eSurvivors;
 
-let pFled = currentBattleData.fledCounts.player;
-let eFled = currentBattleData.fledCounts.enemy;
+        let pLost = Math.max(0, pInitial - pSurvivors);
+        let eLost = Math.max(0, eInitial - eSurvivors);
 
-fledReport.innerHTML = `DESERTIONS: ${pFled} Allies fled | ${eFled} Enemies broke formation`;
-summaryDiv.appendChild(fledReport);
+        // --- 6. BUILD UI: Status Message ---
+        let statusText = document.createElement('p');
+        statusText.style.color = "#ffca28";
+        statusText.style.fontWeight = "bold";
+        statusText.style.fontSize = "16px";
 
-        let p = document.createElement('p');
-        p.style.color = "#ffca28";
-        p.style.fontWeight = "bold";
-        p.style.fontSize = "20px";
-
-        // FIX: Safe string checking so game doesn't crash on wipeout
         let text = "RETREAT: You have left the battlefield.";
         if (currentBattleData && currentBattleData.playerDefeatedText) {
             text = "They left you to die but you were saved by a villager";
         } else if (args[0] && typeof args[0] === 'string' && args[0].includes("Victory")) {
             text = "VICTORY: Your forces have secured the field!";
         }
-        
-        p.innerText = text;
-        summaryDiv.appendChild(p);
+        statusText.innerText = text;
+        summaryDiv.appendChild(statusText);
 
-        // FIX: Do not overwrite the onclick handler, just change the text, so the base engine successfully returns to the map
-        let closeBtn = summaryDiv.querySelector('button');
+        // --- 7. BUILD UI: Custom Loss Report ---
+        let lossReport = document.createElement('div');
+        lossReport.style.marginTop = "10px";
+        lossReport.style.color = "#eeeeee"; 
+        lossReport.style.fontSize = "11px";
+        lossReport.style.fontFamily = "monospace";
+       lossReport.innerHTML = `Player Casualties: <span style="color:#ff5252">${pLost}</span> | Enemy Casualties: <span style="color:#ff5252">${eLost}</span>`;
+	   summaryDiv.appendChild(lossReport);
+
+        // --- 8. RESTORE UI: Put the button back at the bottom ---
         if (closeBtn) {
-            closeBtn.innerText = "Return to Map";
+            closeBtn.innerText = "Close";
+            closeBtn.style.marginTop = "20px"; // Optional: adds a little spacing above the button
+            summaryDiv.appendChild(closeBtn);
         }
     }
 };

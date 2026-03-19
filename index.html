@@ -81,96 +81,103 @@
 </head>
 <body>
 	<div id="loading">Initializing... (0%)</div>
-    
     <div id="ui">
         <h1>Map</h1>
         <div class="stat"><span>Region:</span> <span id="terrain-text" class="val">Plains</span></div>
         <div class="stat"><span>Speed:</span> <span id="speed-text" class="val">1.0x</span></div>
         <div class="stat"><span>Coordinates:</span> <span id="loc-text" class="val">0, 0</span></div>
         <div class="stat"><span>Zoom Level:</span> <span id="zoom-text" class="val">1.0x</span></div>
-        <div class="hint">Scroll to Zoom (0.1x - 3x)<br>WASD to explore the vastness. <br> Press T for troops. P to exit battles or cities.</div>
+        <div class="hint">Scroll to Zoom (0.1x - 3x)<br>WASD to explore. <br> Overworld Map - T for troops. <br> Battle/City - P for exit.</div>
+
+ 
     </div>
 
-<div id="city-panel">
-    <h2 id="city-name">City Name</h2>
-    
-    <div id="city-faction" style="font-size: 0.9rem; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Faction</div>
+    <div id="city-panel">
+        <h2 id="city-name">City Name</h2>
+        <div id="city-faction" style="font-size: 0.9rem; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Faction</div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px;">
-        <div class="city-stat">Pop: <span id="city-pop" style="color: #fff;">0</span></div>
-        <div class="city-stat">Garrison: <span id="city-garrison" style="color: #fff;">0</span></div>
-        <div class="city-stat">Gold: <span id="city-gold" style="color: #ffd700;">0</span></div>
-        <div class="city-stat">Food: <span id="city-food" style="color: #8bc34a;">0</span></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px;">
+            <div class="city-stat">Pop: <span id="city-pop" style="color: #fff;">0</span></div>
+            <div class="city-stat">Garrison: <span id="city-garrison" style="color: #fff;">0</span></div>
+            <div class="city-stat">Gold: <span id="city-gold" style="color: #ffd700;">0</span></div>
+            <div class="city-stat">Food: <span id="city-food" style="color: #8bc34a;">0</span></div>
+        </div>
+            
+        <div id="recruit-box" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
+            
+            <button class="menu-btn" onclick="
+                if(player.gold >= 20) { 
+                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
+                    player.troops += 5; 
+                    if(!player.roster) player.roster = [];
+                    for(let i=0; i<5; i++) {
+                        player.roster.push({ type: 'Militia', name: 'Militia', experienceLevel: 1 });
+                    }
+                    player.gold -= 20; 
+                } else {
+                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
+                    alert('Not enough gold!'); 
+                }
+            ">
+                Recruit 5 Militia (20 Gold)
+            </button>
+
+            <button class="menu-btn" onclick="if(activeCity) { 
+                if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
+                enterCity(activeCity.faction, player); 
+                document.getElementById('city-panel').style.display = 'none'; 
+            }">
+                Visit Settlement
+            </button>
+			
+<button class="menu-btn" onclick="
+    if(typeof troopGUI !== 'undefined') {
+        if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
+        troopGUI.openUpgradeMenu();
+    } else {
+        alert('troopGUI.js not loaded!');
+    }
+">
+    Upgrade Troops
+</button>
+
+            <button class="menu-btn" onclick="
+                if(player.gold >= 10) { 
+                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
+                    player.food += 10; 
+                    player.gold -= 10; 
+                } else {
+                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
+                    alert('Not enough gold for rations!'); 
+                }
+            ">
+                Buy Food (10 Gold)
+            </button>
+        </div>
     </div>
-        
-    <div id="recruit-box" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
-
-<button class="menu-btn" onclick="
-    if(player.gold >= 20) { 
-        AudioManager.playSound('gold_buy');
-        player.troops += 5; 
-        
-        // Push actual Militia to the persistent array!
-        if(!player.roster) player.roster = [];
-        for(let i=0; i<5; i++) {
-            player.roster.push({ type: 'Militia', exp: 1 });
-        }
-        
-        player.gold -= 20; 
-    } else {
-        AudioManager.playSound('error');
-        alert('Not enough gold!'); 
-    }
-">
-    Recruit 5 Troops (20 Gold)
-</button>
-
-<button class="menu-btn" 
-    onclick="if(activeCity) { 
-        AudioManager.playSound('ui_click'); 
-        enterCity(activeCity.faction, player); 
-        document.getElementById('city-panel').style.display = 'none'; 
-    }">
-    Visit Settlement
-</button>
-
-
-<button class="menu-btn" onclick="
-    if(player.gold >= 10) { 
-        AudioManager.playSound('gold_buy');
-        player.food += 10; 
-        player.gold -= 10; 
-        console.log('Bought 10 Rations. Food:', player.food, 'Gold Left:', player.gold);
-    } else {
-        AudioManager.playSound('error');
-        alert('Not enough gold for rations!'); 
-    }
-">
-    Buy Food (10 Gold)
-</button>
-
-			 </div>
-</div>
-
     <canvas id="gameCanvas"></canvas>
 
+ <script src="camera_effects.js"></script>  
 <script src="npc_system.js"></script>
 <script src="fortification_system.js"></script>
 <script src="city_system.js"></script>
-<script src="troop_system.js"></script>
+
 <script src="battlefield_system.js"></script>
+<script src="troop_system.js"></script>
+<script src="cavscript.js"></script>
 <script src="player_overlay_system.js"></script>
- <script src="campaign_expansion.js"></script>  
- <script src="audio_system.js"></script>
+ <script src="campaign_expansion.js"></script>
+<script src="troopGUI.js"></script> 
  <script src="menu.js"></script>  
+ <script src="audio_system.js"></script>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
  
 let activeCity = null;
 const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+canvas.width = window.screen.width; 
+canvas.height = window.screen.height;
 
 
 
@@ -199,8 +206,8 @@ const PADDING_Y = WORLD_HEIGHT * 0.05;  // 5% of height
     bgCanvas.height = WORLD_HEIGHT;
     const bgCtx = bgCanvas.getContext('2d');
 
-    let zoom = 0.8; 
-    
+ // TO THIS:
+var zoom = 0.8;
  
 async function setLoading(percent, text) {
     document.getElementById('loading').innerText = `${text} (${percent}%)`;
@@ -253,38 +260,47 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     let dx = 0, dy = 0;
     player.isMoving = false;
 
-    // --- SURGERY: TERRAIN SPEED CALCULATION ---
+    // --- 1. TERRAIN SPEED CALCULATION (Original Logic) ---
     let currentSpeed = speed;
 
-    if (!isCity) {
+    if (!isCity && !inBattleMode) {
         let tx = Math.floor(player.x / tileSize);
         let ty = Math.floor(player.y / tileSize);
         
         // Ensure we are within map bounds before checking tile speed
         if (map[tx] && map[tx][ty]) {
             let tile = map[tx][ty];
-            // Use the tile's speed property (e.g., 0.5 for forest, 1.2 for road)
-            // If the property doesn't exist, default to 1.0
+            // Use the tile's speed property; default to 1.0
             currentSpeed = speed * (tile.speed || 1.0);
         }
     }
-    // ------------------------------------------
+    // -----------------------------------------------------
 
-    // Use currentSpeed instead of the raw speed argument
+    // --- 2. INPUT PROCESSING ---
     if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
     if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
     if (keys['a'] || keys['arrowleft']) { dx -= currentSpeed; player.isMoving = true; }
     if (keys['d'] || keys['arrowright']) { dx += currentSpeed; player.isMoving = true; }
-    
+
     if (player.isMoving) player.anim++;
 
+    // Calculate the intended destination
     let nextX = player.x + dx;
     let nextY = player.y + dy;
 
-    if (!isCity) {
-        // --- WORLD MAP MOVEMENT ---
+    // --- 3. SURGERY: MOVEMENT LOGIC & BOUNDARIES ---
+    
+    if (inBattleMode) {
+        // --- BATTLEFIELD INVISIBLE WALL ---
+        // Clamp the destination so the player never crosses the 0 or Max bounds
+        player.x = Math.max(0, Math.min(nextX, BATTLE_WORLD_WIDTH));
+        player.y = Math.max(0, Math.min(nextY, BATTLE_WORLD_HEIGHT));
+    } 
+    else if (!isCity) {
+        // --- WORLD MAP COLLISION (Original Logic) ---
         let ntx = Math.floor(nextX / tileSize);
         let nty = Math.floor(nextY / tileSize);
+        
         if (ntx >= 0 && ntx < cols && nty >= 0 && nty < rows) {
             // Check if destination is impassable (like Deep Ocean)
             if (!map[ntx][nty].impassable) {
@@ -293,7 +309,7 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
             }
         }
     } else {
-        // --- CITY MOVEMENT ---
+        // --- CITY/INTERIOR MOVEMENT ---
         let withinX = (nextX > 50 && nextX < CITY_WORLD_WIDTH - 50);
         let withinY = (nextY > 50); 
 
@@ -538,8 +554,7 @@ AudioManager.playMusic("WorldMap_Calm");
         size: 24,
         isMoving: false,
         anim: 0,
-        
-        // Add these lines:
+        color: "#ffffff", 
         troops: 10,
         food: 100,
         gold: 500,
@@ -556,7 +571,13 @@ AudioManager.playMusic("WorldMap_Calm");
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
 
 window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
-    window.onwheel = (e) => {
+window.onwheel = (e) => {
+    // If player scrolls, cancel cinematic instantly
+    if (window.isZoomAnimating) {
+        window.isZoomAnimating = false;
+    }
+	
+      
         zoom = Math.max(0.1, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
     };
 
@@ -643,53 +664,58 @@ window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
         ctx.restore();
     }
- 
-    function drawShip(x, y, moving, frame) {
-        ctx.save();
-        ctx.translate(x, y);
-        
-        // Swaying/Floating effect
-        let sway = Math.sin(frame * 0.08) * 0.1;
-        let bob = Math.cos(frame * 0.08) * 2;
-        ctx.rotate(sway);
+ // Add factionColor to the parameters
+function drawShip(x, y, moving, frame, factionColor = "#ffffff") {
+    ctx.save();
+    ctx.translate(x, y);
+    
+    // Swaying/Floating effect
+    let sway = Math.sin(frame * 0.08) * 0.1;
+    let bob = Math.cos(frame * 0.08) * 2;
+    ctx.rotate(sway);
 
-        // Hull
-        ctx.fillStyle = "#3e2723";
-        ctx.beginPath();
-        ctx.moveTo(-15, bob);
-        ctx.lineTo(15, bob);
-        ctx.lineTo(10, 10 + bob);
-        ctx.lineTo(-10, 10 + bob);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 1;
-        ctx.stroke();
+    // Hull
+    ctx.fillStyle = "#3e2723";
+    ctx.beginPath();
+    ctx.moveTo(-15, bob);
+    ctx.lineTo(15, bob);
+    ctx.lineTo(10, 10 + bob);
+    ctx.lineTo(-10, 10 + bob);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-        // Sails (Imperial Red)
-        ctx.fillStyle = "#b71c1c";
-        ctx.beginPath();
-        ctx.moveTo(0, bob);
-        ctx.lineTo(0, -20 + bob);
-        ctx.lineTo(15, -5 + bob);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Mast
-        ctx.strokeStyle = "#5d4037";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(0, bob);
-        ctx.lineTo(0, -22 + bob);
-        ctx.stroke();
+    // Sails - NOW USES DYNAMIC COLOR
+    ctx.fillStyle = factionColor; 
+    ctx.beginPath();
+    ctx.moveTo(0, bob);
+    ctx.lineTo(0, -20 + bob);
+    ctx.lineTo(15, -5 + bob);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Mast
+    ctx.strokeStyle = "#5d4037";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, bob);
+    ctx.lineTo(0, -22 + bob);
+    ctx.stroke();
 
-        ctx.restore();
-    }
-
- 
+    ctx.restore();
+}
 let economyTick = 0;
 
 function update() {
+
+// 1. ADD THIS TO FREEZE THE GAME:
+    // If the Settlement System exists and the menu is open, stop updating the game logic!
+    if (typeof troopGUI !== 'undefined' && troopGUI.isOpen) {
+        return; 
+    }
+
     if (inBattleMode) {
         // --- 1. BATTLEFIELD MODE ---
      calculateMovement(player.baseSpeed / 7, null, BATTLE_TILE_SIZE, null, null, true); 
@@ -875,164 +901,177 @@ if (typeof globalNPCs !== 'undefined' && player) {
         }
     }
 }
-
+//DRAW EVERYTHING TO RUN GAME
  function draw() {
-    ctx.fillStyle = "#050505";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+			ctx.fillStyle = "#050505";
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.save();
-    ctx.translate(canvas.width/2, canvas.height/2);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-player.x, -player.y);
+			ctx.save();
+			ctx.translate(canvas.width/2, canvas.height/2);
+			ctx.scale(zoom, zoom);
+			ctx.translate(-player.x, -player.y);
 
-    if (inBattleMode) {
-        // --- 1. DRAW BATTLEFIELD ---
-        if (battleEnvironment.bgCanvas) {
-            ctx.drawImage(battleEnvironment.bgCanvas, 0, 0); 
-        }
+			if (inBattleMode) {
+		// --- 1. DRAW BATTLEFIELD ---
+				
+				// NEW: Paint the "abyss" with the base terrain color so retreating units don't float in space
+				ctx.fillStyle = battleEnvironment.groundColor || "#767950";
+				// Draw a massive rectangle extending far beyond the map bounds (-3000px in all directions)
+				ctx.fillRect(-3000, -3000, 8400, 7600); 
 
-        drawBattleUnits(ctx);
+				// Draw the textured battlefield directly on top
+				if (battleEnvironment.bgCanvas) {
+				   // To this:
+		ctx.drawImage(battleEnvironment.bgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
+				}
 
- 
-		        ctx.save();
-        ctx.font = "bold 16px Georgia";
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.fillRect(canvas.width / 2 - 150, 20, 300, 30);
-        ctx.fillStyle = "#f5d76e";
-        ctx.textAlign = "center";
-        ctx.fillText("Press P to exit when battle is over", canvas.width / 2, 40);
-        ctx.restore();
-    } 
-    else if (inCityMode) {
-        // --- 2. DRAW CITY ---
-        let cityData = cityDimensions[currentActiveCityFaction];
-        if (cityData && cityData.bgCanvas) {
-            ctx.drawImage(cityData.bgCanvas, 0, 0); 
-        }
+				drawBattleUnits(ctx);
 
-        if (typeof drawCityCosmeticNPCs === 'function') {
-            drawCityCosmeticNPCs(ctx, currentActiveCityFaction, drawCaravan, zoom);
-        }
-     
-        let pColor = "#d32f2f"; 
-        if (typeof FACTIONS !== 'undefined' && player.faction && FACTIONS[player.faction]) {
-            pColor = FACTIONS[player.faction].color;
-        }
-        if (typeof drawHuman === 'function') {
+		 
+						ctx.save();
+				ctx.font = "bold 16px Georgia";
+				ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+				ctx.fillRect(canvas.width / 2 - 150, 20, 300, 30);
+				ctx.fillStyle = "#f5d76e";
+				ctx.textAlign = "center";
+				ctx.fillText("Press P to exit when battle is over", canvas.width / 2, 40);
+				ctx.restore();
+			} 
+			else if (inCityMode) {
+				// --- 2. DRAW CITY ---
+				let cityData = cityDimensions[currentActiveCityFaction];
+				if (cityData && cityData.bgCanvas) {
+					ctx.drawImage(cityData.bgCanvas, 0, 0); 
+				}
+
+				if (typeof drawCityCosmeticNPCs === 'function') {
+					drawCityCosmeticNPCs(ctx, currentActiveCityFaction, drawCaravan, zoom);
+				}
+			 
+				let pColor = "#d32f2f"; 
+				if (typeof FACTIONS !== 'undefined' && player.faction && FACTIONS[player.faction]) {
+					pColor = FACTIONS[player.faction].color;
+				}
+				if (typeof drawHuman === 'function') {
+				
+					drawHuman(ctx, player.x, player.y, player.isMoving, player.anim, pColor);
+				}
+
+				ctx.save();
+				ctx.font = "bold 16px Georgia";
+				ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+				ctx.fillRect(canvas.width / 2 - 150, 20, 300, 30);
+				ctx.fillStyle = "#f5d76e";
+				ctx.textAlign = "center";
+				ctx.fillText("Press P or walk South to exit", canvas.width / 2, 40);
+				ctx.restore();
+			} 
+			else {
+				// --- 3. DRAW WORLD MAP ---
+				ctx.imageSmoothingEnabled = true;
+				ctx.drawImage(bgCanvas, 0, 0);
+
+				// SURGERY: Calculate what the camera can actually see right now
+				let halfWidth = (canvas.width / 2) / zoom;
+				let halfHeight = (canvas.height / 2) / zoom;
+				// Add 150px padding so things don't pop out abruptly at the edges
+				let camLeft = player.x - halfWidth - 150; 
+				let camRight = player.x + halfWidth + 150;
+				let camTop = player.y - halfHeight - 150;
+				let camBottom = player.y + halfHeight + 150;
+
+
+				cities.forEach(c => {
+				
+				// SURGERY: If the city is outside the camera view, skip rendering entirely!
+				if (c.x < camLeft || c.x > camRight || c.y < camTop || c.y > camBottom) return;
+			
+					ctx.lineWidth = 3;
+					ctx.fillStyle = c.color;
+					ctx.strokeStyle = "#ffca28"; 
+
+					if (c.pop < 3000) {
+						ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+					} else if (c.pop < 5000) {
+						ctx.beginPath(); ctx.rect(c.x - 12, c.y - 12, 24, 24); ctx.fill(); ctx.stroke();
+					} else {
+						const r = 14;
+						ctx.beginPath();
+						for (let i = 0; i < 6; i++) {
+							const angle = Math.PI / 3 * i;
+							const px = c.x + r * Math.cos(angle);
+							const py = c.y + r * Math.sin(angle);
+							if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+						}
+						ctx.closePath(); ctx.fill(); ctx.stroke();
+					}
+
+					ctx.fillStyle = "#fff";
+					ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, Math.PI * 2); ctx.fill();
+
+					let fontSize = Math.max(12, 20 / zoom); 
+					ctx.font = `bold ${fontSize}px Georgia`;
+					ctx.textAlign = "center";
+					ctx.fillStyle = "#111"; 
+					ctx.fillText(c.name, c.x + 2, c.y - 18);
+					ctx.fillStyle = c.color; 
+					ctx.fillText(c.name, c.x, c.y - 20);
+				});
+		 
+			   // SURGERY: Pass the camera bounds to the NPC rendering system
+				drawAllNPCs(ctx, drawCaravan, drawShip, zoom, camLeft, camRight, camTop, camBottom);
+				
+				
+				let tx = Math.floor(player.x / TILE_SIZE);
+				let ty = Math.floor(player.y / TILE_SIZE);
+				
+				let currentTile = (worldMap[tx] && worldMap[tx][ty]) ? worldMap[tx][ty] : {name: "Plains"};
+				if (currentTile.name === "Coastal" || currentTile.name === "River" || currentTile.name === "Ocean") {
+					drawShip(player.x, player.y, player.isMoving, player.anim, player.color);
+				} 
+				else {drawCaravan(player.x, player.y, player.isMoving, player.anim, player.color);}
+
+				// ---> SURGICAL FIX: PLAYER LABEL (TIGHT STACK, NO WHITE TEXT) <---
+				let nameFontSize = Math.max(10, 14 / zoom);
+				let detailFontSize = Math.max(8, 12 / zoom);
+				ctx.textAlign = "center";
+
+				// 1. TOP STATS (Gold & Food - Ultra Tight)
+				ctx.font = `italic ${detailFontSize}px Georgia`;
+				let goldText = `G: ${Math.floor(player.gold)}`;
+				let foodText = `F: ${Math.floor(player.food)}`;
+				let statGap = 8; 
+
+				ctx.fillStyle = "#ffca28"; // Gold text is now gold
+				ctx.fillText(goldText, player.x - (ctx.measureText(foodText).width / 2) - (statGap / 2), player.y - 38);
+
+				ctx.fillStyle = "#8bc34a"; // Food text stays green
+				ctx.fillText(foodText, player.x + (ctx.measureText(goldText).width / 2) + (statGap / 2), player.y - 38);
+
+				// 2. NAME ("YOU") - Now the bottom-most line, sits right above hat tip
+				ctx.font = `bold ${nameFontSize}px Georgia`;
+				ctx.fillStyle = "#ffffff"; // YOU text is now white
+				ctx.fillText("YOU", player.x, player.y - 26);
+				ctx.font = "10px Arial";
+				}
+				
+		ctx.restore();
 		
-            drawHuman(ctx, player.x, player.y, player.isMoving, player.anim, pColor);
-        }
-
-        ctx.save();
-        ctx.font = "bold 16px Georgia";
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.fillRect(canvas.width / 2 - 150, 20, 300, 30);
-        ctx.fillStyle = "#f5d76e";
-        ctx.textAlign = "center";
-        ctx.fillText("Press P or walk South to exit", canvas.width / 2, 40);
-        ctx.restore();
-    } 
-    else {
-        // --- 3. DRAW WORLD MAP ---
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(bgCanvas, 0, 0);
-
-// SURGERY: Calculate what the camera can actually see right now
-let halfWidth = (canvas.width / 2) / zoom;
-let halfHeight = (canvas.height / 2) / zoom;
-// Add 150px padding so things don't pop out abruptly at the edges
-let camLeft = player.x - halfWidth - 150; 
-let camRight = player.x + halfWidth + 150;
-let camTop = player.y - halfHeight - 150;
-let camBottom = player.y + halfHeight + 150;
-
-
-        cities.forEach(c => {
-		
-		// SURGERY: If the city is outside the camera view, skip rendering entirely!
-    if (c.x < camLeft || c.x > camRight || c.y < camTop || c.y > camBottom) return;
-	
-            ctx.lineWidth = 3;
-            ctx.fillStyle = c.color;
-            ctx.strokeStyle = "#ffca28"; 
-
-            if (c.pop < 3000) {
-                ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-            } else if (c.pop < 5000) {
-                ctx.beginPath(); ctx.rect(c.x - 12, c.y - 12, 24, 24); ctx.fill(); ctx.stroke();
-            } else {
-                const r = 14;
-                ctx.beginPath();
-                for (let i = 0; i < 6; i++) {
-                    const angle = Math.PI / 3 * i;
-                    const px = c.x + r * Math.cos(angle);
-                    const py = c.y + r * Math.sin(angle);
-                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-                }
-                ctx.closePath(); ctx.fill(); ctx.stroke();
-            }
-
-            ctx.fillStyle = "#fff";
-            ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, Math.PI * 2); ctx.fill();
-
-            let fontSize = Math.max(12, 20 / zoom); 
-            ctx.font = `bold ${fontSize}px Georgia`;
-            ctx.textAlign = "center";
-            ctx.fillStyle = "#111"; 
-            ctx.fillText(c.name, c.x + 2, c.y - 18);
-            ctx.fillStyle = c.color; 
-            ctx.fillText(c.name, c.x, c.y - 20);
-        });
- 
-       // SURGERY: Pass the camera bounds to the NPC rendering system
-		drawAllNPCs(ctx, drawCaravan, drawShip, zoom, camLeft, camRight, camTop, camBottom);
-        let tx = Math.floor(player.x / TILE_SIZE);
-        let ty = Math.floor(player.y / TILE_SIZE);
-        let currentTile = (worldMap[tx] && worldMap[tx][ty]) ? worldMap[tx][ty] : {name: "Plains"};
-
-        if (currentTile.name === "Coastal" || currentTile.name === "River" || currentTile.name === "Ocean") {
- 
-			drawShip(player.x, player.y, player.isMoving, player.anim);
-        } else {
-		
- 
-            drawCaravan(player.x, player.y, player.isMoving, player.anim);
-        }	
-
-// ---> SURGICAL FIX: PLAYER LABEL (TIGHT STACK, NO WHITE TEXT) <---
-let nameFontSize = Math.max(10, 14 / zoom);
-let detailFontSize = Math.max(8, 12 / zoom);
-ctx.textAlign = "center";
-
-// 1. TOP STATS (Gold & Food - Ultra Tight)
-ctx.font = `italic ${detailFontSize}px Georgia`;
-let goldText = `G: ${Math.floor(player.gold)}`;
-let foodText = `F: ${Math.floor(player.food)}`;
-let statGap = 8; 
-
-ctx.fillStyle = "#ffca28"; 
-ctx.fillText(goldText, player.x - (ctx.measureText(foodText).width / 2) - (statGap / 2), player.y - 38);
-ctx.fillStyle = "#8bc34a"; 
-ctx.fillText(foodText, player.x + (ctx.measureText(goldText).width / 2) + (statGap / 2), player.y - 38);
-
-// 2. NAME ("YOU") - Now the bottom-most line, sits right above hat tip
-ctx.font = `bold ${nameFontSize}px Georgia`;
-ctx.fillStyle = "#ffca28"; 
-ctx.fillText("YOU", player.x, player.y - 26);
-
-ctx.font = "14px Arial"; // Reset
-    // Optional: Add a small sub-label for Food/Gold to match the NPC vibe
-    ctx.font = "10px Arial";
- 
-		
+		// ---> ADD THIS FIX: Render the overlay UI on top of everything <---
+    if (typeof drawPlayerOverlay === 'function') {
+        drawPlayerOverlay(ctx, player, zoom);
     }
-// ADD THIS LINE HERE:
-drawPlayerOverlay(ctx, player, zoom);
-    ctx.restore();
-    requestAnimationFrame(() => { update(); draw(); });
-}
-	 //initGame();
-	showMainMenu();
+	
+		requestAnimationFrame(() => { update(); draw(); });
+		
+		
+}//draw() end
+
+
+//initGame();
+showMainMenu();
+ 
+
 // Define the missing function to stop the background crashing
 function enforceNPCBounds(npc, maxWidth, maxHeight) {
     if (npc.x < 0) npc.x = 0;
@@ -1040,12 +1079,10 @@ function enforceNPCBounds(npc, maxWidth, maxHeight) {
     if (npc.y < 0) npc.y = 0;
     if (npc.y > maxHeight) npc.y = maxHeight;
 }
+
 // Optimized: Run bounds check every 100ms instead of every frame (Lag Fix)
-setInterval(() => {
-    if (typeof globalNPCs !== 'undefined') {
-        globalNPCs.forEach(npc => enforceNPCBounds(npc, WORLD_WIDTH, WORLD_HEIGHT));
-    }
-}, 100);
+setInterval(() => {if (typeof globalNPCs !== 'undefined') {globalNPCs.forEach(npc => enforceNPCBounds(npc, WORLD_WIDTH, WORLD_HEIGHT));}}, 100);
+
 </script>
 </body>
 </html>

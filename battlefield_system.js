@@ -69,6 +69,7 @@ function generateBattlefield(worldTerrainType) {
     let treeColorPool = ["#2e4a1f", "#3a5f27", "#1f3315"];
     let rockColor = "#5c5c5c";
 
+    // --- YOUR ORIGINAL TERRAIN LOGIC (DO NOT DELETE) ---
     if (worldTerrainType.includes("Forest")) {
         groundColor = "#425232";
         generateBattleOrganicFeatures(grid, 3, 150, 20); 
@@ -89,14 +90,49 @@ function generateBattlefield(worldTerrainType) {
         generateBattleOrganicFeatures(grid, 7, 30, 10);  
     }
 
+    // --- SURGERY: CANVAS EXPANSION ---
+    const VISUAL_PADDING = 1200; // The size of the "Outer Bound" area
     const canvas = document.createElement('canvas');
-    canvas.width = BATTLE_WORLD_WIDTH;
-    canvas.height = BATTLE_WORLD_HEIGHT;
+    // We make the canvas significantly larger than the gameplay area
+    canvas.width = BATTLE_WORLD_WIDTH + (VISUAL_PADDING * 2);
+    canvas.height = BATTLE_WORLD_HEIGHT + (VISUAL_PADDING * 2);
     const ctx = canvas.getContext('2d');
 
+    // 1. Paint the "Infinite" Floor
     ctx.fillStyle = groundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // 2. SURGERY: Decorative Outer Bound Textures
+    // This populates the "Abyss" so it looks like a real world
+    for (let i = 0; i < canvas.width; i += 60) {
+        for (let j = 0; j < canvas.height; j += 60) {
+            // Only draw if we are OUTSIDE the playable battle area
+            if (i < VISUAL_PADDING || i > BATTLE_WORLD_WIDTH + VISUAL_PADDING || 
+                j < VISUAL_PADDING || j > BATTLE_WORLD_HEIGHT + VISUAL_PADDING) {
+                
+                let rand = Math.random();
+                if (rand > 0.98) { // Decorative Trees
+                    ctx.fillStyle = treeColorPool[Math.floor(Math.random() * treeColorPool.length)];
+                    ctx.beginPath();
+                    ctx.arc(i, j, 5 + (Math.random() * 8), 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (rand > 0.97) { // Decorative Rocks
+                    ctx.fillStyle = rockColor;
+                    ctx.beginPath();
+                    ctx.moveTo(i, j + 10);
+                    ctx.lineTo(i + 5, j);
+                    ctx.lineTo(i + 10, j + 10);
+                    ctx.fill();
+                }
+            }
+        }
+    }
+
+    // 3. Shift the context so your original grid logic draws in the center
+    ctx.save();
+    ctx.translate(VISUAL_PADDING, VISUAL_PADDING);
+
+    // --- YOUR ORIGINAL GRID DRAWING LOOP (DO NOT DELETE) ---
     for (let i = 0; i < BATTLE_COLS; i++) {
         for (let j = 0; j < BATTLE_ROWS; j++) {
             let px = i * BATTLE_TILE_SIZE;
@@ -127,13 +163,25 @@ function generateBattlefield(worldTerrainType) {
         }
     }
 
+    // 4. SURGERY: The Red Tactical Boundary
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.6)";
+    ctx.lineWidth = 8;
+    ctx.setLineDash([15, 15]); // Makes it look like a tactical UI line
+    ctx.strokeRect(0, 0, BATTLE_WORLD_WIDTH, BATTLE_WORLD_HEIGHT);
+    ctx.setLineDash([]); // Reset for other drawings
+    
+    ctx.restore(); // Back to global canvas space
+
+    // Store state
     battleEnvironment.bgCanvas = canvas;
     battleEnvironment.grid = grid;
+    battleEnvironment.groundColor = groundColor;
+    battleEnvironment.visualPadding = VISUAL_PADDING; // Store this for the camera!
 }
-
 // --- ENTER BATTLE LOGIC ---
 function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     if (inCityMode) return; 
+	
 
     savedWorldPlayerState_Battle.x = playerObj.x;
     savedWorldPlayerState_Battle.y = playerObj.y;
@@ -143,9 +191,19 @@ currentBattleData = {
         enemyRef: enemyNPC,
         playerFaction: playerObj.faction || "Hong Dynasty",
         enemyFaction: enemyNPC.faction,
-        // STEP 2: Initialize counts here so they are ready for deployArmy
-        initialCounts: { player: 0, enemy: 0 } 
-    };
+        initialCounts: { player: 0, enemy: 0 },
+        // ADD THESE:
+        
+    // UPDATED:
+    playerColor: (typeof FACTIONS !== 'undefined' && FACTIONS[playerObj.faction]) 
+        ? FACTIONS[playerObj.faction].color 
+        : "#ffffff", // white fallback
+
+    enemyColor: (typeof FACTIONS !== 'undefined' && FACTIONS[enemyNPC.faction]) 
+        ? FACTIONS[enemyNPC.faction].color 
+        : "#000000" // black fallback
+
+		};
 
     generateBattlefield(currentWorldMapTile.name || "Plains");
 
@@ -154,7 +212,7 @@ currentBattleData = {
 
 // FIX: Pull the real troop count from the player object
     let playerTroopCount = playerObj.troops || 0; // Use actual troops, or 0 as a fallback
-    
+    let playerUniqueType = playerObj.uniqueUnit || null; // Get the unique unit name (e.g., "Mangudai")
     deployArmy(currentBattleData.playerFaction, playerTroopCount, "player"); 
     deployArmy(enemyNPC.faction, enemyNPC.count, "enemy");
 	
@@ -173,205 +231,172 @@ currentBattleData = {
     }
     
     AudioManager.playSound("charge"); // Warcry SFX on spawn
+	// Trigger the Epic Zoom: Starts at 0.3x (high up), lands at 1.5x (tactical view) over 1.5 seconds
+    if (typeof triggerEpicZoom === 'function') {
+        triggerEpicZoom(0.1, 1.5, 3500);
+    }
 }
  
-
-// --- ARMY DEPLOYMENT BASED ON FACTION RACE ---
-function deployArmy(faction, totalTroops, side) {
-	
-	// 1. NEW: Track initial counts for the battle summary
+// --- ARMY DEPLOYMENT BASED ON FACTION RACE & ACTUAL ROSTER ---
+function deployArmy(faction, totalTroops, side, uniqueType) {
+    
+    // 1. Track initial counts for the battle summary
     if (!currentBattleData.initialCounts) {
         currentBattleData.initialCounts = { player: 0, enemy: 0 };
     }
-    currentBattleData.initialCounts[side] += totalTroops;
-
+    
     // 2. Setup spawn coordinates
     let spawnY = side === "player" ? BATTLE_WORLD_HEIGHT - 300 : 300;
     let spawnXCenter = BATTLE_WORLD_WIDTH / 2;
-    
     let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[faction]) ? FACTIONS[faction].color : "#ffffff";
-    let composition = [];
     
-    // Dynamic Faction Logic
-// Dynamic Faction Logic
-// Dynamic Faction Logic
-if (faction === "Great Khaganate") {
-    composition = [
-        {type: "Light Horse Archer", pct: 0.35},
-        {type: "Horse Archer", pct: 0.30},
-        {type: "Heavy Horse Archer", pct: 0.20},
-        {type: "Lancer", pct: 0.10},
-        {type: "Heavy Lancer", pct: 0.05}
-    ];
+    let composition = [];
 
-} else if (faction === "Shahdom of Iransar") {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.10},
-        {type: "Archer", pct: 0.10},
-        {type: "Spearman", pct: 0.10},
+// =========================================================
+    // THE FIX: If it's the player, read EXACTLY what they bought
+    // =========================================================
+    if (side === "player" && typeof player !== 'undefined' && player.roster && player.roster.length > 0) {
+        let counts = {};
+        
+        // Tally up the exact units in the roster
+        player.roster.forEach(unit => {
+            let rawType = unit.type || unit.name;
+            if (!rawType) return;
+            // Force exact UI capitalization so the Engine never misses the database name
+            let type = rawType.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            if (type.toLowerCase() === "militia") type = "Militia";
+            
+            counts[type] = (counts[type] || 0) + 1;
+        });
 
-        {type: "Horse Archer", pct: 0.20},
-        {type: "Heavy Lancer", pct: 0.20},
+        // Convert the exact counts into percentages for your visual scaling engine
+        let totalRosterSize = player.roster.length;
+        for (let [type, count] of Object.entries(counts)) {
+            composition.push({ type: type, pct: count / totalRosterSize });
+        }
 
-        {type: "Bomb", pct: 0.10},
-        {type: "Heavy Horse Archer", pct: 0.20}
-    ];
+        // CRITICAL FIX: Sort ascending! 
+        // This ensures rare unique units (like 2 Slingers) get calculated FIRST. 
+        // Otherwise, Math.round() on the 90% Militia blob will hit the unit cap early and erase them.
+        composition.sort((a, b) => a.pct - b.pct);
 
-} else if (faction === "Hong Dynasty") {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.40},
-        {type: "Spearman", pct: 0.10},
-        {type: "Poison Crossbowman", pct: 0.05},
-        {type: "Repeater Crossbowman", pct: 0.10},
-        {type: "Heavy Crossbowman", pct: 0.10},
-{type: "Bomb", pct: 0.05},
-        {type: "Firelance", pct: 0.05},
-        {type: "Rocket", pct: 0.05},
+        // Override totalTroops to match the actual roster size
+        totalTroops = totalRosterSize;
 
-        {type: "Archer", pct: 0.10}
-    ];
+    } else {
+        // =========================================================
+        // ENEMY AI: Use the hardcoded percentage templates
+        // =========================================================
+        if (faction === "Great Khaganate") {
+            composition = [
+                {type: "Light Horse Archer", pct: 0.35}, {type: "Horse Archer", pct: 0.30},
+                {type: "Heavy Horse Archer", pct: 0.20}, {type: "Lancer", pct: 0.10}, {type: "Heavy Lancer", pct: 0.05}
+            ];
+        } else if (faction === "Shahdom of Iransar") {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.10}, {type: "Archer", pct: 0.10}, {type: "Spearman", pct: 0.10},
+                {type: "Horse Archer", pct: 0.20}, {type: "Heavy Lancer", pct: 0.20}, {type: "Bomb", pct: 0.10}, {type: "Heavy Horse Archer", pct: 0.20}
+            ];
+        } else if (faction === "Hong Dynasty") {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.40}, {type: "Spearman", pct: 0.10}, {type: "Poison Crossbowman", pct: 0.05},
+                {type: "Repeater Crossbowman", pct: 0.10}, {type: "Heavy Crossbowman", pct: 0.10}, {type: "Bomb", pct: 0.05},
+                {type: "Firelance", pct: 0.05}, {type: "Rocket", pct: 0.05}, {type: "Archer", pct: 0.10}
+            ];
+        } else if (faction === "Vietan Realm") {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.15}, {type: "Glaiveman", pct: 0.20}, {type: "Repeater Crossbowman", pct: 0.15},
+                {type: "Poison Crossbowman", pct: 0.15}, {type: "Firelance", pct: 0.15}, {type: "Archer", pct: 0.10}, {type: "Heavy Horse Archer", pct: 0.10}
+            ];
+        } else if (faction === "Jinlord Confederacy") {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.15}, {type: "Spearman", pct: 0.15}, {type: "Crossbowman", pct: 0.20},
+                {type: "Heavy Crossbowman", pct: 0.15}, {type: "Hand Cannoneer", pct: 0.15}, {type: "Heavy Lancer", pct: 0.10}, {type: "Archer", pct: 0.10}
+            ];
+        } else if (faction === "Xiaran Dominion") {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.15}, {type: "Heavy Shielded Spear", pct: 0.15}, {type: "Crossbowman", pct: 0.15},
+                {type: "Camel Cannon", pct: 0.15}, {type: "Hand Cannoneer", pct: 0.15}, {type: "Bomb", pct: 0.10}, {type: "Lancer", pct: 0.15}
+            ];
+        } else if (faction === "Goryun Kingdom") {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.20}, {type: "Heavy Shielded Spear", pct: 0.15}, {type: "Heavy Crossbowman", pct: 0.15},
+                {type: "Crossbowman", pct: 0.15}, {type: "Hand Cannoneer", pct: 0.15}, {type: "Rocket", pct: 0.10}, {type: "Archer", pct: 0.10}
+            ];
+        } else if (faction === "High Plateau Kingdoms") {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.15}, {type: "Spearman", pct: 0.15}, {type: "Heavy Two Handed", pct: 0.20},
+                {type: "Light Two Handed", pct: 0.15}, {type: "Archer", pct: 0.15}, {type: "Slinger", pct: 0.10}, {type: "Lancer", pct: 0.10}
+            ];
+        } else if (faction === "Yamato Clans") {
+            composition = [
+                {type: "Spearman", pct: 0.20}, {type: "Glaiveman", pct: 0.20}, {type: "Light Two Handed", pct: 0.15},
+                {type: "Heavy Two Handed", pct: 0.10}, {type: "Archer", pct: 0.20}, {type: "Lancer", pct: 0.10}, {type: "Heavy Horse Archer", pct: 0.05}
+            ];
+        } else if (faction === "Bandits") {
+            composition = [
+                {type: "Militia", pct: 0.60}, {type: "Spearman", pct: 0.40}
+            ];
+        } else {
+            composition = [
+                {type: "Shielded Infantry", pct: 0.25}, {type: "Spearman", pct: 0.20}, {type: "Archer", pct: 0.20},
+                {type: "Crossbowman", pct: 0.15}, {type: "Lancer", pct: 0.10}, {type: "Light Two Handed", pct: 0.10}
+            ];
+        }
+    }
 
-} else if (faction === "Vietan Realm") {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.15},
-        {type: "Glaiveman", pct: 0.20},
+    currentBattleData.initialCounts[side] += totalTroops;
 
-        {type: "Repeater Crossbowman", pct: 0.15},
-        {type: "Poison Crossbowman", pct: 0.15},
-
-        {type: "Firelance", pct: 0.15},
-        {type: "Archer", pct: 0.10},
-
-        {type: "Heavy Horse Archer", pct: 0.10}
-    ];
-
-} else if (faction === "Jinlord Confederacy") {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.15},
-        {type: "Spearman", pct: 0.15},
-
-        {type: "Crossbowman", pct: 0.20},
-        {type: "Heavy Crossbowman", pct: 0.15},
-
-        {type: "Hand Cannoneer", pct: 0.15},
-        {type: "Heavy Lancer", pct: 0.10},
-
-        {type: "Archer", pct: 0.10}
-    ];
-
-} else if (faction === "Xiaran Dominion") {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.15},
-        {type: "Heavy Shielded Spear", pct: 0.15},
-
-        {type: "Crossbowman", pct: 0.15},
-        {type: "Camel Cannon", pct: 0.15},
-
-        {type: "Hand Cannoneer", pct: 0.15},
-        {type: "Bomb", pct: 0.10},
-
-        {type: "Lancer", pct: 0.15}
-    ];
-
-} else if (faction === "Goryun Kingdom") {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.20},
-        {type: "Heavy Shielded Spear", pct: 0.15},
-
-        {type: "Heavy Crossbowman", pct: 0.15},
-        {type: "Crossbowman", pct: 0.15},
-
-        {type: "Hand Cannoneer", pct: 0.15},
-        {type: "Rocket", pct: 0.10},
-
-        {type: "Archer", pct: 0.10}
-    ];
-
-} else if (faction === "High Plateau Kingdoms") {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.15},
-        {type: "Spearman", pct: 0.15},
-
-        {type: "Heavy Two Handed", pct: 0.20},
-        {type: "Light Two Handed", pct: 0.15},
-
-        {type: "Archer", pct: 0.15},
-        {type: "Slinger", pct: 0.10},
-
-        {type: "Lancer", pct: 0.10}
-    ];
-
-} else if (faction === "Yamato Clans") {
-    composition = [
-        {type: "Spearman", pct: 0.20},
-        {type: "Glaiveman", pct: 0.20},
-
-        {type: "Light Two Handed", pct: 0.15},
-        {type: "Heavy Two Handed", pct: 0.10},
-
-        {type: "Archer", pct: 0.20},
-
-        {type: "Lancer", pct: 0.10},
-        {type: "Heavy Horse Archer", pct: 0.05}
-    ];
-
-} else if (faction === "Bandits") {
-    composition = [
-		{		type: "Militia", pct: 0.60},        // Main Horde
-        {type: "Spearman", pct: 0.40},           
- 
-    ];
-
-} else {
-    composition = [
-        {type: "Shielded Infantry", pct: 0.25},
-        {type: "Spearman", pct: 0.20},
-        {type: "Archer", pct: 0.20},
-        {type: "Crossbowman", pct: 0.15},
-        {type: "Lancer", pct: 0.10},
-        {type: "Light Two Handed", pct: 0.10}
-    ];
-}
-
-    // Scale down rendering to prevent lag if armies are massive (e.g. 1 unit visually represents 10 troops)
+    // 3. Spawning Engine (Keeps your visual scale optimization)
     let visualScale = totalTroops > 300 ? 5 : 1; 
-    let unitsToSpawn = Math.round(totalTroops / visualScale); // Use round instead of floor
-	
-	
-  
-// In your existing deployArmy function, replace the template generation with this:
+    let unitsToSpawn = Math.round(totalTroops / visualScale); 
+    
+    let spawnedSoFar = 0;
+
     composition.forEach(comp => {
-      let count = Math.round(unitsToSpawn * comp.pct) || (unitsToSpawn > 0 && comp.pct > 0 ? 1 : 0);
+        if (spawnedSoFar >= unitsToSpawn) return; 
+        
+        let count = Math.round(unitsToSpawn * comp.pct);
+        if (count === 0 && unitsToSpawn > 0) count = 1;
+        count = Math.min(count, unitsToSpawn - spawnedSoFar);
+        spawnedSoFar += count;
+
         let baseTemplate = UnitRoster.allUnits[comp.type];
+        
+        // Safety check just in case a unit type is misspelled or missing
+        if (!baseTemplate) {
+            console.warn(`Unit type ${comp.type} missing from Roster! Defaulting to Militia.`);
+            baseTemplate = UnitRoster.allUnits["Militia"];
+        }
 
         for (let i = 0; i < count; i++) {
             let offsetX = (Math.random() - 0.5) * 600;
             let offsetY = (Math.random() - 0.5) * 50;
             
-            // Apply new tactical positions
-            let tacticalOffset = getTacticalPosition(baseTemplate.role, side);
-            offsetX += tacticalOffset.x;
-            offsetY += tacticalOffset.y;
+            // Apply new tactical positions if the function exists
+            if (typeof getTacticalPosition === 'function') {
+                let tacticalOffset = getTacticalPosition(baseTemplate.role, side);
+                offsetX += tacticalOffset.x;
+                offsetY += tacticalOffset.y;
+            }
 
-            // Deep copy the class instance so each unit has independent HP/Ammo
             let unitStats = Object.assign(
-    new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
-    baseTemplate
-);
-// PERSISTENCE FIX:
-unitStats.experienceLevel = baseTemplate.experienceLevel || 1;
-unitStats.morale = 20;    // Reset to current max for the new battle
-unitStats.maxMorale = 20; // Ensure the cap is consistent
-			
+                new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
+                baseTemplate
+            );
+
+            unitStats.experienceLevel = baseTemplate.experienceLevel || 1;
+            unitStats.morale = 20;    
+            unitStats.maxMorale = 20; 
             unitStats.faction = faction;
 
             battleEnvironment.units.push({
-				id: unitIdCounter++,
+                id: unitIdCounter++,
                 side: side,
                 faction: faction,
                 color: factionColor,
-                unitType: comp.type,
-                stats: unitStats, // Now uses the robust Troop class
+                unitType: comp.type, // Will correctly apply "Mangudai", "Rocket", etc.
+                stats: unitStats, 
                 hp: unitStats.health,
                 x: spawnXCenter + offsetX,
                 y: spawnY + offsetY,
@@ -382,11 +407,37 @@ unitStats.maxMorale = 20; // Ensure the cap is consistent
             });
         }
     });
-	
-
-	 
 }
 
+function spawnUniqueReinforcement(type, side, faction, color, centerX, centerY) {
+    let baseTemplate = UnitRoster.allUnits[type];
+    if (!baseTemplate) return;
+
+    let unitStats = Object.assign(
+        new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
+        baseTemplate
+    );
+    
+    // Position him slightly behind or to the side of the main group
+    let offsetX = (Math.random() - 0.5) * 100;
+    let offsetY = side === "player" ? 50 : -50; 
+
+    battleEnvironment.units.push({
+        id: unitIdCounter++,
+        side: side,
+        faction: faction,
+        color: color,
+        unitType: type,
+        stats: unitStats,
+        hp: unitStats.health,
+        x: centerX + offsetX,
+        y: centerY + offsetY,
+        target: null,
+        state: "idle",
+        animOffset: Math.random() * 100,
+        cooldown: 0
+    });
+}
 
 // --- Damage Logic ---
 
@@ -409,9 +460,10 @@ function calculateDamageReceived(attacker, defender, stateString) {
     let defenseValue = defender.meleeDefense;
 
 
-
-    attackValue += (attacker.experienceLevel * 0.5);
-
+// We removed the weak 0.5 multiplier. Stats are saved permanently now, 
+    // but we add a dynamic +2 to reward highly leveled troops with an edge in combat calculation.
+    attackValue += (attacker.experienceLevel * 2); 
+    defenseValue += (defender.experienceLevel * 2);
     
 
     if (states.includes("flanked")) defenseValue *= 0.5;
@@ -457,9 +509,8 @@ function calculateDamageReceived(attacker, defender, stateString) {
             // FIX: Replace hardcoded 20 with the attacker's actual melee stat
             let weaponDamage = attacker.meleeAttack + (defender.isLarge ? attacker.bonusVsLarge : 0);
             
-            // FIX: Buff armor mitigation so heavy troops feel like actual tanks
-            // Changed from 0.3 to 0.6 so 20 armor = 12 damage blocked
-            totalDamage = Math.max(1, weaponDamage - (defender.armor * 0.6));
+         
+            totalDamage = Math.max(1, weaponDamage - (defender.armor * 0.3));
         }
     }
 
@@ -475,94 +526,158 @@ let finalDamage = Math.floor(totalDamage);
     return finalDamage; 
 }// Always return a pure number for math operations
  
-
-// --- TACTICAL AI UPDATE LOOP ---
+/* --- TACTICAL AI UPDATE LOOP --- */
 function updateBattleUnits() {
     let units = battleEnvironment.units;
     
-    // Clean dead units
+    /* Clean dead units and initialize global battle trackers */
     battleEnvironment.units = units.filter(u => u.hp > 0);
     units = battleEnvironment.units;
 
-// Initialize Flee Tracker for the UI
-    if (!currentBattleData.fledCounts) currentBattleData.fledCounts = { player: 0, enemy: 0 };
-
-units.forEach(unit => {
-    // Only process morale for living, non-commander troops
-    if (!unit.isCommander && unit.hp > 0) {
-        let hpPct = unit.hp / unit.stats.health;
-        
-        // 1. BRAVERY FACTOR MATH
-        // Armor of 50 = 1.0 (Full resistance). 
-        // We cap it so higher armor (like Elephants at 60) doesn't break the game, 
-        // just treats them as maximum bravery.
-        let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
-        
-        // 2. DEFINE BASE TICK (How fast morale drops based on health)
-        // If they are critically wounded (<10% HP), the panic is faster.
-let baseTick = (hpPct <= 0.1) ? 0.22 : (hpPct <= 0.6 ? 0.11 : 0);
-        // 3. APPLY ARMOR MITIGATION
-        // (1.1 - armorEffect) means:
-        // - 0 Armor loses 1.1x base tick (~20-25 seconds to flee)
-        // - 25 Armor loses 0.6x base tick (~50-60 seconds to flee)
-        // - 50+ Armor loses 0.1x base tick (~5 minutes to flee)
-        if (baseTick > 0) {
-            unit.stats.morale -= baseTick * (1.1 - armorEffect);
-        }
-
-// 4. FLEEING STATE (Morale hits 0 - The "Shameful Display")
-        if (unit.stats.morale <= 0) {
-            unit.state = "moving"; 
-            
-            // A. Initialize escape point if they just started routing
-            if (!unit.escapePoint) {
-                let distToLeft = unit.x;
-                let distToRight = BATTLE_WORLD_WIDTH - unit.x;
-                let distToTop = unit.y;
-                let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
-
-                let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
-
-                // Set target point 100px outside the map for a clean exit
-                if (minDist === distToLeft) unit.escapePoint = { x: -100, y: unit.y };
-                else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH + 100, y: unit.y };
-                else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: -100 };
-                else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT + 100 };
-            }
-
-            // B. Move toward the escape point (with 50% adrenaline speed boost)
-            let dx = unit.escapePoint.x - unit.x;
-            let dy = unit.escapePoint.y - unit.y;
-            let dist = Math.hypot(dx, dy);
-
-            if (dist > 5) {
-                unit.x += (dx / dist) * (unit.stats.speed * 1.5);
-                unit.y += (dy / dist) * (unit.stats.speed * 1.5);
-            }
-
-            // C. DESERTION CONDITION: Remove only once they touch the "Black Border"
-            let isOffMap = (unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || 
-                            unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT);
-
-            if (isOffMap) { 
-                unit.hp = 0; // This triggers your .filter clean-up on the next frame
-                if (currentBattleData && currentBattleData.fledCounts) {
-                    currentBattleData.fledCounts[unit.side]++;
-                }
-            }
-
-            return; // Skip combat/targeting logic because they've thrown down their weapons
-        }
+    if (!currentBattleData.fledCounts) {
+        currentBattleData.fledCounts = { player: 0, enemy: 0 };
     }
-    
-    // ... rest of your combat/movement logic
- 
-        // -----------------------
+    if (!currentBattleData.frames) {
+        currentBattleData.frames = 0;
+    }
+    currentBattleData.frames++;
 
-        // 1. Find nearest enemy if no target
-		
+    const pCount = units.filter(u => u.side === 'player').length;
+    const eCount = units.filter(u => u.side === 'enemy').length;
 
-        // 1. Find nearest enemy if no target
+    /* Process Units */
+    units.forEach(unit => {
+        
+        /* 1. SKIP DEAD UNITS ONLY (Let Commander pass through) */
+        if (unit.hp <= 0) return;
+
+        /* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
+        /* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
+        if (!unit.isCommander) {
+            let hpPct = unit.hp / unit.stats.health;
+            let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
+            
+            // Base drain only starts if they are actually hurt (below 80% HP)
+            let baseTick = (hpPct <= 0.1) ? 0.12 : (hpPct <= 0.8 ? 0.04 : 0);
+
+            /* REVISED OUTNUMBERING: Confidence Boost */
+            // If our side has more units than the enemy, we don't lose morale from "combat stress"
+            const weOutnumberEnemy = (unit.side === 'player' && pCount > eCount) || (unit.side === 'enemy' && eCount > pCount);
+            
+            if (weOutnumberEnemy) {
+                baseTick = 0; 
+            } else if ((unit.side === 'player' && eCount >= pCount * 5) || 
+                       (unit.side === 'enemy' && pCount >= eCount * 5)) {
+                /* Severe Cowardice: Only triggers if heavily outnumbered 5-to-1 */
+                baseTick = 0.2; 
+            }
+
+            /* Armor check: Brave veterans (30+ armor) rarely flee early on */
+            if (unit.stats.armor >= 30 && currentBattleData.frames < 18000) {
+                baseTick *= 0.01; 
+            }
+
+            /* REVISED TRASH MOB LOGIC: Only drain if they are zero-armor AND losing/hurt */
+            if (unit.stats.armor < 5 && unit.target && hpPct < 0.9 && !weOutnumberEnemy) {
+                baseTick += 0.02;
+            }
+
+            // Apply the drain or the recovery
+            if (baseTick > 0) {
+                unit.stats.morale -= baseTick * Math.max(0.1, (1.1 - armorEffect));
+            } else if (unit.stats.morale < 20) { 
+                // Recovery: If winning or safe, slowly regain morale (up to max of 20)
+                unit.stats.morale += 0.005; 
+            }
+
+            /* FLEEING MECHANICS (TWO-STAGE) */
+            /* STAGE 2: Broken (Run Off Map, White Flag outside border) */
+            if (unit.stats.morale <= 0) {
+                unit.state = "FLEEING";
+                
+                if (!unit.escapePoint || unit.escapeType !== "OUTER") {
+                    let distToLeft = unit.x;
+                    let distToRight = BATTLE_WORLD_WIDTH - unit.x;
+                    let distToTop = unit.y;
+                    let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
+                    let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+                    
+                    // Make the escape point massive so they never reach it and just keep running
+                    let outerPadding = -2000; 
+                    
+                    if (minDist === distToLeft) unit.escapePoint = { x: outerPadding, y: unit.y };
+                    else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - outerPadding, y: unit.y };
+                    else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: outerPadding };
+                    else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - outerPadding };
+                    
+                    unit.escapeType = "OUTER";
+                    unit.fleeTimer = 0; // Initialize our new despawn timer
+                }
+
+                let dx = unit.escapePoint.x - unit.x;
+                let dy = unit.escapePoint.y - unit.y;
+                let dist = Math.hypot(dx, dy);
+
+                // They will always be > 8 distance away, so they keep running continuously
+                if (dist > 8) {
+                    unit.x += (dx / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
+                    unit.y += (dy / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
+                }
+
+                // Check if they have officially crossed the red boundary line
+                let isOutsideBorder = unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT;
+                
+                if (isOutsideBorder) {
+                    unit.fleeTimer = (unit.fleeTimer || 0) + 1;
+                    
+                     if (unit.fleeTimer >= 300) { 
+                        unit.hp = 0; 
+                        let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
+                        let scale = sideTotal > 300 ? 5 : 1;
+                        currentBattleData.fledCounts[unit.side] += scale; 
+                    }
+                }
+                return; 
+            }
+            
+            /* STAGE 1: Wavering (Linger at Inner Border until Morale hits 0 or restores) */
+            else if (unit.stats.morale <= 3) {
+                unit.state = "WAVERING";
+                
+                if (!unit.escapePoint || unit.escapeType !== "INNER") {
+                    let distToLeft = unit.x;
+                    let distToRight = BATTLE_WORLD_WIDTH - unit.x;
+                    let distToTop = unit.y;
+                    let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
+                    let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+                    
+                    let innerPadding = 20;
+                    
+                    if (minDist === distToLeft) unit.escapePoint = { x: innerPadding, y: unit.y };
+                    else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - innerPadding, y: unit.y };
+                    else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: innerPadding };
+                    else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - innerPadding };
+                    
+                    unit.escapeType = "INNER";
+                }
+
+                let dx = unit.escapePoint.x - unit.x;
+                let dy = unit.escapePoint.y - unit.y;
+                let dist = Math.hypot(dx, dy);
+
+                if (dist > 8) {
+                    unit.x += (dx / dist) * (unit.stats.speed * 1.5);
+                    unit.y += (dy / dist) * (unit.stats.speed * 1.5);
+                } else {
+                    unit.state = "idle";
+                }
+                return;
+            }
+
+            unit.escapePoint = null;
+            unit.escapeType = null;
+        }
+        /* 3. COMBAT & TARGETING LOGIC */
         if (!unit.target || unit.target.hp <= 0) {
             let nearestDist = Infinity;
             let nearestEnemy = null;
@@ -578,151 +693,163 @@ let baseTick = (hpPct <= 0.1) ? 0.22 : (hpPct <= 0.6 ? 0.11 : 0);
             unit.target = nearestEnemy;
         }
 
-// Inside your existing updateBattleUnits function:
-        // ... (Keep the target finding logic)
-// 2. Act on target
         if (unit.target) {
             let dx = unit.target.x - unit.x;
             let dy = unit.target.y - unit.y;
-            // FIX: Use Math.hypot to get the true linear distance
-			let dist = Math.hypot(dx, dy);
+            let dist = Math.hypot(dx, dy);
 
-            // NEW: Update RPG Stance based on distance
             unit.stats.updateStance(dist);
-// ---> 1. ADD THIS LINE: Shrink range if they are using melee <---
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
-            // Move into range
-           if (dist > effectiveRange*0.8) {
-                unit.state = "moving";
-                if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
+
+            if (dist > effectiveRange * 0.8) {
                 
-                let speedMod = 1.0;
-                let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-                let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-                if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4;
-                if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6;
-
-                // --- MORALE BACK-OFF LOGIC (Morale 1 to 9) ---
-                if (!unit.isCommander && unit.stats.morale > 0 && unit.stats.morale < 10) {
-                    let dir = unit.side === "player" ? 1 : -1;
-                    let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100; // Keep them in bounds
-                    let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
+                // ONLY AI CONTROLLED UNITS MOVE AUTOMATICALLY
+                if (!unit.isCommander) {
+                    unit.state = "moving";
+                    if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
                     
-                    if (notAtEdge) {
-                        unit.y += (unit.stats.speed * speedMod * 0.5) * dir; // Slowly drift backward
-                        unit.x += (Math.random() - 0.5); // Slight nervous wiggle
-                    }
-                } else {
-                    // Normal Advance
-                    unit.x += (dx / dist) * (unit.stats.speed * speedMod);
-                    unit.y += (dy / dist) * (unit.stats.speed * speedMod);
-                }
-            } else {
-                // In range: Attack
-unit.state = "attacking";
-if (unit.cooldown <= 0) {
-    if (unit.stats.currentStance === "statusrange") {
-        
-        // --- REPEATER BURST LOGIC ---
-        let isRepeater = unit.unitType === "Repeater Crossbowman";
-        
-        // 1. Determine the reload/fire rate
-        if (isRepeater && unit.stats.magazine > 1) {
-            unit.cooldown = 5; // Rapid fire speed
-            unit.stats.magazine--; 
-        } else {
-            // Standard Reload or Long Reload for Repeater
-    // Ask the 'Reload Brain' for the correct speed based on unit type
-unit.cooldown = getReloadTime(unit);
-            if (isRepeater) unit.stats.magazine = 10; // Reset magazine
-        }
-  unit.stats.ammo--; 
-        let spread = (100 - unit.stats.accuracy) * 0.6;
+                    let speedMod = 1.0;
+                    let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+                    let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
+                    
+                    if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4;
+                    if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6;
 
-let targetX = unit.target.x + (Math.random() - 0.5) * spread;
-let targetY = unit.target.y + (Math.random() - 0.5) * spread;
-        battleEnvironment.projectiles.push({
-            x: unit.x, y: unit.y, 
-            tx: unit.target.x, ty: unit.target.y,
-            attackerStats: unit.stats,
-            target: unit.target,
-           projectileType: (unit.unitType === "Rocket") ? "Archer" : unit.unitType,
-            isFire: unit.unitType === "Firelance" || unit.unitType === "Bomb"|| unit.unitType === "Rocket",
-        });
-		
-		// ---> PASTE HERE <---
-        // Play appropriate ranged sound effect
-        if (unit.unitType === "Bomb" || unit.unitType === "Camel Cannon") {
-            AudioManager.playSound('bomb');
-        } else if (unit.unitType === "Firelance" || unit.unitType === "Hand Cannoneer" || unit.unitType === "Rocket") {
-            AudioManager.playSound('firelance');
-        } else {
-            AudioManager.playSound('arrow');
-        }
-		
-    } else {
-        // ... rest of your melee logic
-                        // NEW: Melee Damage Calculation
-                        unit.cooldown = 60;
+                    if (unit.stats.morale > 3 && unit.stats.morale < 10) {
+                        let dir = unit.side === "player" ? 1 : -1;
+                        let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
+                        let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
                         
-                        // Build state string (e.g., check if target is facing away for "flanked")
+                        if (notAtEdge) {
+                            unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
+                            unit.x += (Math.random() - 0.5); 
+                        }
+                    } else {
+          /* Revised: Added 0.2 jitter so they don't move in perfect robotic lines */
+unit.x += (dx / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
+unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
+                    }
+                }
+
+            } else {
+                /* Attack Logic */
+                unit.state = "attacking";
+                if (unit.cooldown <= 0) {
+                    if (unit.stats.currentStance === "statusrange") {
+                        
+                        /* Ranged Combat */
+                        let isRepeater = unit.unitType === "Repeater Crossbowman";
+                        
+                        if (isRepeater && unit.stats.magazine > 1) {
+                            unit.cooldown = 5;
+                            unit.stats.magazine--; 
+                        } else {
+                            unit.cooldown = getReloadTime(unit);
+                            if (isRepeater) unit.stats.magazine = 10;
+                        }
+                        
+                        unit.stats.ammo--; 
+                        let spread = (100 - unit.stats.accuracy) * 0.6;
+                        let targetX = unit.target.x + (Math.random() - 0.5) * spread;
+                        let targetY = unit.target.y + (Math.random() - 0.5) * spread;
+                        
+                        battleEnvironment.projectiles.push({
+                            x: unit.x, y: unit.y, 
+                            tx: targetX, ty: targetY,
+                            attackerStats: unit.stats,
+                            target: unit.target,
+                            projectileType: (unit.unitType === "Rocket") ? "Archer" : unit.unitType,
+                            isFire: unit.unitType === "Firelance" || unit.unitType === "Bomb" || unit.unitType === "Rocket"
+                        });
+                        
+                        /* Ranged Audio */
+                        if (unit.unitType === "Bomb" || unit.unitType === "Camel Cannon") {
+                            AudioManager.playSound('bomb');
+                        } else if (unit.unitType === "Firelance" || unit.unitType === "Hand Cannoneer" || unit.unitType === "Rocket") {
+                            AudioManager.playSound('firelance');
+                        } else {
+                            AudioManager.playSound('arrow');
+                        }
+                        
+                    } else {
+                        
+                        /* Melee Combat */
+                        unit.cooldown = 60;
                         let stateStr = "melee_attack";
                         if (unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
                         
                         let dmg = calculateDamageReceived(unit.stats, unit.target.stats, stateStr);
                         unit.target.hp -= dmg;
-                        // ---> ADD THIS SHOCK DAMAGE <---
-// If the hit takes away more than 25% of their total health in one swing, they lose chunk of morale instantly
-if (dmg > (unit.target.stats.health * 0.25)) {
-    unit.target.stats.morale -= 5; // Instant 25% morale drop
-}
-						// ---> PASTE HERE <---
-        if (unit.unitType === "War Elephant") {
-            AudioManager.playSound('elephant');
-        } else {
-            AudioManager.playSound('sword_clash');
-        }
-        
-        if (dmg > 0) {
-            AudioManager.playSound('hit');
-        } else {
-            AudioManager.playSound('shield_block');
-        }
-		
+						
+						// --- EXP GAIN SURGERY (MELEE) ---
+                        if (unit.side === "player" && unit.stats.gainExperience) {
+                            // Commander gets 80% less (0.05), Ally troops gain much faster (0.35)
+                            let baseExp = unit.isCommander ? 0.05 : 0.35; 
+                            if (unit.target.hp <= 0) baseExp *= 3; // Triple EXP for a kill
+                            unit.stats.gainExperience(baseExp);
+                        }
+                        // --------------------------------
+                        
+                        if (dmg > (unit.target.stats.health * 0.25)) {
+                            unit.target.stats.morale -= 5;
+                        }
+                        
+                        /* Melee Audio */
+                        if (unit.unitType === "War Elephant") {
+                            AudioManager.playSound('elephant');
+                        } else {
+                            AudioManager.playSound('sword_clash');
+                        }
+                        if (dmg > 0) {
+                            AudioManager.playSound('hit');
+                        } else {
+                            AudioManager.playSound('shield_block');
+                        }
+                        
+                        /* Knockback */
                         unit.target.x += (dx / dist) * 5;
                         unit.target.y += (dy / dist) * 5;
                     }
                 }
-        }
+            }
         } else {
-            unit.state = "idle";
-            // Recover stamina when idle
+            /* Idle Recovery */
+            // ONLY set idle if it's an AI so player movement isn't overwritten
+            if (!unit.isCommander) {
+                 unit.state = "idle";
+            }
             if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
         }
-battleEnvironment
+        
         if (unit.cooldown > 0) unit.cooldown--;
     });
 
-    // Update Projectiles logic
+    /* 4. UPDATE PROJECTILES */
     for (let i = battleEnvironment.projectiles.length - 1; i >= 0; i--) {
-    let p = battleEnvironment.projectiles[i];
+        let p = battleEnvironment.projectiles[i];
         let dx = p.tx - p.x;
         let dy = p.ty - p.y;
         let dist = Math.hypot(dx, dy);
         
         if (dist < 10) {
             if (p.target) {
-                // NEW: Ranged Damage Calculation on impact
                 let dmg = calculateDamageReceived(p.attackerStats, p.target.stats, "ranged_attack");
                 p.target.hp -= dmg;
+                // --- EXP GAIN SURGERY (RANGED) ---
+                // Find the attacker unit to verify if it's the Commander or a regular troop
+                let attackerUnit = battleEnvironment.units.find(u => u.stats === p.attackerStats);
+                if (attackerUnit && attackerUnit.side === "player" && p.attackerStats.gainExperience) {
+                    let baseExp = attackerUnit.isCommander ? 0.05 : 0.35; 
+                    if (p.target.hp <= 0) baseExp *= 3; // Triple EXP for a kill
+                    p.attackerStats.gainExperience(baseExp);
+                }
+                // ---------------------------------
 				
-				// ---> PASTE HERE <---
                 if (dmg > 0) {
                     AudioManager.playSound('hit');
                 } else {
-                    AudioManager.playSound('shield_block'); // Arrow hit a shield
+                    AudioManager.playSound('shield_block');
                 }
-				
             }
             battleEnvironment.projectiles.splice(i, 1);
         } else {
@@ -732,6 +859,72 @@ battleEnvironment
     }
 }
 
+/* --- I DONT THINK THIS ONE IS EVEN USED --- */
+// --- MAIN RENDER LOOP ---
+function drawBattlefield(ctx, camera) {
+    if (!inBattleMode) return;
+
+    // 1. CLEAR SCREEN (Dynamic Palette Fix)
+    // This fills the screen with the ground color we saved in Surgery 1
+    ctx.fillStyle = battleEnvironment.groundColor || "#000000"; 
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  // 2. DRAW BACKGROUND (bgCanvas)
+    if (battleEnvironment.bgCanvas) {
+        ctx.drawImage(
+            battleEnvironment.bgCanvas,
+            // SOURCE: Add the padding so (0,0) in world-space is the start of the red line
+            camera.x + battleEnvironment.visualPadding, 
+            camera.y + battleEnvironment.visualPadding, 
+            camera.width, camera.height,
+            // DESTINATION: Fill the screen
+            0, 0, ctx.canvas.width, ctx.canvas.height
+        );
+    }
+
+// --- SUPPLY WAGONS (OUTSIDE BOUNDS) ---
+// --- EMERGENCY RENDER: SUPPLY LINES ---
+    // We use BATTLE_WORLD_WIDTH/2 to center them.
+    const centerX = BATTLE_WORLD_WIDTH / 2 - 150; // Offset for the group of 5
+    
+    // Hardcoded colors to ensure they show up even if data is missing
+    const pColor = (currentBattleData && currentBattleData.playerColor) ? currentBattleData.playerColor : "#2196f3";
+    const eColor = (currentBattleData && currentBattleData.enemyColor) ? currentBattleData.enemyColor : "#f44336";
+
+    // TOP WAGONS (Enemy) - Placed at Y: 80 (Inside the map)
+    drawSupplyLines(ctx, centerX, 80, eColor, camera);
+
+    // BOTTOM WAGONS (Player) - Placed at Y: 1520 (Inside the map)
+    drawSupplyLines(ctx, centerX, BATTLE_WORLD_HEIGHT - 80, pColor, camera);
+	
+	
+	
+    // 3. DRAW UNITS
+    battleEnvironment.units.forEach(unit => {
+        if (isOnScreen(unit, camera)) {
+            // Convert world coordinates to screen coordinates
+            let screenX = (unit.x - camera.x) * (ctx.canvas.width / camera.width);
+            let screenY = (unit.y - camera.y) * (ctx.canvas.height / camera.height);
+            
+            // Draw the unit (Assuming drawTroop exists in troop_system.js)
+            if (typeof drawTroop === "function") {
+                drawTroop(ctx, screenX, screenY, unit);
+            }
+        }
+    });
+
+    // 4. DRAW PROJECTILES
+    battleEnvironment.projectiles.forEach(p => {
+        let screenX = (p.x - camera.x) * (ctx.canvas.width / camera.width);
+        let screenY = (p.y - camera.y) * (ctx.canvas.height / camera.height);
+        
+        ctx.fillStyle = p.isFire ? "#ff4500" : "#ffffff";
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 2, 0, Math.PI * 2);
+        ctx.fill();
+    });
+}
+/* --- END SURGERY --- */
 
 function isBattleCollision(x, y) {
     let tx = Math.floor(x / BATTLE_TILE_SIZE);
@@ -936,4 +1129,134 @@ switch (key) {
         console.log(`Unassigned key pressed: ${key}`);
         break;
 }
-});
+});function drawSupplyLines(ctx, x, y, factionColor, camera) {
+    // Spacing increased slightly to account for the more detailed profile
+    for (let i = 0; i < 5; i++) {
+        const spacing = i * 85; 
+        drawDetailedChineseWagon(ctx, x + spacing - camera.x, y - camera.y, factionColor);
+    }
+}
+
+function drawDetailedChineseWagon(ctx, x, y, factionColor) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1.2, 1.2); // Balanced scale
+
+    // --- 1. THE SHADOW ---
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 35, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- 2. THE CHASSIS (Heavy Timber) ---
+    const woodDark = "#3e2723";
+    const woodMid = "#5d4037";
+    
+    // Main base beams
+    ctx.fillStyle = woodDark;
+    ctx.fillRect(-28, 5, 56, 6); // Main floor
+    ctx.fillStyle = woodMid;
+    ctx.fillRect(-28, 5, 56, 2); // Top highlight of beam
+    
+    // Front shafts (The "Tongue" for the horse/ox)
+    ctx.strokeStyle = woodDark;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-28, 8);
+    ctx.lineTo(-45, 12);
+    ctx.stroke();
+
+    // --- 3. THE CANVAS COVER (Barrel Vault) ---
+    const canvasBase = "#d7ccc8"; // Aged parchment/canvas color
+    const canvasShadow = "#bcaaa4";
+    
+    // Draw the main cloth body
+    ctx.fillStyle = canvasBase;
+    ctx.beginPath();
+    ctx.moveTo(-25, 5);
+    // The "Barrel" arch
+    ctx.bezierCurveTo(-25, -35, 25, -35, 25, 5);
+    ctx.fill();
+
+    // DRAW THE "LINES" (Structural Ribs/Folds)
+    // This gives it the realistic bamboo-frame look instead of a flat "salt" texture
+    ctx.strokeStyle = "rgba(0,0,0,0.15)";
+    ctx.lineWidth = 1.5;
+    for (let i = -20; i <= 20; i += 8) {
+        ctx.beginPath();
+        ctx.moveTo(i, 5);
+        ctx.bezierCurveTo(i, -32, i + (i*0.1), -32, i, 5);
+        ctx.stroke();
+    }
+
+    // Front/Back Openings (The dark interior look)
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.moveTo(-25, 5);
+    ctx.quadraticCurveTo(-25, -28, -18, -20);
+    ctx.lineTo(-18, 5);
+    ctx.fill();
+
+    // --- 4. THE FACTION FLAG (Small & Detailed) ---
+    ctx.strokeStyle = "#212121";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(15, -15);
+    ctx.lineTo(15, -35); // Flag pole
+    ctx.stroke();
+
+    ctx.fillStyle = factionColor || "#cc0000";
+    ctx.beginPath();
+    ctx.moveTo(15, -35);
+    ctx.lineTo(28, -30);
+    ctx.lineTo(15, -25);
+    ctx.fill();
+    // Tiny flag detail
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.stroke();
+
+    // --- 5. THE WHEELS (Large Chinese Spoked Wheels) ---
+    // We draw two wheels, one slightly offset for 2.5D depth
+    drawSpokedWheel(ctx, -16, 12, 10); // Front wheel
+    drawSpokedWheel(ctx, 18, 12, 10);  // Back wheel
+
+    ctx.restore();
+}
+
+function drawSpokedWheel(ctx, x, y, radius) {
+    ctx.save();
+    ctx.translate(x, y);
+    
+    // Outer Rim (Tire)
+    ctx.strokeStyle = "#1a1a1a"; // Iron/Dark Wood rim
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner Wood Rim
+    ctx.strokeStyle = "#5d4037";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius - 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // The Hub (Center)
+    ctx.fillStyle = "#212121";
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // The Spokes (12 Spokes for 13th Century style)
+    ctx.strokeStyle = "#3e2723";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 12; i++) {
+        ctx.rotate(Math.PI / 6);
+        ctx.beginPath();
+        ctx.moveTo(0, 2);
+        ctx.lineTo(0, radius - 2);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}

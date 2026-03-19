@@ -492,6 +492,10 @@ function enterCity(factionName, playerObj) {
         playerObj.x = CITY_WORLD_WIDTH / 2;
         playerObj.y = CITY_WORLD_HEIGHT / 2;
     }
+	// Trigger the Epic Zoom: Starts at 0.3x, lands at 1.2x over 1.2 seconds
+    if (typeof triggerEpicZoom === 'function') {
+        triggerEpicZoom(0.3, 1.2, 1200);
+    }
 }
 
 function leaveCity(playerObj) {

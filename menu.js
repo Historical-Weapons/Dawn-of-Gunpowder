@@ -8,7 +8,7 @@ window.showMainMenu = function () {
         if (menuActive) return;
         menuActive = true;
 		
-// --- SELF-CONTAINED MINI MUSIC ENGINE (No AudioManager needed) ---
+        // --- SELF-CONTAINED MINI MUSIC ENGINE (No AudioManager needed) ---
         const startStandaloneMusic = () => {
             const AudioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (AudioCtx.state === 'suspended') AudioCtx.resume();
@@ -23,7 +23,7 @@ window.showMainMenu = function () {
             // A heroic minor melody (Midi notes)
             const melody = [55, 58, 60, 62, 55, 58, 60, 63, 62, 60, 58, 55]; 
 
-   const playNote = (time) => {
+            const playNote = (time) => {
                 // Important: Only play if the menu is still active
                 if (!menuActive) return;
                 const osc = AudioCtx.createOscillator();
@@ -77,7 +77,7 @@ window.showMainMenu = function () {
         menu.style.left = "0";
         menu.style.width = "100%";
         menu.style.height = "100%";
- menu.style.background = "#3e2723";
+        menu.style.background = "#3e2723";
         menu.style.display = "flex";
         menu.style.flexDirection = "column";
         menu.style.alignItems = "center";
@@ -117,15 +117,13 @@ window.showMainMenu = function () {
         title.style.color = "#f5d76e";
         title.style.fontFamily = "Georgia, serif";
         title.style.fontSize = "4rem";
-        title.style.margin = "0 0 40px 0"; // FIXED: Symmetrical margin
-        title.style.textAlign = "center";  // FIXED: Force center alignment
+        title.style.margin = "0 0 40px 0";
+        title.style.textAlign = "center";
         title.style.letterSpacing = "8px";
         title.style.textShadow = "0 0 20px rgba(212, 184, 134, 0.8), 0 5px 15px rgba(123, 26, 26, 0.9)";
+        title.style.border = "none";
+        title.style.borderBottom = "none";
 
- 
-// ADD THESE TWO LINES TO KILL THE LINE:
-title.style.border = "none";
-title.style.borderBottom = "none";
         // --- BUTTON CREATOR ---
         function createBtn(text, onClick) {
             const btn = document.createElement("button");
@@ -182,47 +180,117 @@ title.style.borderBottom = "none";
                 window.isPaused = false; // UNPAUSE
             }, 500);
         }
-
-        const playBtn = createBtn("Enter World", () => {
-			AudioManager.init();
-            destroyMenu();
-            startGameSafe();
+const playBtn = createBtn("Enter World", () => {
+    // --- SURGERY: MAXIMIZE BROWSER ---
+    if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.warn("Fullscreen blocked or failed:", err.message);
         });
-// 1. HIDDEN BY DEFAULT
+    }
+
+    if (typeof AudioManager !== 'undefined') AudioManager.init();
+    destroyMenu();
+    startGameSafe();
+});
+        
+        // HIDDEN BY DEFAULT
         playBtn.style.display = "none";
 		
 		const instrBtn = createBtn("Manual", () => {
-            // 2. MAKE PLAY BUTTON VISIBLE ON CLICK
+            // MAKE PLAY BUTTON VISIBLE ON CLICK
             playBtn.style.display = "block";
             
             // Optional: Give the user feedback that they "unlocked" the game
             instrBtn.innerText = "Manual";
             instrBtn.style.opacity = "0.7";
 
-alert(`DAWN OF GUNPOWDER: EMPIRE OF THE 13TH CENTURY
-
-COMMANDS:
-• WASD: Travel
-• SCROLL: Zoom Map
-• HOVER PLAYER: View Army & EXP
-• TAB: Retreat / End Battle
-
-Dawn of Gunpowder is a tactical strategy experience set across the diverse landscapes of 13th-century Asia. Players navigate a living world map contested by six powerful factions, including the Great Khaganate, the Hong Dynasty, and the Shahdom of Iransar.
-
-The game features a persistent army management system where recruited units gain experience and level up through engagement. Mechanics emphasize geographic exploration, with the player’s party seamlessly transitioning between land caravans and naval vessels based on terrain. When conflict arises, the game shifts to a tactical battlefield engine.
-
-`);
+            // SHOW THE IN-GAME MODAL INSTEAD OF ALERT
+            manualModal.style.display = "flex";
+            uiContainer.style.display = "none"; // Hide main UI while reading
         });
-		
-		
- 
 
-uiContainer.appendChild(title);
-        uiContainer.appendChild(instrBtn); // Manual stays at the top
-        uiContainer.appendChild(playBtn);  // This will "pop" in below it
+        // --- CUSTOM SCROLLBAR CSS ---
+        const style = document.createElement('style');
+        style.innerHTML = `
+            #manual-content::-webkit-scrollbar { width: 10px; }
+            #manual-content::-webkit-scrollbar-track { background: #3e2723; border-radius: 4px; border: 1px solid #7b1a1a; }
+            #manual-content::-webkit-scrollbar-thumb { background: #d4b886; border-radius: 4px; }
+            #manual-content::-webkit-scrollbar-thumb:hover { background: #f5d76e; }
+        `;
+        document.head.appendChild(style);
+
+        // --- IN-GAME MANUAL MODAL GUI ---
+        const manualModal = document.createElement("div");
+        manualModal.style.display = "none"; // Hidden by default
+        manualModal.style.flexDirection = "column";
+        manualModal.style.width = "600px";
+        manualModal.style.maxWidth = "90%";
+        manualModal.style.height = "70%";
+        manualModal.style.maxHeight = "600px";
+        manualModal.style.background = "linear-gradient(to bottom, rgba(62, 39, 35, 0.95), rgba(74, 10, 10, 0.95))";
+        manualModal.style.border = "3px solid #d4b886";
+        manualModal.style.borderRadius = "8px";
+        manualModal.style.padding = "30px";
+        manualModal.style.boxShadow = "0 10px 40px rgba(0,0,0,0.8)";
+        manualModal.style.zIndex = "10";
+        manualModal.style.color = "#f5d76e";
+        manualModal.style.fontFamily = "Georgia, serif";
+
+        const manualContent = document.createElement("div");
+        manualContent.id = "manual-content";
+        manualContent.style.overflowY = "auto";
+        manualContent.style.flexGrow = "1";
+        manualContent.style.paddingRight = "15px";
+        manualContent.innerHTML = `
+            <h2 style="text-align: center; border-bottom: 2px solid #7b1a1a; padding-bottom: 15px; margin-top: 0; letter-spacing: 2px;">
+                DAWN OF GUNPOWDER:<br><span style="font-size: 0.7em; color: #d4b886;">EMPIRE OF THE 13TH CENTURY</span>
+            </h2>
+            <h3 style="color: #fff; margin-top: 25px;">COMMANDS:</h3>
+            <ul style="line-height: 1.8; font-size: 1.1rem; list-style-type: square; color: #d4b886;">
+                <li><strong style="color: #f5d76e;">WASD to Travel</li>
+                <li><strong style="color: #f5d76e;">SCROLL to Zoom Map</li>
+			    <li><strong style="color: #f5d76e;">12345 to Select Unit Type in Battlefield</li>
+			    <li><strong style="color: #f5d76e;">Press Q,E,R to Command Unit Type in Battlefield</li>
+                <li><strong style="color: #f5d76e;">Press P to Return to Overworld unless still in Live Battle</li>
+				                <li><strong style="color: #f5d76e;">Press T to view Troops & EXP in Overworld</li>
+            </ul>
+            <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 25px;">
+                Dawn of Gunpowder is a tactical strategy experience set across the diverse landscapes of 13th-century East Asia. Players navigate a living world map contested by six powerful factions, including the Great Khaganate, the Hong Dynasty, and the Shahdom of Iransar.
+            </p>
+            <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 15px;">
+                The game features a persistent army management system where recruited units gain experience and level up through engagement. Mechanics emphasize geographic exploration, with the player’s party seamlessly transitioning between land caravans and naval vessels based on terrain. When conflict arises, the game shifts to a tactical battlefield engine.
+            </p>
+        `;
+
+        const closeBtn = createBtn("Close Manual", () => {
+            manualModal.style.display = "none";
+            uiContainer.style.display = "flex"; // Show main UI again
+        });
+        closeBtn.style.margin = "20px auto 0 auto";
+        
+        manualModal.appendChild(manualContent);
+        manualModal.appendChild(closeBtn);
+
+        // --- CREDITS TEXT ---
+        const credits = document.createElement("div");
+        credits.innerText = "by Historical Weapons YouTube Channel";
+        credits.style.position = "absolute";
+        credits.style.bottom = "15px";
+        credits.style.color = "#d4b886";
+        credits.style.fontFamily = "Georgia, serif";
+        credits.style.fontSize = "0.9rem";
+        credits.style.opacity = "0.7";
+        credits.style.letterSpacing = "1px";
+
+        uiContainer.appendChild(title);
+        uiContainer.appendChild(instrBtn);
+        uiContainer.appendChild(playBtn); 
         
         menu.appendChild(uiContainer);
+        menu.appendChild(manualModal); // Append Modal to menu
+        menu.appendChild(credits);     // Append Credits to menu
         document.body.appendChild(menu);
+
         // ==========================================
         // EPIC BACKGROUND ANIMATION LOGIC
         // ==========================================
@@ -239,20 +307,19 @@ uiContainer.appendChild(title);
 
         const headwears = ["none", "rice_hat", "mongol_helmet"];
 
-        // REDUCED UNIT COUNT TO 35
-        for(let i = 0; i < 35; i++) {
+// REDUCED UNIT COUNT TO 20 (Slightly less crowded)
+        for(let i = 0; i < 20; i++) { 
             let uType = unitTypes[Math.floor(Math.random() * unitTypes.length)];
-            let fColor = Math.random() > 0.5 ? "#7b1a1a" : "#4a4a4a"; // Red vs Grey
-            
+            let fColor = Math.random() > 0.5 ? "#7b1a1a" : "#4a4a4a";
             // Assign Mongol helmets mostly to horse archers/grey faction, Rice hats to red faction
             let hat = "none";
             if (uType.isCavalry) hat = "mongol_helmet";
             else if (fColor === "#7b1a1a" && Math.random() > 0.5) hat = "rice_hat";
             else if (fColor === "#4a4a4a" && Math.random() > 0.5) hat = "mongol_helmet";
 
-            backgroundUnits.push({
-                x: Math.random() * window.innerWidth,
-                y: Math.random() * window.innerHeight,
+backgroundUnits.push({
+                x: Math.random() * canvas.width,  // USE CANVAS WIDTH
+                y: Math.random() * canvas.height, // USE CANVAS HEIGHT
                 vx: 0,
                 vy: 0,
                 type: uType.type,

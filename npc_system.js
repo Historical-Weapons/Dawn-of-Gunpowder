@@ -19,8 +19,13 @@ const FACTIONS = {
 
 const SYLLABLE_POOLS = {
     "Hong Dynasty": ["Han","Zhuo","Mei","Ling","Xian","Yue","Lu","Feng","Bai","Shan","Qiao","He","Jin","Dao","Tong","An","Wu","Lin","Wan","Bao","Zi","Rong","Dong","Cheng","Hua","Shou","Yi","Tao","Yan","Gui"],
-    "Jinlord Confederacy": ["Aisin","Nara","Guda","Baqa","Hada","Mukden","Tara","Sirin","Fuka","Hulan","Qara","Bolo","Dorgi","Chila","Bi","Sengge","Ulan","Bayan","Kiyen","Nurhaci"],
-    "Xiaran Dominion": ["Xi","Ran","Bao","Ling","Tao","Yun","Hai","Shuo","Gu","Lan","Zhi","Min","Qiao","Fen","Jiao","Lei","Yan","Yao","Jun","Qiu"],
+"Jinlord Confederacy": [
+    "Cira", "Nuru", "Guda", "Baka", "Bisi", 
+    "Muke", "Tala", "Siri", "Hada", "Hula", 
+    "Hete", "Boro", "Dogi", "Cila", "Bira", 
+    "Sege", "Ula",  "Baya", "Kiye", "Yehe"
+],
+ "Xiaran Dominion": ["Xi","Ran","Bao","Ling","Tao","Yun","Hai","Shuo","Gu","Lan","Zhi","Min","Qiao","Fen","Jiao","Lei","Yan","Yao","Jun","Qiu"],
     "Shahdom of Iransar": ["Sham","Dar","Far","Mehr","Var","Sar","Shir","Zar","Rud","Bar","Gan","Tus","Ray","Shap","Horm","Nish","Asp","Pas","Kar","Rash","Yaz","Beh","Fir","Gol","Sam","Vah"],
     "Great Khaganate": ["Or","Kar","Batu","Sar","Tem","Alt","Bor","Khan","Ur","Tol","Dar","Mur","Nog","Tog","Bal","Kher","Ulan","Tark","Sog","Yar"],
     "Vietan Realm": ["An","Bao","Suk","Dao","Gia","Hoa","Lam","Pho","Minh","Nam","Ninh","Phu","Quang","Son","Dik","Thanh","Thu","Tien","Van","Vinh"],
@@ -275,7 +280,7 @@ function spawnBandit(padX, padY) {
     globalNPCs.push({
         id: Math.random().toString(36).substr(2, 9),
         role: "Bandit",
-        count: Math.floor(Math.random() * 16) + 5, 
+        count: Math.floor(Math.random() * 16) + 3, 
         faction: "Bandits",
         color: FACTIONS["Bandits"].color,
         originCity: null, targetCity: null,
@@ -729,8 +734,9 @@ function drawAllNPCs(ctx, drawCaravanFunc, drawShipFunc, zoom, camLeft, camRight
         let tile = (worldMap[tx] && worldMap[tx][ty]) ? worldMap[tx][ty] : null;
         let useBoat = !tile || ["Coastal", "River", "Ocean", "Sea", "Deep Ocean"].includes(tile.name);
 
-        if (useBoat) {
-            drawShipFunc(npc.x, npc.y, npc.isMoving, npc.anim);
+		if (useBoat) {
+            // NOW PASSING npc.color!
+            drawShipFunc(npc.x, npc.y, npc.isMoving, npc.anim, npc.color);
         } else {
             drawCaravanFunc(npc.x, npc.y, npc.isMoving, npc.anim, npc.color); 
         }
