@@ -747,21 +747,28 @@ unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedM
                             unit.cooldown = getReloadTime(unit);
                             if (isRepeater) unit.stats.magazine = 10;
                         }
+						unit.stats.ammo--; 
                         
-                        unit.stats.ammo--; 
-                        let spread = (100 - unit.stats.accuracy) * 0.6;
+                        // 1. Amplified Spread Math (0.6 -> 2.5) for true visual scatter
+                        let spread = (100 - unit.stats.accuracy) * 2.5;
                         let targetX = unit.target.x + (Math.random() - 0.5) * spread;
                         let targetY = unit.target.y + (Math.random() - 0.5) * spread;
                         
+                        // 2. Calculate continuous velocity vector
+                        let angle = Math.atan2(targetY - unit.y, targetX - unit.x);
+                        let speed = 8; // Projectile flight speed
+
                         battleEnvironment.projectiles.push({
                             x: unit.x, y: unit.y, 
-                            tx: targetX, ty: targetY,
+                            vx: Math.cos(angle) * speed, // Velocity X
+                            vy: Math.sin(angle) * speed, // Velocity Y
+                            startX: unit.x, startY: unit.y,
+                            maxRange: unit.stats.range + 50, // Fly slightly past max range
                             attackerStats: unit.stats,
-                            target: unit.target,
+                            side: unit.side, // Track side to prevent friendly fire
                             projectileType: (unit.unitType === "Rocket") ? "Archer" : unit.unitType,
                             isFire: unit.unitType === "Firelance" || unit.unitType === "Bomb" || unit.unitType === "Rocket"
                         });
-                        
                         /* Ranged Audio */
                         if (unit.unitType === "Bomb" || unit.unitType === "Camel Cannon") {
                             AudioManager.playSound('bomb');
@@ -824,39 +831,71 @@ unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedM
         if (unit.cooldown > 0) unit.cooldown--;
     });
 
-    /* 4. UPDATE PROJECTILES */
+/* 4. UPDATE PROJECTILES (PHYSICS BASED COLLISION) */
     for (let i = battleEnvironment.projectiles.length - 1; i >= 0; i--) {
         let p = battleEnvironment.projectiles[i];
-        let dx = p.tx - p.x;
-        let dy = p.ty - p.y;
-        let dist = Math.hypot(dx, dy);
         
-        if (dist < 10) {
-            if (p.target) {
-                let dmg = calculateDamageReceived(p.attackerStats, p.target.stats, "ranged_attack");
-                p.target.hp -= dmg;
-                // --- EXP GAIN SURGERY (RANGED) ---
-                // Find the attacker unit to verify if it's the Commander or a regular troop
-                let attackerUnit = battleEnvironment.units.find(u => u.stats === p.attackerStats);
-                if (attackerUnit && attackerUnit.side === "player" && p.attackerStats.gainExperience) {
-                    let baseExp = attackerUnit.isCommander ? 0.05 : 0.35; 
-                    if (p.target.hp <= 0) baseExp *= 3; // Triple EXP for a kill
-                    p.attackerStats.gainExperience(baseExp);
-                }
-                // ---------------------------------
-				
-                if (dmg > 0) {
-                    AudioManager.playSound('hit');
-                } else {
-                    AudioManager.playSound('shield_block');
+        // 1. Move projectile along its vector
+        p.x += p.vx;
+        p.y += p.vy;
+        
+        // 2. Range & Bounds Check (Despawn if it misses everything)
+        let distFlown = Math.hypot(p.x - p.startX, p.y - p.startY);
+        if (distFlown > p.maxRange || 
+            p.x < -200 || p.x > BATTLE_WORLD_WIDTH + 200 || 
+            p.y < -200 || p.y > BATTLE_WORLD_HEIGHT + 200) {
+            battleEnvironment.projectiles.splice(i, 1);
+            continue;
+        }
+
+        // 3. Physical Hitbox Collision
+        let hitMade = false;
+        
+        for (let j = 0; j < units.length; j++) {
+            let u = units[j];
+            
+            // Only check living enemies (Prevents friendly fire and hitting corpses)
+            if (u.hp > 0 && u.side !== p.side) {
+                
+                // Dynamic hitbox: Large units (elephants/horses) are easier to hit
+                let hitbox = u.stats.isLarge ? 16 : 8; 
+                let distToUnit = Math.hypot(p.x - u.x, p.y - u.y);
+                
+                if (distToUnit < hitbox) {
+                    // TRUE IMPACT!
+                    hitMade = true;
+                    let dmg = calculateDamageReceived(p.attackerStats, u.stats, "ranged_attack");
+                    u.hp -= dmg;
+                    
+                    // --- EXP GAIN SURGERY (RANGED) ---
+                    let attackerUnit = battleEnvironment.units.find(a => a.stats === p.attackerStats);
+                    if (attackerUnit && attackerUnit.side === "player" && p.attackerStats.gainExperience) {
+                        let baseExp = attackerUnit.isCommander ? 0.05 : 0.35; 
+                        if (u.hp <= 0) baseExp *= 3; 
+                        p.attackerStats.gainExperience(baseExp);
+                    }
+                    // ---------------------------------
+                    
+                    if (dmg > 0) {
+                        AudioManager.playSound('hit');
+                    } else {
+                        AudioManager.playSound('shield_block');
+                    }
+                    
+                    break; // Projectile stops after hitting one person
                 }
             }
+        }
+        
+        // Destroy the arrow if it impacted someone
+        if (hitMade) {
             battleEnvironment.projectiles.splice(i, 1);
-        } else {
-            p.x += (dx / dist) * 8;
-            p.y += (dy / dist) * 8;
         }
     }
+	
+	
+	
+	
 }
 
 /* --- I DONT THINK THIS ONE IS EVEN USED --- */
@@ -1180,14 +1219,24 @@ function drawDetailedChineseWagon(ctx, x, y, factionColor) {
 
     // DRAW THE "LINES" (Structural Ribs/Folds)
     // This gives it the realistic bamboo-frame look instead of a flat "salt" texture
-    ctx.strokeStyle = "rgba(0,0,0,0.15)";
-    ctx.lineWidth = 1.5;
-    for (let i = -20; i <= 20; i += 8) {
-        ctx.beginPath();
-        ctx.moveTo(i, 5);
-        ctx.bezierCurveTo(i, -32, i + (i*0.1), -32, i, 5);
-        ctx.stroke();
-    }
+    ctx.save();
+ctx.beginPath();
+ctx.moveTo(-25, 5);
+ctx.bezierCurveTo(-25, -35, 25, -35, 25, 5);
+ctx.closePath();
+ctx.clip();
+
+ctx.strokeStyle = "rgba(0,0,0,0.12)";
+ctx.lineWidth = 1;
+
+for (let i = -20; i <= 20; i += 8) {
+    ctx.beginPath();
+    ctx.moveTo(i, 5);
+    ctx.lineTo(i, -30);
+    ctx.stroke();
+}
+
+ctx.restore();
 
     // Front/Back Openings (The dark interior look)
     ctx.fillStyle = "rgba(0,0,0,0.4)";

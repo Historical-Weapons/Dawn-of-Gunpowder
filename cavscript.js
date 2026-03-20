@@ -635,9 +635,8 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         // Low Tier Topknot
         ctx.fillStyle = "#212121"; ctx.beginPath(); ctx.arc(0, -13.5, 1.5, 0, Math.PI * 2); ctx.fill();
     }
-
-    // --- WEAPONS LOGIC ---
-    let weaponBob = isAttacking ? Math.sin(frame * 0.8) * 4 : 0;
+// --- WEAPONS LOGIC ---
+    let weaponBob = isAttacking ? Math.sin(frame * 0.8) * 4 : Math.sin(frame * 0.2) * 1;
 
     if (isFleeing) {
         ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
@@ -649,36 +648,179 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.quadraticCurveTo(-6, -14 + weaponBob - flap, 3, -12 + weaponBob);
         ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-    else if (type === "horse_archer") {
-        let time = Date.now() / 200; 
-        let pull = (Math.sin(time) * 0.5 + 0.5); 
-        let khatra = (1 - pull) * 0.4; 
-        let handX = 6 + weaponBob; let handY = -6; 
+  else if (type === "horse_archer") {
+        let archerTime = Date.now() / 2000; // 2-second full animation cycle
+        let cycle = isAttacking ? archerTime % 1.0 : 0.9; // Sit at resting state if not attacking
+        
+        let handX = 6 + weaponBob, handY = -6; 
+        let rightHandX = handX, rightHandY = handY;
+        let bowKhatra = 0;
+        let hasArrow = false;
 
+        // Draw Quiver (strapped to hip/back)
+        ctx.fillStyle = "#5d4037"; ctx.fillRect(-10, -4, 5, 12);
+        ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(-8, -4); ctx.lineTo(-12, -10); ctx.stroke(); // Static arrows
+        ctx.beginPath(); ctx.moveTo(-6, -4); ctx.lineTo(-9, -12); ctx.stroke();
+
+        // 4-Phase Animation State Machine
+        if (cycle < 0.2) {
+            // Phase 1: Pulling arrow from quiver
+            let reachProgress = cycle / 0.2;
+            rightHandX = -8 + (reachProgress * 4); 
+            rightHandY = -4 - (reachProgress * 6);
+            hasArrow = true;
+        } else if (cycle < 0.4) {
+            // Phase 2: Nocking on string
+            let nockProgress = (cycle - 0.2) / 0.2;
+            rightHandX = -4 + (handX - (-4)) * nockProgress;
+            rightHandY = -10 + (handY - (-10)) * nockProgress;
+            hasArrow = true;
+        } else if (cycle < 0.8) {
+            // Phase 3: Drawing the bow back
+            let drawProgress = (cycle - 0.4) / 0.4;
+            rightHandX = handX - (drawProgress * 14); // Pulling string back 14px
+            rightHandY = handY;
+            hasArrow = true;
+        } else {
+            // Phase 4: Release & Khatra follow-through
+            let releaseProgress = (cycle - 0.8) / 0.2;
+            bowKhatra = 0.6 * (1 - releaseProgress); 
+            rightHandX = handX - 14 + (releaseProgress * 6); 
+            hasArrow = false; // Arrow fired
+        }
+
+        // Draw Bow & Khatra rotation
         ctx.save();
-        ctx.translate(handX, handY); ctx.rotate(khatra); ctx.translate(-handX, -handY);
+        ctx.translate(handX, handY); 
+        ctx.rotate(bowKhatra); 
+        ctx.translate(-handX, -handY);
+        
         ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(handX - 4, -14); 
         ctx.quadraticCurveTo(handX + 6, -10, handX, handY); 
         ctx.quadraticCurveTo(handX + 6, -2, handX - 4, 2); ctx.stroke();
+        
+        // Draw String dynamically stretched to right hand
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)"; ctx.lineWidth = 0.5;
         ctx.beginPath(); ctx.moveTo(handX - 4, -14); 
-        let stringX = (handX - 4) - (pull * 8); 
-        ctx.lineTo(stringX, handY); ctx.lineTo(handX - 4, 2); ctx.stroke();
+        ctx.lineTo(rightHandX, rightHandY); 
+        ctx.lineTo(handX - 4, 2); ctx.stroke();
         ctx.restore();
+
+        // --- SPECIFIC ARROW COSMETICS ---
+        if (hasArrow) {
+            ctx.save();
+            ctx.translate(rightHandX, rightHandY); // Anchor drawing to the hand
+            
+            // Rotate the arrow while pulling from the quiver, then level it out
+            if (cycle < 0.2) {
+                ctx.rotate(-Math.PI / 4); 
+            } else if (cycle < 0.4) {
+                let nockProgress = (cycle - 0.2) / 0.2;
+                ctx.rotate((-Math.PI / 4) * (1 - nockProgress));
+            }
+
+            // Arrow Shaft
+            ctx.fillStyle = "#8d6e63"; // Wood color
+            ctx.fillRect(-4, -0.5, 16, 1); 
+
+            // Arrowhead
+            ctx.fillStyle = "#9e9e9e"; 
+            ctx.fillRect(12, -1.5, 3, 3); 
+
+            // Arrow Feathers (Fletching)
+            ctx.fillStyle = "#d32f2f"; // Red fletching
+            ctx.fillRect(-3, -1.5, 4, 1); // Top feather
+            ctx.fillRect(-3, 0.5, 4, 1);  // Bottom feather
+
+            ctx.restore();
+        }
+        
+        // Draw Right Hand (drawn last so it covers the nock of the arrow)
+        ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(rightHandX, rightHandY, 2, 0, Math.PI * 2); ctx.fill();
     }
     else if (type === "camel") {
+        let camelTime = Date.now() / 3000; // 3-second cannon reload cycle
+        let cycle = camelTime % 1.0;
+        let cannonY = -5 + weaponBob;
+
+        // Base Cannon Barrel
         ctx.strokeStyle = "#212121"; ctx.lineWidth = 3.5;
-        ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(12 + weaponBob, -5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, cannonY); ctx.lineTo(16, cannonY); ctx.stroke();
+
         if (isAttacking) { 
-            ctx.fillStyle = "#ff9800"; ctx.beginPath(); ctx.arc(14 + weaponBob, -5, 4, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "rgba(158, 158, 158, 0.6)"; ctx.beginPath(); ctx.arc(18 + weaponBob, -8, 6, 0, Math.PI * 2); ctx.fill();
+            if (cycle < 0.15) {
+                // Phase 1: Fire & Recoil
+                let recoil = Math.sin((cycle / 0.15) * Math.PI) * 4;
+                ctx.fillStyle = "#212121"; ctx.fillRect(0 - recoil, cannonY - 1.5, 16, 3); // Recoiling barrel
+                ctx.fillStyle = "#ff9800"; ctx.beginPath(); ctx.arc(16 - recoil, cannonY, 6, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "rgba(158, 158, 158, 0.6)"; ctx.beginPath(); ctx.arc(22 - recoil, cannonY - 3, 8, 0, Math.PI * 2); ctx.fill();
+            } else if (cycle < 0.4) {
+                // Phase 2: Pouring Powder (leaning over muzzle)
+                let pourBob = Math.sin(cycle * Math.PI * 15) * 1.5;
+                ctx.fillStyle = "#795548"; ctx.fillRect(14, cannonY - 8 + pourBob, 3, 5); // Flask
+                ctx.fillStyle = "#424242"; ctx.fillRect(15, cannonY - 3 + pourBob, 1, 3); // Falling powder
+            } else if (cycle < 0.8) {
+                // Phase 3: Ramming (Ramrod going in and out of the barrel)
+                let strokes = 3;
+                let ramDepth = Math.sin((cycle - 0.4) * strokes * Math.PI * 2) * 6 + 6; 
+                ctx.strokeStyle = "#8d6e63"; ctx.lineWidth = 1.5;
+                ctx.beginPath(); 
+                ctx.moveTo(16 - ramDepth, cannonY); 
+                ctx.lineTo(26 - ramDepth, cannonY - 5); // Rod sticking out diagonally to rider's hand
+                ctx.stroke();
+                // Ramrod brush/head
+                ctx.fillStyle = "#3e2723"; ctx.fillRect(15 - ramDepth, cannonY - 1.5, 3, 3);
+            } else {
+                // Phase 4: Ready/Aiming 
+                ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(2, cannonY - 2, 2, 0, Math.PI * 2); ctx.fill(); // Hand resting on breech
+            }
         }
     } else {
-        let attackThrust = isAttacking ? 10 : 0;
+        // MELEE LANCE
+        let meleeTime = Date.now() / 600; // 0.6 second combo loop
+        let cycle = isAttacking ? meleeTime % 1.0 : 0;
+        
+        let lanceRot = 0;
+        let thrustX = 0;
+        let thrustY = 0;
+
+        if (isAttacking) {
+            // 3-Hit Combo System
+            if (cycle < 0.33) {
+                // Swing Left/Up
+                let p = cycle / 0.33;
+                lanceRot = -Math.PI / 4 * Math.sin(p * Math.PI); 
+            } else if (cycle < 0.66) {
+                // Swing Right/Down
+                let p = (cycle - 0.33) / 0.33;
+                lanceRot = Math.PI / 3 * Math.sin(p * Math.PI); 
+            } else {
+                // Power Thrust
+                let p = (cycle - 0.66) / 0.34;
+                thrustX = Math.sin(p * Math.PI) * 18; // Huge thrust forward
+                thrustY = Math.sin(p * Math.PI) * 3;
+            }
+        }
+
+        ctx.save();
+        ctx.translate(2, -4); // Anchor at rider's hand
+        ctx.rotate(lanceRot);
+
+        // Draw Lance Shaft
         ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-4, -4); ctx.lineTo(26 + attackThrust, -4 + (attackThrust/3)); ctx.stroke();
-        ctx.fillStyle = "#bdbdbd"; ctx.fillRect(26 + attackThrust, -5 + (attackThrust/3), 6, 2); 
+        ctx.beginPath(); ctx.moveTo(-6 + thrustX, 0 + thrustY); ctx.lineTo(26 + thrustX, 0 + thrustY); ctx.stroke();
+        
+        // Draw Lance Tip (longer and sharper)
+        ctx.fillStyle = "#bdbdbd"; 
+        ctx.beginPath(); 
+        ctx.moveTo(26 + thrustX, -2 + thrustY); 
+        ctx.lineTo(36 + thrustX, 0 + thrustY); // 10px blade
+        ctx.lineTo(26 + thrustX, 2 + thrustY); 
+        ctx.fill();
+
+        ctx.restore();
     }
     ctx.restore();
 

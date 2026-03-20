@@ -230,8 +230,9 @@ function getReloadTime(unit) {
     return 60; 
 }
 
-
-
+    let lastSortTime = 0;
+    const SORT_INTERVAL = 100; 
+	let sortedUnitsCache = []; // Store the sorted copy here
        ////////////////////////////////
         // BELOW IS ALL RENDERING WHICH SHOULD BE A NEW JS TBH
 		////////////////////////////////
@@ -247,22 +248,21 @@ function drawBattleUnits(ctx) {
     drawSupplyLines(ctx, centerX, BATTLE_WORLD_HEIGHT - 80, pColor, {x: 0, y: 0});
     // -----------------------------------------------------------------------------
 
-let activeUnits = battleEnvironment.units; // <--- RENAME TO activeUnits
-  
-    // ... rest of the function remains the same
-	
-    let units = battleEnvironment.units;
-    let time = Date.now() / 50;
-
-    let lastSortTime = 0;
-    const SORT_INTERVAL = 100; 
-
+ 
+// --- CLEAN FIX: Only sort the cache, leave the original array alone ---
     if (performance.now() - lastSortTime > SORT_INTERVAL) {
-        units.sort((a, b) => a.y - b.y);
+        sortedUnitsCache = [...battleEnvironment.units].sort((a, b) => a.y - b.y);
         lastSortTime = performance.now();
     }
 
-    units.forEach(unit => {
+    let time = Date.now() / 50;
+
+
+
+
+ 
+
+    sortedUnitsCache.forEach(unit => {
         let isMoving = unit.state === "moving";
         let frame = time + unit.animOffset;
         let isAttacking = unit.state === "attacking" && unit.cooldown > (unit.stats.isRanged ? 30 : 40);
@@ -380,11 +380,12 @@ ctx.strokeStyle = "#000";
 ctx.lineWidth = 1;
 ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 }); // <--- ADD THIS LINE HERE to close the units.forEach loop
-    // Draw Projectiles
+// Draw Projectiles
     battleEnvironment.projectiles.forEach(p => {
-        let angle = Math.atan2(p.ty - p.y, p.tx - p.x);
+        // SURGERY: Use the actual physics velocity vectors (vy, vx) to calculate the rotation angle!
+        let angle = Math.atan2(p.vy, p.vx);
         ctx.save(); 
-        ctx.translate(p.x, p.y); 
+        ctx.translate(p.x, p.y);
 
         let isBomb = p.attackerStats && p.attackerStats.role === "bomb";
         let isRocket = p.attackerStats && p.attackerStats.name === "Rocket";
@@ -425,13 +426,26 @@ ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
             ctx.rotate(angle);
             ctx.fillStyle = "#ff9800"; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = "rgba(255, 152, 0, 0.5)"; ctx.beginPath(); ctx.arc(-6, 0, 6, 0, Math.PI * 2); ctx.fill(); // Smoke/Flame trail
-        } else if (isJavelin) {
+} else if (isJavelin) {
             // Long thrown spear
             ctx.rotate(angle);
+            
+            // Shaft
             ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.stroke();
-            ctx.fillStyle = "#bdbdbd"; ctx.fillRect(8, -2, 4, 4); // Iron tip
-        } else {
+            ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(10, 0); ctx.stroke();
+            
+            // Matching leaf-shaped iron tip
+            ctx.fillStyle = "#bdbdbd";
+            ctx.beginPath();
+            ctx.moveTo(10, 0);      // Base of metal head
+            ctx.lineTo(12, -2);     // Flare top
+            ctx.lineTo(18, 0);      // Sharp tip
+            ctx.lineTo(12, 2);      // Flare bottom
+            ctx.closePath();
+            ctx.fill();
+        }
+		
+		else {
             // Standard arrow/bolt
             ctx.rotate(angle);
             ctx.fillRect(-4, -0.5, 8, 1); // shaft
@@ -449,329 +463,3 @@ if (p.isFire && p.attackerStats.role === ROLES.BOMB && p.attackerStats.name !== 
         ctx.restore();
     });
 }
-
-function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttacking, side, unitName, isFleeing) {
-    ctx.save();
-    ctx.translate(x, y);
-
-   // --- DYNAMIC ARMOR RETRIEVAL ---
-    let armorVal = 2; 
-    if (typeof UnitRoster !== 'undefined' && UnitRoster.allUnits[unitName]) {
-        armorVal = UnitRoster.allUnits[unitName].armor;
-    } else if (unitName && (unitName.includes("Elite") || type === "cataphract")) {
-        armorVal = 40; // Elite/Super Heavy fallback
-    } else if (unitName && unitName.includes("Heavy")) {
-        armorVal = 25; // Standard Heavy fallback (matches Heavy Horse Archer)
-    }
-
-    if (unitName === "PLAYER" || unitName === "Commander") armorVal = Math.max(armorVal, 40);
-	
-    let legSwing = moving ? Math.sin(frame * 0.3) * 6 : 0;
-    let bob = moving ? Math.abs(Math.sin(frame * 0.3)) * 2 : 0;
-    let dir = side === "player" ? 1 : -1; 
-
-    // 1. Legs
-    ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 2; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(-3 - legSwing, 9); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(2, 0); ctx.lineTo(3 + legSwing, 9); ctx.stroke();
-
-    ctx.translate(0, -bob); 
-    
-    // 2. Body: Base Faction Tunic (Mobs always wear faction color underneath)
-    ctx.fillStyle = factionColor; ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.lineTo(3, -10); ctx.lineTo(-3, -10);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    
-    // 3. ARMOR LAYERING
-    if (armorVal >= 25) {
-        // --- HEAVY TIER (25+): Steel Lamellar & SQUARE Pauldrons ---
-        ctx.fillStyle = "#9e9e9e"; // Steel/Iron color
-        ctx.beginPath(); ctx.moveTo(-4, -1); ctx.lineTo(4, -1); ctx.lineTo(3, -9); ctx.lineTo(-3, -9);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-        
-        // Steel Lamellar Texture (Lines)
-        ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.lineWidth = 0.5;
-        for(let i = -8; i < -1; i+=2.5) {
-            ctx.beginPath(); ctx.moveTo(-3, i); ctx.lineTo(3, i); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-1.5, i); ctx.lineTo(-1.5, i+2); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(1.5, i); ctx.lineTo(1.5, i+2); ctx.stroke();
-        }
-
-        // SQUARE Asian-style Pauldrons
-        ctx.fillStyle = factionColor; 
-        ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
-        // Left pauldron
-        ctx.fillRect(-6.5, -9.5, 3, 4.5); ctx.strokeRect(-6.5, -9.5, 3, 4.5);
-        // Right pauldron
-        ctx.fillRect(3.5, -9.5, 3, 4.5); ctx.strokeRect(3.5, -9.5, 3, 4.5);
-        
-        // Lamellar lines on the square pauldrons
-        ctx.strokeStyle = "rgba(0,0,0,0.4)";
-        ctx.beginPath(); ctx.moveTo(-6.5, -7.5); ctx.lineTo(-3.5, -7.5); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(3.5, -7.5); ctx.lineTo(6.5, -7.5); ctx.stroke();
-
-} else if (armorVal >= 8) {
-        // --- MEDIUM TIER (8-24): Smooth Leather + FACTION PAULDRONS ---
-        ctx.fillStyle = "#5d4037"; // Dark smooth leather/cloth vest
-        ctx.beginPath(); ctx.moveTo(-4, -1); ctx.lineTo(4, -1); ctx.lineTo(2.5, -9); ctx.lineTo(-2.5, -9);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-
-        // ADDED: Square Pauldrons for Medium Tier (Faction Color, No Lines)
-        ctx.fillStyle = factionColor; 
-        ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
-        // Left pauldron
-        ctx.fillRect(-6, -9, 2.5, 4); ctx.strokeRect(-6, -9, 2.5, 4);
-        // Right pauldron
-        ctx.fillRect(3.5, -9, 2.5, 4); ctx.strokeRect(3.5, -9, 2.5, 4);
-    }
-    // Low tier (<8) is left as the standard cloth tunic.
-
-    // 4. Head Base
-    ctx.fillStyle = "#d4b886"; 
-    ctx.beginPath(); ctx.arc(0, -12, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    
-    // 5. DYNAMIC HEADGEAR BY ARMOR TIER AND FACTION
-    if (armorVal >= 25) {
-        // --- HIGH TIER -> HEAVY HELMETS ---
-        if (factionColor === "#c2185b") { 
-            // Yamato (Crimson) -> Samurai Kabuto Helmet with Horns
-            ctx.fillStyle = "#212121";
-            ctx.beginPath(); ctx.arc(0, -13, 4, Math.PI, 0); ctx.fill(); 
-            ctx.fillRect(-5, -13, 10, 2); 
-            ctx.strokeStyle = "#fbc02d"; ctx.lineWidth = 1.5; 
-            ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(-4, -19); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(4, -19); ctx.stroke();
-        } else if (factionColor === "#1976d2" || factionColor === "#455a64") { 
-            // Mongol / Jinlord -> Heavy Spiked Steel Helmet with flaps
-            ctx.fillStyle = "#9e9e9e"; ctx.strokeStyle = "#424242"; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc(0, -14, 4.5, Math.PI, 0); ctx.fill(); ctx.stroke(); 
-            ctx.fillStyle = "#616161";
-            ctx.beginPath(); ctx.moveTo(-1.5, -18.5); ctx.lineTo(1.5, -18.5); ctx.lineTo(0, -23); ctx.fill(); 
-            ctx.fillStyle = "#4e342e"; 
-            ctx.fillRect(-5, -14, 3, 5); ctx.fillRect(2, -14, 3, 5);
-        } else if (factionColor === "#00838f") {
-            // Iransar (Teal) -> Heavy Steel Conical Helm with Wrap
-            ctx.fillStyle = "#eeeeee";
-            ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill();
-            ctx.fillStyle = "#9e9e9e"; // Steel tip
-            ctx.beginPath(); ctx.arc(0, -15, 3.5, Math.PI, 0); ctx.fill(); ctx.stroke();
-        } else {
-            // Default (Chinese/Korean) -> Steel Dome with Lamellar Neck Guard
-            ctx.fillStyle = "#9e9e9e";
-            ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = factionColor; // Neck guard matching faction
-            ctx.fillRect(-4.5, -14, 9, 3);
-        }
-    } else if (armorVal >= 8) {
-        // --- MEDIUM TIER -> FACTION SPECIFIC LIGHT HATS ---
-        if (factionColor === "#c2185b") { 
-            // Yamato -> Ashigaru Jingasa (Flat Conical Hat)
-            ctx.fillStyle = "#212121"; ctx.strokeStyle = "#fbc02d"; ctx.lineWidth = 0.5;
-            ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(0, -15); ctx.lineTo(6, -12);
-            ctx.closePath(); ctx.fill(); ctx.stroke();
-        } else if (factionColor === "#1976d2" || factionColor === "#455a64") { 
-            // Mongol -> Fur-trimmed Leather Cap
-            ctx.fillStyle = "#4e342e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill();
-            ctx.fillStyle = "#795548"; ctx.fillRect(-4, -13, 8, 2); 
-        } else if (factionColor === "#00838f") {
-            // Iransar -> Simple Cloth Turban
-            ctx.fillStyle = "#eeeeee";
-            ctx.beginPath(); ctx.arc(0, -13.5, 3.5, 0, Math.PI * 2); ctx.fill();
-        } else {
-            // Default/Chinese/Viet -> Bamboo Rice Hat
-            ctx.fillStyle = "#8d6e63"; 
-            ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(0, -16); ctx.lineTo(6, -12);
-            ctx.quadraticCurveTo(0, -13.5, -6, -12); ctx.fill(); ctx.stroke();
-        }
-    } else {
-        // --- LOW TIER -> Bare Head / Topknot ---
-        ctx.fillStyle = "#212121"; // Dark hair
-        ctx.beginPath(); ctx.arc(0, -14.5, 1.8, 0, Math.PI * 2); ctx.fill();
-    }
-    
-    // 6. WEAPONS LOGIC (Preserved perfectly)
-    let weaponBob = isAttacking ? Math.sin(frame * 0.8) * 4 : 0;
-    
-    if (isFleeing) {
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(2 * dir, -4); ctx.lineTo(4 * dir, -22 + weaponBob); ctx.stroke(); 
-        ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#cccccc"; ctx.lineWidth = 0.5;
-        let flap = moving ? Math.sin(frame * 1.5) * 3 : 0; 
-        ctx.beginPath();
-        ctx.moveTo(4 * dir, -21 + weaponBob); 
-        ctx.quadraticCurveTo((-4 * dir), -22 + weaponBob + flap, (-10 * dir), -18 + weaponBob); 
-        ctx.quadraticCurveTo((-6 * dir), -14 + weaponBob - flap, 3 * dir, -12 + weaponBob); 
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-    }
-    else if (type === "peasant") {
-        let tipX = (12 + weaponBob) * dir; let tipY = -12 + weaponBob;
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(-2 * dir, -4); ctx.lineTo(tipX, tipY); ctx.stroke();
-
-        if (unitName === "Militia") {
-            ctx.fillStyle = "#9e9e9e"; ctx.strokeStyle = "#444444"; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX + (1.5 * dir), tipY + 1); 
-            ctx.lineTo(tipX + (2.5 * dir), tipY + 6); ctx.lineTo(tipX - (0.5 * dir), tipY + 6.5); 
-            ctx.lineTo(tipX - (1 * dir), tipY + 1.5); ctx.closePath(); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = "#333"; ctx.beginPath(); ctx.arc(tipX, tipY, 1, 0, Math.PI * 2); ctx.fill();
-        }
-    }  
-    else if (type === "spearman") {
-        let isGlaive = unitName === "Glaiveman";
-        ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(-6 * dir, 4); ctx.lineTo((28 + weaponBob) * dir, -24 + weaponBob); ctx.stroke();
-        ctx.fillStyle = "#bdbdbd"; 
-        if (isGlaive) {
-            ctx.beginPath(); ctx.moveTo((26 + weaponBob) * dir, -22 + weaponBob);
-            ctx.quadraticCurveTo((32 + weaponBob) * dir, -30 + weaponBob, (28 + weaponBob) * dir, -32 + weaponBob);
-            ctx.lineTo((25 + weaponBob) * dir, -24 + weaponBob); ctx.fill();
-        } else {
-            ctx.save();
-            ctx.translate((28 + weaponBob) * dir, -24 + weaponBob);
-            ctx.rotate(Math.PI * -0.25 * dir); 
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-3, 2); ctx.lineTo(8, 0); 
-            ctx.closePath(); ctx.fill();
-            ctx.restore();
-        }
-        if (unitName.includes("Shield")) {
-            ctx.fillStyle = "#5d4037"; ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc((6 + weaponBob/2) * dir, -4, 7.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); 
-            ctx.fillStyle = "#424242"; 
-            ctx.beginPath(); ctx.arc((6 + weaponBob/2) * dir, -4, 2.5, 0, Math.PI * 2); ctx.fill();
-        }
-    }
-    else if (type === "sword_shield") {
-        ctx.strokeStyle = "#9e9e9e"; ctx.lineWidth = 2.5; 
-        ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo((14 + weaponBob) * dir, -12 + (weaponBob/2)); ctx.stroke(); 
-        ctx.fillStyle = "#5d4037"; ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc((6 + weaponBob/2) * dir, -4, 7.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); 
-        ctx.fillStyle = "#424242"; 
-        ctx.beginPath(); ctx.arc((6 + weaponBob/2) * dir, -4, 2.5, 0, Math.PI * 2); ctx.fill();
-    }
-    else if (type === "two_handed") {
-        ctx.strokeStyle = "#757575"; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(-2 * dir, -4); 
-        ctx.quadraticCurveTo((10 + weaponBob) * dir, -10 + weaponBob, (18 + weaponBob) * dir, -22 + weaponBob); ctx.stroke();
-        ctx.strokeStyle = "#212121"; ctx.lineWidth = 3; 
-        ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(2 * dir, -7); ctx.stroke();
-    }
-    else if (type === "archer") {
-        ctx.fillStyle = "#3e2723"; ctx.fillRect(-4, -8, 3, 7); 
-        ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(5, -16); ctx.quadraticCurveTo(14, -10, 10, -8); 
-        ctx.quadraticCurveTo(14, -6, 5, 0); ctx.stroke(); 
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"; ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(5, -16); ctx.lineTo(5, 0); ctx.stroke(); 
-        ctx.strokeStyle = "#d4b886"; ctx.lineWidth = 1;
-    }
-    else if (type === "throwing") {
-        if (unitName === "Slinger") {
-            let handX = 4 * dir; let handY = -6;
-            let swing = isAttacking ? frame * 0.6 : 0.5; 
-            ctx.strokeStyle = "#8d6e63"; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(handX, handY);
-            ctx.lineTo(handX + (Math.cos(swing) * 10 * dir), handY + (Math.sin(swing) * 8)); ctx.stroke();
-            ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); 
-            ctx.arc(handX + (Math.cos(swing) * 10 * dir), handY + (Math.sin(swing) * 8), 1.5, 0, Math.PI*2); ctx.fill();
-        } else { 
-            let thrust = isAttacking ? Math.sin(frame * 0.5) * 10 * dir : -6 * dir;
-            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo((-10 * dir) + thrust, -12); ctx.lineTo((10 * dir) + thrust, -16); ctx.stroke(); 
-        }
-    }
-    else if (type === "crossbow") { 
-        if (unitName === "Repeater Crossbowman") {
-            ctx.save(); ctx.scale(dir, 1); 
-            let isFiringBurst = isAttacking;
-            let shakeX = isFiringBurst ? Math.sin(Date.now() / 30) * 1.5 : 0;
-            let shakeY = isFiringBurst ? Math.cos(Date.now() / 30) * 1.2 : 0;
-            ctx.translate(shakeX, shakeY);
-            ctx.fillStyle = "#3e2723"; ctx.fillRect(-3, -12 + bob, 6, 6); 
-            ctx.fillStyle = "#4e342e"; ctx.fillRect(3, -11 + bob, 18, 3); 
-            ctx.save(); ctx.translate(5, -17 + bob); 
-            ctx.fillStyle = "#5d4037"; ctx.fillRect(0, 0, 14, 6); 
-            ctx.strokeStyle = "#2b1b17"; ctx.lineWidth = 0.8; ctx.strokeRect(0, 0, 14, 6);
-            ctx.fillStyle = "#9e9e9e"; ctx.fillRect(11, 1, 2, 1); ctx.fillRect(11, 3, 2, 1);
-            ctx.restore();
-            ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.moveTo(9, -10 + bob); ctx.lineTo(4, -16 + bob); ctx.stroke();
-            ctx.fillStyle = "#212121"; ctx.beginPath(); ctx.arc(9, -10 + bob, 1, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = "#212121"; ctx.fillRect(21, -11 + bob, 2, 3); 
-            ctx.restore();
-        } else if (unitName === "Poison Crossbowman") {
-            ctx.fillStyle = "#5d4037"; ctx.fillRect(0, -10, 12, 3); 
-            ctx.strokeStyle = "#2e7d32"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(10, -8.5, 6.5, -Math.PI/2, Math.PI/2); ctx.stroke();
-            ctx.strokeStyle = "rgba(200, 255, 200, 0.4)"; ctx.lineWidth = 0.5;
-            ctx.beginPath(); ctx.moveTo(10, -15); ctx.lineTo(10, -2); ctx.stroke();
-        } else {
-            ctx.fillStyle = "#5d4037"; ctx.fillRect(0, -10, 12, 3); 
-            ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(10, -15); ctx.quadraticCurveTo(18, -11, 14, -8.5); ctx.quadraticCurveTo(18, -6, 10, -2); ctx.stroke();
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; ctx.lineWidth = 0.5;
-            ctx.beginPath(); ctx.moveTo(10, -15); ctx.lineTo(10, -2); ctx.stroke();
-        }
-    }
-    else if (unitName && unitName.includes("Firelance")) {
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(21 + weaponBob, -8); ctx.stroke();
-        ctx.fillStyle = "#212121"; ctx.fillRect(14 + weaponBob, -10, 7, 4);
-        ctx.fillStyle = "#9e9e9e"; 
-        ctx.beginPath(); ctx.moveTo(21 + weaponBob, -8); ctx.lineTo(24 + weaponBob, -10); 
-        ctx.lineTo(29 + weaponBob, -8); ctx.lineTo(24 + weaponBob, -6); ctx.closePath(); ctx.fill();
-        if (isAttacking) {
-            ctx.fillStyle = "#ff5722"; ctx.beginPath(); ctx.arc(22 + weaponBob, -8, 1.5 + Math.random() * 1.5, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "rgba(100, 100, 100, 0.4)";
-            ctx.beginPath(); ctx.arc(24 + weaponBob, -10, 4 + Math.random()*3, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(28 + weaponBob, -12, 2 + Math.random()*2, 0, Math.PI * 2); ctx.fill();
-        }
-    } 
-    else if (type === "gun") {
-        ctx.strokeStyle = "#424242"; ctx.lineWidth = 3.5;
-        ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(14 + weaponBob, -8); ctx.stroke();
-        if (isAttacking) { 
-            ctx.fillStyle = "#ff5722"; ctx.beginPath(); ctx.arc(16 + weaponBob, -9, 1 + Math.random()*1, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "rgba(140, 140, 140, 0.5)"; 
-            ctx.beginPath(); ctx.arc(20 + weaponBob, -11, 5 + Math.random()*4, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(26 + weaponBob, -13, 7 + Math.random()*5, 0, Math.PI * 2); ctx.fill();
-        }
-    }
-    else if (unitName === "Bomb") {
-        ctx.save();
-        if (isAttacking) { ctx.rotate(Math.PI / 4); } else { ctx.rotate(-Math.PI / 10); }
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -22); ctx.stroke();
-        ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(0, -22); ctx.quadraticCurveTo(4, -18, 3, -14); ctx.stroke();
-        ctx.fillStyle = "#424242"; ctx.beginPath(); ctx.arc(3, -14, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-    } 
-    else if (unitName === "Rocket") {
-        ctx.save();
-        ctx.translate(4 * dir, -6);
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
-        for(let i=-1; i<=1; i++) { 
-            ctx.beginPath(); ctx.moveTo(-8 * dir, i*2); ctx.lineTo(10 * dir + weaponBob, -4 + i*2); ctx.stroke();
-        }
-        ctx.fillStyle = "#424242"; ctx.fillRect(-10 * dir, -3, 4 * dir, 6); 
-        if (isAttacking) {
-            ctx.fillStyle = "rgba(180, 180, 180, 0.6)";
-            for(let j=0; j<3; j++) {
-                ctx.beginPath(); ctx.arc(-14 * dir - (j*5), 2 + (Math.random()*4-2), 3+j, 0, Math.PI*2); ctx.fill();
-            }
-        }
-        ctx.strokeStyle = "#ff9800"; ctx.lineWidth = 1; 
-        ctx.beginPath(); ctx.moveTo(-10 * dir, 0); ctx.lineTo(-14 * dir, 4); ctx.stroke();
-        ctx.restore();
-    }
-    else if (type === "shortsword" || (typeof unit !== 'undefined' && unit.stats && unit.stats.isRanged && unit.stats.ammo <= 0)) {
-        if (type === "shortsword" || (typeof unit !== 'undefined' && unit.stats.isRanged)) {
-            ctx.strokeStyle = "#9e9e9e"; ctx.lineWidth = 2.5; 
-            ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo((12 + weaponBob) * dir, -10 + (weaponBob / 2)); ctx.stroke(); 
-            ctx.strokeStyle = "#212121"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(1 * dir, -5); ctx.lineTo(3 * dir, -8); ctx.stroke();
-        }
-    }
-    ctx.restore();
-}
- 
