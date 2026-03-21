@@ -575,11 +575,12 @@ if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
             ctx.fillStyle = "#616161"; ctx.beginPath(); ctx.moveTo(-1, -16); ctx.lineTo(1, -16); ctx.lineTo(0, -20); ctx.fill();
             ctx.fillStyle = "#4e342e"; ctx.fillRect(-4, -13, 2.5, 4); ctx.fillRect(1.5, -13, 2.5, 4);
         } else if (factionColor === "#00838f") {
-            ctx.fillStyle = "#eeeeee"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill();
-            ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -14, 3, Math.PI, 0); ctx.fill(); ctx.stroke();
-        } else {
-            ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = factionColor; ctx.fillRect(-4, -13, 8, 2.5); // Neck guard
+    ctx.fillStyle = factionColor; 
+ctx.fillRect(-4, -13, 8, 2.5); // Neck guard
+	} else {
+ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill(); ctx.stroke();
+    // Fixed Neck Guard: Shorter (1.0 height) so eyes are visible
+    ctx.fillStyle = factionColor; ctx.fillRect(-4, -13, 8, 1.2);
         }
     } else if (armorVal >= 8) {
         // Medium Tier Light Faction Hats
@@ -591,8 +592,13 @@ if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
             ctx.fillStyle = "#4e342e"; ctx.beginPath(); ctx.arc(0, -12, 3, Math.PI, 0); ctx.fill();
             ctx.fillStyle = "#795548"; ctx.fillRect(-3.5, -12, 7, 1.5); 
         } else if (factionColor === "#00838f") {
-            ctx.fillStyle = "#eeeeee";
-            ctx.beginPath(); ctx.arc(0, -12.5, 3, 0, Math.PI * 2); ctx.fill();
+            // Iransar (Teal) -> White Turban/Cap
+    ctx.fillStyle = "#eeeeee";
+    // Using Math.PI to 0 ensures only the TOP half is drawn
+    ctx.beginPath(); 
+    ctx.arc(0, -12.5, 3.2, Math.PI, 0); 
+    ctx.fill(); 
+    ctx.stroke(); // Adding a stroke helps define the shape against the head
         } else {
             ctx.fillStyle = "#8d6e63"; 
             ctx.beginPath(); ctx.moveTo(-6, -11); ctx.lineTo(0, -15); ctx.lineTo(6, -11);

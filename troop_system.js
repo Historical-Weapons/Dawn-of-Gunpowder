@@ -157,7 +157,7 @@ const UnitRoster = {
 
         // --- CROSSBOW LINE ---
         this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 10, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.7, range: 700, morale: 50, cost: 35 });
-//normal crossbowman debug stowed       
+  
 	   this.create("Heavy Crossbowman", "Heavy Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 25, health: 40, meleeAttack: 14, meleeDefense: 14, missileBaseDamage: 15, missileAPDamage: 30, accuracy: 70, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.6, range: 800, morale: 65, cost: 50 });
       
 	  this.create("Bomb", "Bomb", ROLES.BOMB, false, { isRanged: true, ammo: 2, health: 20, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 30, missileAPDamage: 100, accuracy: 50, armor: ARMOR_TIERS.LEATHER, speed: 0.7, range: 140, morale: 60, cost: 65 });

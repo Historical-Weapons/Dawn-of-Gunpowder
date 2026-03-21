@@ -103,13 +103,15 @@ function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttack
             ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill();
             ctx.fillStyle = "#9e9e9e"; // Steel tip
             ctx.beginPath(); ctx.arc(0, -15, 3.5, Math.PI, 0); ctx.fill(); ctx.stroke();
-        } else {
-            // Default (Chinese/Korean) -> Steel Dome with Lamellar Neck Guard
-            ctx.fillStyle = "#9e9e9e";
-            ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = factionColor; // Neck guard matching faction
-            ctx.fillRect(-4.5, -14, 9, 3);
-        }
+} else {
+    // Default (Chinese/Korean) -> Steel Dome with Lamellar Neck Guard
+    ctx.fillStyle = "#9e9e9e";
+    ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
+    
+    // Fixed: Shorter guard (1.5 height) so it doesn't cover the eyes
+    ctx.fillStyle = factionColor; 
+    ctx.fillRect(-4.5, -14, 9, 1.5); 
+}
     } else if (armorVal >= 8) {
         // --- MEDIUM TIER -> FACTION SPECIFIC LIGHT HATS ---
         if (factionColor === "#c2185b") { 
@@ -155,8 +157,11 @@ if (isMongolFaction) {
         
 		} else if (factionColor === "#00838f") {
             // Iransar -> Simple Cloth Turban
-            ctx.fillStyle = "#eeeeee";
-            ctx.beginPath(); ctx.arc(0, -13.5, 3.5, 0, Math.PI * 2); ctx.fill();
+ctx.fillStyle = "#eeeeee";
+    // 1. The top dome of the turban (Half-circle)
+    ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill();
+    // 2. The cloth wrap wrapping around the forehead
+    ctx.fillRect(-4, -14, 8, 2);
         } else {
             // Default/Chinese/Viet -> Bamboo Rice Hat
             ctx.fillStyle = "#8d6e63"; 
@@ -164,9 +169,11 @@ if (isMongolFaction) {
             ctx.quadraticCurveTo(0, -13.5, -6, -12); ctx.fill(); ctx.stroke();
         }
     } else {
-        // --- LOW TIER -> Bare Head / Topknot ---
-        ctx.fillStyle = "#212121"; // Dark hair
-        ctx.beginPath(); ctx.arc(0, -14.5, 1.8, 0, Math.PI * 2); ctx.fill();
+ctx.fillStyle = "#212121"; // Dark hair
+ctx.beginPath(); 
+// Shifted center from -14.5 to -16.5
+ctx.arc(0, -16.5, 1.8, 0, Math.PI * 2); 
+ctx.fill();
     }
     
     // 6. WEAPONS LOGIC (Preserved perfectly)

@@ -283,75 +283,6 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
    // =========================================================
 // ENEMY AI: Updated Composition Templates (v2.1)
 // =========================================================
-I've moved the Jinlord Confederacy down. With their elite cavalry slashed by 20% and replaced with squishy 20 HP Foot Archers, they no longer hold the top spot. The Great Khaganate is now your statistical king due to their high-speed, all-mounted health pools.
-
-// RANK 1: Great Khaganate (The Golden Horde)
-// * 10% Mangudai // 45 HP, 1.8 Speed, Super Heavy Armor.
-// * 20% Heavy Horse Archer // 40 HP, 1.4 Speed, Full Lamellar Armor.
-// * 50% Horse Archer // 40 HP, 1.6 Speed, Partial Lamellar Armor.
-// * 05% Heavy Lancer // 50 HP, 24 Melee Atk.
-// * 15% Lancer // 25 HP, 1.5 Speed.
-
-// RANK 2: Shahdom of Iransar (The Imperial Heavyweight)
-// * 05% War Elephant // 100 HP, 35 Melee Atk, Juggernaut Armor.
-// * 25% Heavy Lancer // 50 HP, 24 Melee Atk, Full Lamellar.
-// * 25% Horse Archer // 40 HP, 1.6 Speed.
-// * 25% Spearman // 20 HP, +20 Bonus vs Large.
-// * 20% Shielded Infantry // 40 HP, 18 Melee Defense.
-
-// RANK 3: Jinlord Confederacy (The Professional Infantry)
-// * 05% Elite Lancer // Nerfed from 15%.
-// * 10% Heavy Lancer // Nerfed from 20%.
-// * 20% Archer // New addition (20 HP) - Creates a vulnerable backline.
-// * 30% Heavy Crossbowman // 40 HP, 800 Range, 30 AP Damage.
-// * 15% Hand Cannoneer // 800 Range, 50 AP Damage.
-// * 20% Shielded Infantry // 40 HP, 25% Block Chance.
-
-// RANK 4: Hong Dynasty (The Gunpowder State)
-// * 15% Rocket // 520 Range, 50 Ammo.
-// * 25% Heavy Crossbowman // 40 HP, 30 AP Damage.
-// * 30% Shielded Infantry // 40 HP, Leather Armor.
-// * 10% Firelance // 45 AP Missile Damage.
-// * 05% Heavy Firelance // 60 AP Missile Damage.
-// * 05% Bomb // 100 AP Damage.
-// * 10% Repeater/Archer // Volume and utility fire.
-
-// RANK 5: Xiaran Dominion (The Artillery Battery)
-// * 20% Camel Cannon // 850 Range, 80 AP Damage.
-// * 20% Hand Cannoneer // 800 Range, 50 AP Damage.
-// * 25% Slinger // 650 Range, 12 AP Damage.
-// * 20% Spearman // 16 Melee Defense.
-// * 15% Lancer // 1.5 Speed.
-
-// RANK 6: Yamato Clans (The Shock Infantry)
-// * 40% Glaiveman // 30 HP, 18 Melee Atk.
-// * 20% Heavy Two Handed // 25 HP, 36 Melee Atk.
-// * 10% Heavy Horse Archer // 40 HP, 75 Morale.
-// * 30% Archer // 700 Range, 20 HP.
-
-// RANK 7: Goryun Kingdom (The Strategic Defense)
-// * 40% Archer // 700 Range, 55 Accuracy.
-// * 10% Rocket // 520 Range, 15 AP Damage.
-// * 20% Shielded Infantry // 40 HP, 18 Melee Def.
-// * 20% Spearman // 14 Melee Atk, 16 Melee Def.
-// * 10% Hand Cannon/Repeater // High AP and high speed support.
-
-// RANK 8: Vietan Realm (The Poison Skirmishers)
-// * 25% Poison Crossbowman // 90 Accuracy, 60 Base Damage.
-// * 30% Glaiveman // 30 HP, 18 Melee Atk.
-// * 20% Javelinier // 300 Range, 15 AP Damage.
-// * 25% Archer/Spearman // Standard support line.
-
-// RANK 9: High Plateau Kingdoms (The Endurance Light)
-// * 20% Heavy Horse Archer // 40 HP, 75 Morale.
-// * 30% Slinger // 650 Range, 12 AP.
-// * 25% Archer // 700 Range, 50 Morale.
-// * 25% Shielded Infantry // 40 HP, 25% Block.
-
-// RANK 10: Bandits (The Expendables)
-// * 70% Militia // 20 HP, 6 Atk, 6 Def, 35 Morale.
-// * 15% Slinger // 20 HP, 40 Morale.
-// * 15% Javelinier // 20 HP, 4 Ammo.
 
 if (faction === "Great Khaganate") {
     composition = [
@@ -375,7 +306,7 @@ if (faction === "Great Khaganate") {
 {type: "Shielded Infantry", pct: 0.30}, 
         {type: "Heavy Crossbowman", pct: 0.25}, 
         {type: "Rocket", pct: 0.15},
-        {type: "Firelance", pct: 0.10}, 
+        {type: "Firelance", pct: 0.05}, 
         {type: "Repeater Crossbowman", pct: 0.05}, 
         {type: "Heavy Firelance", pct: 0.05}, 
         {type: "Bomb", pct: 0.05},
@@ -445,7 +376,7 @@ if (faction === "Great Khaganate") {
         {type: "Lancer", pct: 0.10}, 
         {type: "Light Two Handed", pct: 0.10}
     ];
-}
+	}}
 
     currentBattleData.initialCounts[side] += totalTroops;
 
