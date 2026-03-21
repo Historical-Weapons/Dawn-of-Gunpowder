@@ -255,7 +255,7 @@ const playBtn = createBtn("Enter World", () => {
 				                <li><strong style="color: #f5d76e;">Press T to view Troops & EXP in Overworld</li>
             </ul>
             <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 25px;">
-                Dawn of Gunpowder is a tactical strategy experience set across the diverse landscapes of 13th-century East Asia. Players navigate a living world map contested by six powerful factions, including the Great Khaganate, the Hong Dynasty, and the Shahdom of Iransar.
+                Dawn of Gunpowder is a tactical strategy experience set across the diverse landscapes of 13th-century East Asia. Players navigate a living world map contested by powerful factions, including the Great Khaganate, the Hong Dynasty, and the Shahdom of Iransar.
             </p>
             <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 15px;">
                 The game features a persistent army management system where recruited units gain experience and level up through engagement. Mechanics emphasize geographic exploration, with the player’s party seamlessly transitioning between land caravans and naval vessels based on terrain. When conflict arises, the game shifts to a tactical battlefield engine.

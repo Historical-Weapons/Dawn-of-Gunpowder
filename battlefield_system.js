@@ -274,11 +274,7 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
         for (let [type, count] of Object.entries(counts)) {
             composition.push({ type: type, pct: count / totalRosterSize });
         }
-
-        // CRITICAL FIX: Sort ascending! 
-        // This ensures rare unique units (like 2 Slingers) get calculated FIRST. 
-        // Otherwise, Math.round() on the 90% Militia blob will hit the unit cap early and erase them.
-        composition.sort((a, b) => a.pct - b.pct);
+		composition.sort((a, b) => a.pct - b.pct);
 
         // Override totalTroops to match the actual roster size
         totalTroops = totalRosterSize;
@@ -740,10 +736,12 @@ unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedM
                         /* Ranged Combat */
                         let isRepeater = unit.unitType === "Repeater Crossbowman";
                         
-                        if (isRepeater && unit.stats.magazine > 1) {
-                            unit.cooldown = 5;
+                        if (isRepeater && unit.stats.magazine > 0) { 
+						//repeater burst 
+                            unit.cooldown = 30; //0.5 sec a shot
                             unit.stats.magazine--; 
                         } else {
+						//reload
                             unit.cooldown = getReloadTime(unit);
                             if (isRepeater) unit.stats.magazine = 10;
                         }
@@ -781,7 +779,8 @@ unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedM
                     } else {
                         
                         /* Melee Combat */
-                        unit.cooldown = 60;
+                   unit.cooldown = getReloadTime(unit);
+						
                         let stateStr = "melee_attack";
                         if (unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
                         

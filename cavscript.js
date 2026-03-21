@@ -1,5 +1,4 @@
-
-function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, type, side, unitName, isFleeing) {
+function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, type, side, unitName, isFleeing, cooldown, unitAmmo) {
     ctx.save();
     ctx.translate(x, y);
     
@@ -11,11 +10,17 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         armorVal = 40; // High fallback for cavalry
     }
 
+// This regex catches: "War Elephant", "warelephant", "ELEPHANT_HEAVY", "ArmoredElefant", etc.
+    const elephantRegex = /eleph|elefa/i; 
+    const isElephant = elephantRegex.test(type) || (unitName && elephantRegex.test(unitName));
+    const isCamel = type === "camel" || (unitName && /camel/i.test(unitName));
+  
+	
     if (unitName === "PLAYER" || unitName === "Commander") armorVal = Math.max(armorVal, 40);
 
     let animFrame = frame || (Date.now() / 100);
     let dir = side === "player" ? 1 : -1;
-    ctx.scale(dir, 1);
+ 
 
     let isMoving = moving || (typeof vx !== 'undefined' && (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1));
     let legSwing = isMoving ? Math.sin(animFrame * 0.4) : 0; // Normalized for scaling
@@ -24,11 +29,10 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
     // Default rider physics (adjusted later if mount is massive)
     let riderBob = isMoving ? Math.sin(animFrame * 0.4 + 0.5) * 1.5 : 0;
     let riderHeightOffset = 0; 
-
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-
-    let isElephant = type === "elephant";
-    let isCamel = type === "camel";
+let baseMountHeight = -4; // Default Horse
+if (isElephant) baseMountHeight = -80; // Lower spine relative to body center
+if (isCamel)    baseMountHeight = 7;
+ 
 
     if (isElephant) {
 		// Add a gentle, rhythmic weight shift so it doesn't statically lean
@@ -145,10 +149,9 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.fillStyle = "#bdbdbd"; // Toenails
         for(let t=0; t<3; t++) { ctx.beginPath(); ctx.arc(14 + eSwing + t*4, eBob + 24, 2.5, Math.PI, 0); ctx.fill(); }
 
-        // Boost the rider way up to sit on the back!
-        riderHeightOffset = -32; 
+ 
 
-    } else if (type === "camel") {
+} else if (type === "camel") {
         // ==========================================
         //      DEDICATED CAMEL BLOCK (REVISED)
         // ==========================================
@@ -158,77 +161,52 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.lineCap = "round"; 
         ctx.lineJoin = "round";
 
-        // Helper function for articulated, pacing camel legs
         const drawLeg = (isFront, isNear) => {
-            // Camels "pace" - legs on the same side move together.
             let offset = isNear ? 0 : Math.PI; 
             let phase = (animFrame * 0.3) + offset;
             
-            let swing = Math.sin(phase); // Forwards/backwards motion
-            let lift = Math.max(0, -Math.cos(phase)); // Lifts hoof when moving forward
+            // --- FIX: Only calculate swing and lift if the unit is actively moving ---
+            let swing = moving ? Math.sin(phase) : 0; 
+            let lift = moving ? Math.max(0, -Math.cos(phase)) : 0; 
             
             ctx.beginPath();
             let endX, endY;
-            
-            // Far legs are darker and slightly thinner for depth
             ctx.strokeStyle = isNear ? "#4A3320" : "#2d1c15";
             ctx.lineWidth = (isNear ? 2.5 : 2.0) * mScale;
             
             if (isFront) {
                 let startX = (isNear ? 6 : 4) * mScale;
                 let startY = mBob + 4 * mScale;
-                
-                // Knobby knee joint
                 let kneeX = startX + swing * 4 * mScale;
                 let kneeY = startY + 6 * mScale - lift * 1.5 * mScale;
-                
                 endX = kneeX + swing * 1.5 * mScale;
                 endY = kneeY + 5 * mScale - lift * 3 * mScale;
-
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(kneeX, kneeY); // Upper arm
-                ctx.lineTo(endX, endY);   // Lower leg
+                ctx.moveTo(startX, startY); ctx.lineTo(kneeX, kneeY); ctx.lineTo(endX, endY);   
             } else {
                 let startX = (isNear ? -6 : -8) * mScale;
                 let startY = mBob + 3 * mScale;
-                
-                // Stifle/Thigh joint
                 let stifleX = startX + swing * 3 * mScale;
                 let stifleY = startY + 5 * mScale - lift * mScale;
-                
-                // Hock/Ankle joint
                 let hockX = stifleX - 1.5 * mScale + swing * 2 * mScale;
                 let hockY = stifleY + 3 * mScale - lift * 2 * mScale;
-                
                 endX = hockX + 1.5 * mScale;
                 endY = hockY + 3 * mScale - lift * 1 * mScale;
-
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(stifleX, stifleY); // Thigh
-                ctx.lineTo(hockX, hockY);     // Calf
-                ctx.lineTo(endX, endY);       // Ankle
+                ctx.moveTo(startX, startY); ctx.lineTo(stifleX, stifleY); ctx.lineTo(hockX, hockY); ctx.lineTo(endX, endY);        
             }
             ctx.stroke();
             
-            // Fleshy split camel pads
+            // --- FIX MOVED HERE (Inside function scope) ---
             ctx.fillStyle = isNear ? "#bcaaa4" : "#8d7b76";
             ctx.beginPath();
-            ctx.ellipse(endX, endY + 0.5 * mScale, 3.2 * mScale, 1.8 * mScale, 0, 0, Math.PI*2);
+            let footW = Math.max(0.1, 2.2 * mScale);
+            let footH = Math.max(0.1, 1.2 * mScale);
+            ctx.ellipse(endX, endY + 0.5 * mScale, footW, footH, 0, 0, Math.PI * 2);
             ctx.fill(); ctx.stroke();
         };
 
         // --- Z-ORDER 1: FAR LEGS & TAIL ---
         drawLeg(true, false);  // Front Far
         drawLeg(false, false); // Back Far
-
-        // Tail (Swinging slightly opposite to bob)
-        ctx.strokeStyle = "#2d1c15"; ctx.lineWidth = 1.5 * mScale;
-        ctx.beginPath(); ctx.moveTo(-11 * mScale, mBob + 2 * mScale);
-        ctx.quadraticCurveTo(-15 * mScale, mBob + 4 * mScale + (bob*0.5), -12 * mScale, mBob + 9 * mScale);
-        ctx.stroke();
-        // Tail tuft
-        ctx.fillStyle = "#2d1c15"; ctx.beginPath(); 
-        ctx.arc(-12 * mScale, mBob + 9 * mScale, 1.8 * mScale, 0, Math.PI*2); ctx.fill();
 
         // --- Z-ORDER 2: CAMEL BODY (SINGLE PATH) ---
         // This ensures the 2 humps, neck, head, and belly share ONE clean fill.
@@ -255,9 +233,6 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.lineWidth = 1.5 * mScale;
         ctx.fill(body); ctx.stroke(body);
 
-        // Face Details (Eye & Snout line)
-        ctx.fillStyle = "#2d1c15";
-        ctx.beginPath(); ctx.arc(22 * mScale, mBob - 14 * mScale, 0.8 * mScale, 0, Math.PI*2); ctx.fill(); // Eye
         ctx.beginPath(); ctx.moveTo(24.5 * mScale, mBob - 9.5 * mScale); ctx.lineTo(25.5 * mScale, mBob - 9.5 * mScale); ctx.stroke(); // Snout line
 
         // Ear
@@ -266,8 +241,8 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.lineTo(17 * mScale, mBob - 18 * mScale); ctx.lineTo(20 * mScale, mBob - 16 * mScale);
         ctx.fill(); ctx.stroke();
 
-        // --- Z-ORDER 3: ARMOR ---
-        if (armorVal >= 25) {
+        // This prevents the diagonal lines and brown square from appearing on the Camel Cannon
+        if (armorVal >= 25 && !unitName.toLowerCase().includes("cannon")) {
             ctx.save(); 
             ctx.clip(body); // MAGIC: Clips the armor perfectly to the camel's exact curves!
             
@@ -296,200 +271,192 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         // --- Z-ORDER 4: NEAR LEGS ---
         drawLeg(true, true);  // Front Near
         drawLeg(false, true); // Back Near
-		
+
+        // SURGERY FIX: onfoot
+        riderHeightOffset = -14; 
+        
+    
 } else {
-    // ==========================================
-    //   REVISED FWD-WALKING MUSCULAR HORSE
-    // ==========================================
-    let hBob = bob;
-    
-    // Walk speed remains slower for 4-beat sequence
-    let walkSpeed = animFrame * 0.15; 
-    
-    // Subtle head and tail movements synced to the walk cycle (flipped signs for fwd)
-    let headNod = (typeof isMoving !== 'undefined' && isMoving) ? Math.sin(walkSpeed * 2) * 1.5 : 0;
-    let tailSwish = (typeof isMoving !== 'undefined' && isMoving) ? Math.sin(walkSpeed) * 2.5 : 0;
-
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-
-    // Re-calculating standard colors based on input
-    const bodyColor = "#795548";
-    const darkBodyColor = "#5D4037"; // For near leg fill
-    const farLegColor = "#3e2723";   // For far leg fill (darkest)
-    const lineColor = "#3e2723";
-
-    // --- HELPER: draw Muscular Leg ---
-    // Instead of lines, this draws shaped paths for a filled, professional look.
-    const drawMuscularLeg = (isFront, isNear, phaseOffset) => {
-        let phase = walkSpeed + phaseOffset;
-        let swing = Math.sin(phase);
-        let lift = Math.max(0, -Math.cos(phase)); 
-
-        // Define leg fill color based on near/far
-        ctx.fillStyle = isNear ? darkBodyColor : farLegColor;
+        // ==========================================
+        //   REVISED FWD-WALKING MUSCULAR HORSE
+        // ==========================================
+        let hBob = bob;
         
-        ctx.beginPath();
+        // --- FIX: Only progress walkSpeed if the unit is moving ---
+        let walkSpeed = moving ? animFrame * 0.15 : 0; 
         
-        if (isFront) {
-            // Front Leg (pointing left): Shoulder -> Knee -> Fetlock -> Hoof
-            let startX = isNear ? -7 : -4; // Shoulder attachment
-            let startY = hBob + 4;
-            
-            // Define joint locations with animation
-            let kneeX = startX - 1 + swing * 3;
-            let kneeY = startY + 6 - lift * 2;
-            
-            let fetlockX = kneeX + swing * 1.5;
-            let fetlockY = kneeY + 5 - lift * 3.5;
-            
-            let hoofX = fetlockX - (lift > 0.1 ? 1 : 0);
-            let hoofY = fetlockY + 2.5;
+        // --- FIX: Tie secondary animations to moving boolean ---
+        let headNod = moving ? Math.sin(walkSpeed * 2) * 1.5 : 0;
+        let tailSwish = moving ? Math.sin(walkSpeed) * 2.5 : 0;
 
-            // Draw Muscular Path
-            ctx.moveTo(startX + 2, startY); // Upper shoulder front
-            ctx.quadraticCurveTo(startX - 2, startY + 2, kneeX - 1.5, kneeY); // Front muscle
-            ctx.lineTo(hoofX - 1.5, hoofY); // Down to hoof front
-            ctx.lineTo(hoofX + 1.5, hoofY); // Hoof bottom
-            ctx.lineTo(fetlockX + 1.2, fetlockY); // Back of pastern
-            ctx.quadraticCurveTo(kneeX + 1.8, kneeY + 1, startX + 2.5, startY + 3); // Back muscle
+        ctx.lineCap = "round"; ctx.lineJoin = "round";
+
+        const bodyColor = "#795548";
+        const darkBodyColor = "#5D4037"; 
+        const farLegColor = "#3e2723";   
+        const lineColor = "#3e2723";
+
+        // --- HELPER: draw Muscular Leg ---
+        const drawMuscularLeg = (isFront, isNear, phaseOffset) => {
+            let phase = walkSpeed + phaseOffset;
+            
+            // --- FIX: Swing and lift must be 0 if not moving ---
+            let swing = moving ? Math.sin(phase) : 0;
+            let lift = moving ? Math.max(0, -Math.cos(phase)) : 0; 
+
+            ctx.fillStyle = isNear ? darkBodyColor : farLegColor;
+            ctx.beginPath();
+            
+            if (isFront) {
+                let startX = isNear ? -7 : -4; 
+                let startY = hBob + 4;
+                
+                let kneeX = startX - 1 + swing * 3;
+                let kneeY = startY + 6 - lift * 2;
+                
+                let fetlockX = kneeX + swing * 1.5;
+                let fetlockY = kneeY + 5 - lift * 3.5;
+                
+                let hoofX = fetlockX - (lift > 0.1 ? 1 : 0);
+                let hoofY = fetlockY + 2.5;
+
+                ctx.moveTo(startX + 2, startY);
+                ctx.quadraticCurveTo(startX - 2, startY + 2, kneeX - 1.5, kneeY);
+                ctx.lineTo(hoofX - 1.5, hoofY);
+                ctx.lineTo(hoofX + 1.5, hoofY);
+                ctx.lineTo(fetlockX + 1.2, fetlockY);
+                ctx.quadraticCurveTo(kneeX + 1.8, kneeY + 1, startX + 2.5, startY + 3);
+                ctx.closePath();
+            } else {
+                let startX = isNear ? 5 : 7; 
+                let startY = hBob + 3;
+                
+                let stifleX = startX - 2 + swing * 1.5;
+                let stifleY = startY + 4 - lift * 0.5;
+                
+                let hockX = stifleX + 1.5 + swing * 2;
+                let hockY = stifleY + 4 - lift * 1.5;
+                
+                let fetlockX = hockX - 1.5 + swing * 1.5;
+                let fetlockY = hockY + 4 - lift * 2.5;
+
+                let hoofX = fetlockX - (lift > 0.1 ? 1 : 0);
+                let hoofY = fetlockY + 2.5;
+
+                ctx.moveTo(startX + 3, startY);
+                ctx.quadraticCurveTo(startX + 4, startY + 5, hockX + 1.8, hockY);
+                ctx.lineTo(hoofX + 1.5, hoofY);
+                ctx.lineTo(hoofX - 1.5, hoofY);
+                ctx.lineTo(fetlockX - 1.2, fetlockY);
+                ctx.quadraticCurveTo(hockX - 2, hockY - 1, stifleX - 1, stifleY);
+                ctx.quadraticCurveTo(startX - 1, startY + 1, startX - 2, startY);
+                ctx.closePath();
+            }
+            
+            ctx.fill();
+
+            // Draw Hoof
+            ctx.fillStyle = "#212121";
+            let liftCalc = moving ? Math.max(0, -Math.cos(walkSpeed + phaseOffset)) : 0;
+            let swingCalc = moving ? Math.sin(walkSpeed + phaseOffset) : 0;
+            let hX, hY;
+
+            if(isFront) {
+                let kX = (isNear ? -7 : -4) - 1 + swingCalc * 3;
+                let kY = hBob + 4 + 6 - liftCalc * 2;
+                let fX = kX + swingCalc * 1.5;
+                let fY = kY + 5 - liftCalc * 3.5;
+                hX = fX - (liftCalc > 0.1 ? 1 : 0); hY = fY + 2.5;
+            } else {
+                let sX = (isNear ? 5 : 7) - 2 + swingCalc * 1.5;
+                let sY = hBob + 3 + 4 - liftCalc * 0.5;
+                let hoX = sX + 1.5 + swingCalc * 2.5;
+                let hoY = sY + 4 - liftCalc * 1.5;
+                let fX = hoX - 1.5 + swingCalc * 1.5;
+                let fY = hoY + 4 - liftCalc * 2.5;
+                hX = fX - (liftCalc > 0.1 ? 1 : 0); hY = fY + 2.5;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(hX - 1.8, hY + 1); 
+            ctx.lineTo(hX + 1.8, hY + 1); 
+            ctx.lineTo(hX + 1.2, hY - 1.5); 
+            ctx.lineTo(hX - 1.2, hY - 1.5); 
             ctx.closePath();
+            ctx.fill();
+        };
 
-        } else {
-            // Back Leg (pointing left): Hip -> Stifle -> Hock -> Fetlock -> Hoof
-            let startX = isNear ? 5 : 7; // Hip attachment
-            let startY = hBob + 3;
-            
-            // Define joint locations with animation
-            let stifleX = startX - 2 + swing * 1.5;
-            let stifleY = startY + 4 - lift * 0.5;
-            
-            let hockX = stifleX + 1.5 + swing * 2;
-            let hockY = stifleY + 4 - lift * 1.5;
-            
-            let fetlockX = hockX - 1.5 + swing * 1.5;
-            let fetlockY = hockY + 4 - lift * 2.5;
+        // --- Z-ORDER 1: FAR LEGS & TAIL ---
+        drawMuscularLeg(false, false, Math.PI);        
+        drawMuscularLeg(true, false, Math.PI / 2);      
 
-            let hoofX = fetlockX - (lift > 0.1 ? 1 : 0);
-            let hoofY = fetlockY + 2.5;
+        ctx.strokeStyle = "#2d1c15"; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(11, hBob - 2); 
+        ctx.bezierCurveTo(15 + tailSwish, hBob - 2, 18 + tailSwish, hBob + 4, 14 + tailSwish * 0.5, hBob + 12);
+        ctx.stroke();
 
-            // Draw Muscular Path
-            ctx.moveTo(startX + 3, startY); // Upper hip back
-            ctx.quadraticCurveTo(startX + 4, startY + 5, hockX + 1.8, hockY); // Big rear hamstring
-            ctx.lineTo(hoofX + 1.5, hoofY); // Down to hoof back
-            ctx.lineTo(hoofX - 1.5, hoofY); // Hoof bottom
-            ctx.lineTo(fetlockX - 1.2, fetlockY); // Front of pastern
-            ctx.quadraticCurveTo(hockX - 2, hockY - 1, stifleX - 1, stifleY); // Front Gaskin muscle
-            ctx.quadraticCurveTo(startX - 1, startY + 1, startX - 2, startY); // Up to flank
-            ctx.closePath();
-        }
+        // --- Z-ORDER 2: BODY ---
+        ctx.fillStyle = bodyColor; ctx.strokeStyle = lineColor; ctx.lineWidth = 1.2;
+        let horseBody = new Path2D();
+        horseBody.moveTo(12, hBob + 2); 
+        horseBody.quadraticCurveTo(12, hBob - 6, 5, hBob - 6); 
+        horseBody.quadraticCurveTo(0, hBob - 4, -6, hBob - 5);    
+        horseBody.quadraticCurveTo(-10, hBob - 10 + headNod, -13, hBob - 16 + headNod); 
+        horseBody.lineTo(-15, hBob - 17 + headNod); 
+        horseBody.lineTo(-24, hBob - 11 + headNod); 
+        horseBody.quadraticCurveTo(-26, hBob - 8 + headNod, -24, hBob - 6 + headNod);  
+        horseBody.lineTo(-18, hBob - 4 + headNod);  
+        horseBody.quadraticCurveTo(-12, hBob - 2 + headNod, -9, hBob + 5);   
+        horseBody.quadraticCurveTo(-8, hBob + 10, 0, hBob + 10);  
+        horseBody.quadraticCurveTo(10, hBob + 10, 12, hBob + 2); 
+        horseBody.closePath();
+
+        ctx.fill(horseBody); 
+        ctx.stroke(horseBody);
+
+        // Mane & Eye
+        ctx.strokeStyle = "#212121"; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-8, hBob - 7 + (headNod*0.5)); 
+        ctx.quadraticCurveTo(-11, hBob - 13 + headNod, -14, hBob - 16 + headNod); ctx.stroke();
         
-        ctx.fill(); // Clean fill, no stroke on muscles
+        ctx.fillStyle = "#111"; ctx.beginPath(); 
+        ctx.arc(-19, hBob - 10 + headNod, 1.2, 0, Math.PI*2); ctx.fill();
 
-        // Draw basic Hoof (darker, simple polygon over the leg fill)
-        ctx.fillStyle = "#212121";
-        // Recalculate hoof position based on last fetlockX/Y
-        let liftCalc = Math.max(0, -Math.cos(walkSpeed + phaseOffset));
-        let swingCalc = Math.sin(walkSpeed + phaseOffset);
-        let hX, hY;
-        if(isFront) {
-            let kX = (isNear ? -7 : -4) - 1 + swingCalc * 3;
-            let kY = hBob + 4 + 6 - liftCalc * 2;
-            let fX = kX + swingCalc * 1.5;
-            let fY = kY + 5 - liftCalc * 3.5;
-            hX = fX - (liftCalc > 0.1 ? 1 : 0); hY = fY + 2.5;
-        } else {
-            let sX = (isNear ? 5 : 7) - 2 + swingCalc * 1.5;
-            let sY = hBob + 3 + 4 - liftCalc * 0.5;
-            let hoX = sX + 1.5 + swingCalc * 2.5;
-            let hoY = sY + 4 - liftCalc * 1.5;
-            let fX = hoX - 1.5 + swingCalc * 1.5;
-            let fY = hoY + 4 - liftCalc * 2.5;
-            hX = fX - (liftCalc > 0.1 ? 1 : 0); hY = fY + 2.5;
-        }
+        // Ears
+        ctx.fillStyle = bodyColor; ctx.beginPath();
+        ctx.moveTo(-13, hBob - 16 + headNod); ctx.lineTo(-13, hBob - 20 + headNod); 
+        ctx.lineTo(-15, hBob - 17 + headNod); ctx.fill(); ctx.stroke();
 
-        ctx.beginPath();
-        ctx.moveTo(hX - 1.8, hY + 1); // bottom back
-        ctx.lineTo(hX + 1.8, hY + 1); // bottom front
-        ctx.lineTo(hX + 1.2, hY - 1.5); // top front
-        ctx.lineTo(hX - 1.2, hY - 1.5); // top back
-        ctx.closePath();
-        ctx.fill();
-    };
+        // --- Z-ORDER 4: NEAR LEGS ---
+        drawMuscularLeg(false, true, 0);               
+        drawMuscularLeg(true, true, -Math.PI / 2);     
+    }
+// ==========================================
+// 3. RIDER BODY & ARMOR
+// ==========================================
+// >>> ADD THESE 4 LINES HERE <<<
+ if (isElephant) {
+    ctx.restore(); // Clean up the stack before leaving!
+    return;
+}
 
-    // --- Z-ORDER 1: FAR LEGS & TAIL ---
-    // RH (+pi), RF (+pi/2)
-    drawMuscularLeg(false, false, Math.PI);         // Far Back (Right Hind)
-    drawMuscularLeg(true, false, Math.PI / 2);      // Far Front (Right Fore)
+ctx.save();
+    let isCamelCannon = (type === "camel_cannon" || (unitName && unitName.toLowerCase().includes("camel cannon")));
 
-    // Fluid, swishing tail (flipped to point right)
-    ctx.strokeStyle = "#2d1c15"; ctx.lineWidth = 3.5;
-    ctx.beginPath(); ctx.moveTo(11, hBob - 2); // Start at right rump
-    ctx.bezierCurveTo(15 + tailSwish, hBob - 2, 18 + tailSwish, hBob + 4, 14 + tailSwish * 0.5, hBob + 12);
-    ctx.stroke();
-
-    // --- Z-ORDER 2: CLEAN BODY ANATOMY (FLIPPED FWD) ---
-    ctx.fillStyle = bodyColor; ctx.strokeStyle = lineColor; ctx.lineWidth = 1.2;
-    let horseBody = new Path2D();
-    
-    horseBody.moveTo(12, hBob + 2); // Start at rump (right)
-    horseBody.quadraticCurveTo(12, hBob - 6, 5, hBob - 6); // Top of rump
-    horseBody.quadraticCurveTo(0, hBob - 4, -6, hBob - 5);    // Back/Saddle area
-    
-    // Long, High-Crested Neck (pointing left, with headNod)
-    horseBody.quadraticCurveTo(-10, hBob - 10 + headNod, -13, hBob - 16 + headNod); 
-    horseBody.lineTo(-15, hBob - 17 + headNod); // Poll
-    
-    // Long Noble Snout
-    horseBody.lineTo(-24, hBob - 11 + headNod); // Top of long nose
-    horseBody.quadraticCurveTo(-26, hBob - 8 + headNod, -24, hBob - 6 + headNod);  // Muzzle tip
-    horseBody.lineTo(-18, hBob - 4 + headNod);  // Jawline
-    
-    // Under-neck and Chest
-    horseBody.quadraticCurveTo(-12, hBob - 2 + headNod, -9, hBob + 5);   // Gullet to chest
-    horseBody.quadraticCurveTo(-8, hBob + 10, 0, hBob + 10);  // Belly
-    horseBody.quadraticCurveTo(10, hBob + 10, 12, hBob + 2); // Back to start
-    horseBody.closePath();
-
-    ctx.fill(horseBody); 
-    ctx.stroke(horseBody);
-
-    // Mane & Eye (Moves with headNod, flipped)
-    ctx.strokeStyle = "#212121"; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(-8, hBob - 7 + (headNod*0.5)); 
-    ctx.quadraticCurveTo(-11, hBob - 13 + headNod, -14, hBob - 16 + headNod); ctx.stroke();
-    
-    ctx.fillStyle = "#111"; ctx.beginPath(); 
-    ctx.arc(-19, hBob - 10 + headNod, 1.2, 0, Math.PI*2); ctx.fill();
-
-    // High Alert Ears (flipped)
-    ctx.fillStyle = bodyColor; ctx.beginPath();
-    ctx.moveTo(-13, hBob - 16 + headNod); ctx.lineTo(-13, hBob - 20 + headNod); 
-    ctx.lineTo(-15, hBob - 17 + headNod); ctx.fill(); ctx.stroke();
-
- 
-
-    // --- Z-ORDER 4: NEAR LEGS ---
-    // LH (0), LF (-pi/2)
-    drawMuscularLeg(false, true, 0);               // Near Back (Left Hind)
-    drawMuscularLeg(true, true, -Math.PI / 2);     // Near Front (Left Fore)
-
-		
-	}
-    // ==========================================
-    // 3. RIDER BODY & ARMOR (Now applies to ALL mounts)
-    // ==========================================
-    ctx.save();
-    
-    // Applying riderHeightOffset so the elephant rider sits up high!
-    ctx.translate(-1, (isCamel ? -7 : -4) + bob + riderBob + riderHeightOffset);
-    
+// --- 2. THE RIDER TRANSLATION ---
+// We combine the base animal height + animation bob + the massive elephant offset
+ctx.translate(-1, baseMountHeight + bob + riderBob + riderHeightOffset);
+if (!isElephant && !isCamelCannon) {
     // Base Faction Tunic
     ctx.fillStyle = factionColor; ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(2, -9); ctx.lineTo(-2, -9);
     ctx.closePath(); ctx.fill(); ctx.stroke();
-    
+    }
+
+ctx.restore();
+
     // RIDER ARMOR LAYERS
-    if (unitName.includes("Elite") || armorVal >= 40) {
+if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
         // --- ELITE / SUPER HEAVY TIER ---
         // 1. Shield on Back
         ctx.fillStyle = factionColor; ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
@@ -563,11 +530,11 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.fillRect(-5, -8, 2, 3); ctx.strokeRect(-5, -8, 2, 3); // Left
         ctx.fillRect(3, -8, 2, 3); ctx.strokeRect(3, -8, 2, 3);   // Right
     }
-    
+      if (!isCamelCannon) {  
     // Rider Head Base
     ctx.fillStyle = "#d4b886";
     ctx.beginPath(); ctx.arc(0, -11, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-
+	  }
     // RIDER HEADGEAR
     if (unitName.includes("Elite") || armorVal >= 40) {
         // --- ELITE CUMAN HELMET WITH STEEL FACE MASK ---
@@ -631,10 +598,9 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
             ctx.beginPath(); ctx.moveTo(-6, -11); ctx.lineTo(0, -15); ctx.lineTo(6, -11);
             ctx.quadraticCurveTo(0, -12.5, -6, -11); ctx.fill(); ctx.stroke();
         }
-    } else {
-        // Low Tier Topknot
-        ctx.fillStyle = "#212121"; ctx.beginPath(); ctx.arc(0, -13.5, 1.5, 0, Math.PI * 2); ctx.fill();
-    }
+    } 
+	else { //camel 
+           }
 // --- WEAPONS LOGIC ---
     let weaponBob = isAttacking ? Math.sin(frame * 0.8) * 4 : Math.sin(frame * 0.2) * 1;
 
@@ -648,138 +614,362 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         ctx.quadraticCurveTo(-6, -14 + weaponBob - flap, 3, -12 + weaponBob);
         ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-  else if (type === "horse_archer") {
-        let archerTime = Date.now() / 2000; // 2-second full animation cycle
-        let cycle = isAttacking ? archerTime % 1.0 : 0.9; // Sit at resting state if not attacking
-        
-        let handX = 6 + weaponBob, handY = -6; 
-        let rightHandX = handX, rightHandY = handY;
-        let bowKhatra = 0;
-        let hasArrow = false;
-
-        // Draw Quiver (strapped to hip/back)
-        ctx.fillStyle = "#5d4037"; ctx.fillRect(-10, -4, 5, 12);
-        ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(-8, -4); ctx.lineTo(-12, -10); ctx.stroke(); // Static arrows
-        ctx.beginPath(); ctx.moveTo(-6, -4); ctx.lineTo(-9, -12); ctx.stroke();
-
-        // 4-Phase Animation State Machine
-        if (cycle < 0.2) {
-            // Phase 1: Pulling arrow from quiver
-            let reachProgress = cycle / 0.2;
-            rightHandX = -8 + (reachProgress * 4); 
-            rightHandY = -4 - (reachProgress * 6);
-            hasArrow = true;
-        } else if (cycle < 0.4) {
-            // Phase 2: Nocking on string
-            let nockProgress = (cycle - 0.2) / 0.2;
-            rightHandX = -4 + (handX - (-4)) * nockProgress;
-            rightHandY = -10 + (handY - (-10)) * nockProgress;
-            hasArrow = true;
-        } else if (cycle < 0.8) {
-            // Phase 3: Drawing the bow back
-            let drawProgress = (cycle - 0.4) / 0.4;
-            rightHandX = handX - (drawProgress * 14); // Pulling string back 14px
-            rightHandY = handY;
-            hasArrow = true;
-        } else {
-            // Phase 4: Release & Khatra follow-through
-            let releaseProgress = (cycle - 0.8) / 0.2;
-            bowKhatra = 0.6 * (1 - releaseProgress); 
-            rightHandX = handX - 14 + (releaseProgress * 6); 
-            hasArrow = false; // Arrow fired
-        }
-
-        // Draw Bow & Khatra rotation
+else if (type === "horse_archer") {
+        // --- DIRECTIONAL FLIPPING ---
         ctx.save();
-        ctx.translate(handX, handY); 
-        ctx.rotate(bowKhatra); 
-        ctx.translate(-handX, -handY);
+        ctx.scale(dir, 1);
+
+        let b = (typeof bob !== 'undefined') ? bob : 0;
+        let weaponBob = b; 
+        let ammo = (typeof unitAmmo !== 'undefined') ? unitAmmo : 1;
+
+        // --- FETCH ACTUAL COOLDOWN TIMERS ---
+        let cd = (typeof cooldown !== 'undefined') ? cooldown : 0;
+        let maxCd = (typeof unit !== 'undefined' && unit.stats && unit.stats.cooldown) ? unit.stats.cooldown : 2000;
+
+        // --- REVISED ARROW QUIVER ---
+        ctx.save();
+        ctx.translate(-3, 0 + b); // Pulled in closer to the hip
+        ctx.rotate(Math.PI / 6);  // Leans back away from the neck
         
-        ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(handX - 4, -14); 
-        ctx.quadraticCurveTo(handX + 6, -10, handX, handY); 
-        ctx.quadraticCurveTo(handX + 6, -2, handX - 4, 2); ctx.stroke();
-        
-        // Draw String dynamically stretched to right hand
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)"; ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(handX - 4, -14); 
-        ctx.lineTo(rightHandX, rightHandY); 
-        ctx.lineTo(handX - 4, 2); ctx.stroke();
+        ctx.fillStyle = "#5d4037"; ctx.fillRect(-3, -4, 6, 11);
+        ctx.strokeStyle = "#2b1b17"; ctx.lineWidth = 1; ctx.strokeRect(-3, -4, 6, 11);
+
+        let visibleArrows = Math.max(0, Math.min(3, ammo));
+        ctx.fillStyle = "#d32f2f"; 
+        for (let i = 0; i < visibleArrows; i++) {
+            let offset = -1.5 + (i * 1.5); 
+            ctx.fillRect(offset, -6, 1.2, 2.5);
+        }
         ctx.restore();
 
-        // --- SPECIFIC ARROW COSMETICS ---
-        if (hasArrow) {
+        // --- OUT OF AMMO: Melee Lance Fallback ---
+        if (ammo <= 0) {
+            let meleeCycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 0;
+            let thrust = isAttacking ? Math.sin(meleeCycle * Math.PI) * 8 : 0;
+
+            // 1. Draw Stowed Bow in Bow Case
             ctx.save();
-            ctx.translate(rightHandX, rightHandY); // Anchor drawing to the hand
-            
-            // Rotate the arrow while pulling from the quiver, then level it out
+            ctx.translate(-5, 0 + b);
+            ctx.rotate(Math.PI / 6);
+            ctx.fillStyle = "#4e342e"; ctx.fillRect(-3, -8, 6, 16);
+            ctx.strokeStyle = "#212121"; ctx.lineWidth = 1; ctx.strokeRect(-3, -8, 6, 16);
+            ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, -8); 
+            ctx.quadraticCurveTo(4, -12, -2, -16); ctx.stroke();
+            ctx.restore();
+
+            // 2. Draw Melee Lance & Hand
+            ctx.save();
+            ctx.translate(2 + thrust, -4 + b); 
+            ctx.fillStyle = "#795548"; ctx.fillRect(-10, -1, 30, 2);
+            ctx.fillStyle = "#e0e0e0";
+            ctx.beginPath();
+            ctx.moveTo(20, -1.5); ctx.lineTo(26, 0); ctx.lineTo(20, 1.5); 
+            ctx.fill();
+            ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+
+        } else {
+            // --- RANGED COMBAT: Has Ammo ---
+            // 1. Draw Stowed Lance
+            ctx.save();
+            ctx.translate(-2, 4 + b); 
+            ctx.rotate(-Math.PI / 12);
+            ctx.fillStyle = "#5d4037"; ctx.fillRect(-12, -1, 28, 2);
+            ctx.fillStyle = "#bdbdbd"; 
+            ctx.beginPath(); ctx.moveTo(16, -1.5); ctx.lineTo(22, 0); ctx.lineTo(16, 1.5); ctx.fill();
+            ctx.restore();
+
+            // 2. Active Archery Animation
+            let cycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 0.9; 
+
+            let bowKhatra = 0;
+            let hasArrow = false;
+            let handX = 6 + weaponBob; 
+            let handY = -6 + b; // Added 'b' so the bow bounces with the horse
+            let rightHandX = handX, rightHandY = handY;
+            let stringX = rightHandX; 
+
+            // MATH DISCONTINUITY FIXED HERE:
             if (cycle < 0.2) {
-                ctx.rotate(-Math.PI / 4); 
+                // 0.0 to 0.2: Empty hand reaches back to quiver (-5, -2)
+                let reachProgress = cycle / 0.2;
+                rightHandX = (handX - 8) + ( (-5) - (handX - 8) ) * Math.sin(reachProgress * Math.PI/2);
+                rightHandY = handY + ( (-2 + b) - handY ) * Math.sin(reachProgress * Math.PI/2);
+                hasArrow = false; 
+                stringX = handX - 4; 
             } else if (cycle < 0.4) {
+                // 0.2 to 0.4: Pull arrow from quiver to bow
                 let nockProgress = (cycle - 0.2) / 0.2;
-                ctx.rotate((-Math.PI / 4) * (1 - nockProgress));
+                rightHandX = -5 + (handX - (-5)) * nockProgress;
+                rightHandY = (-2 + b) + (handY - (-2 + b)) * nockProgress;
+                hasArrow = true;
+                stringX = handX - 4; 
+            } else if (cycle < 0.95) { 
+                // 0.4 to 0.95: Draw string back
+                let drawProgress = (cycle - 0.4) / 0.55;
+                rightHandX = handX - (drawProgress * 14); 
+                rightHandY = handY;
+                hasArrow = true;
+                stringX = rightHandX; 
+            } else {
+                // 0.95 to 1.0: Release
+                let releaseProgress = (cycle - 0.95) / 0.05;
+                bowKhatra = 0.6 * (1 - releaseProgress); 
+                rightHandX = (handX - 14) + (releaseProgress * 6); 
+                hasArrow = false; 
+                stringX = handX - 4; 
             }
 
-            // Arrow Shaft
-            ctx.fillStyle = "#8d6e63"; // Wood color
-            ctx.fillRect(-4, -0.5, 16, 1); 
-
-            // Arrowhead
-            ctx.fillStyle = "#9e9e9e"; 
-            ctx.fillRect(12, -1.5, 3, 3); 
-
-            // Arrow Feathers (Fletching)
-            ctx.fillStyle = "#d32f2f"; // Red fletching
-            ctx.fillRect(-3, -1.5, 4, 1); // Top feather
-            ctx.fillRect(-3, 0.5, 4, 1);  // Bottom feather
-
+            // Draw Bow
+            ctx.save();
+            ctx.translate(handX, handY); 
+            ctx.rotate(bowKhatra); 
+            ctx.translate(-handX, -handY);
+            ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1.5;
+            
+            // Replaced hardcoded values to be relative to handY
+            ctx.beginPath(); ctx.moveTo(handX - 4, handY - 8); 
+            ctx.quadraticCurveTo(handX + 6, handY - 4, handX, handY); 
+            ctx.quadraticCurveTo(handX + 6, handY + 8, handX - 4, handY + 8); ctx.stroke();
+            
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.6)"; ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.moveTo(handX - 4, handY - 8); 
+            ctx.lineTo(stringX, rightHandY); 
+            ctx.lineTo(handX - 4, handY + 8); ctx.stroke();
             ctx.restore();
+
+            // Draw Arrow (Only renders if hasArrow is true, which is fixed to start at 0.2)
+            if (hasArrow) {
+                ctx.save();
+                ctx.translate(rightHandX, rightHandY); 
+                if (cycle >= 0.2 && cycle < 0.4) {
+                    // Smoothly rotates the arrow into nocking position
+                    let nockProgress = (cycle - 0.2) / 0.2;
+                    ctx.rotate((-Math.PI / 4) * (1 - nockProgress));
+                }
+                ctx.fillStyle = "#8d6e63"; ctx.fillRect(-4, -0.5, 16, 1); 
+                ctx.fillStyle = "#9e9e9e"; ctx.fillRect(12, -1.5, 3, 3); 
+                ctx.fillStyle = "#d32f2f"; 
+                ctx.fillRect(-3, -1.5, 4, 1); ctx.fillRect(-3, 0.5, 4, 1); 
+                ctx.restore();
+            }
+
+            // Draw Right Hand
+            ctx.fillStyle = "#ffccbc"; 
+            ctx.beginPath(); ctx.arc(rightHandX, rightHandY, 2, 0, Math.PI * 2); ctx.fill();
         }
         
-        // Draw Right Hand (drawn last so it covers the nock of the arrow)
-        ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(rightHandX, rightHandY, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
     }
-    else if (type === "camel") {
-        let camelTime = Date.now() / 3000; // 3-second cannon reload cycle
-        let cycle = camelTime % 1.0;
-        let cannonY = -5 + weaponBob;
+// Triggers for camels, the specific Zamburak role, or units equipped with Hand Cannons
+// --- CAMEL CANNON / ZAMBURAK LOGIC ---
+// --- CAMEL CANNON / ZAMBURAK LOGIC ---
+else if (
+    type === "MOUNTED_GUNNER" || 
+    type === "camel_cannon" ||
+    (unitName && unitName.toLowerCase().includes("camel cannon"))
+) {
+    let b = (typeof bob !== 'undefined') ? bob : 0;
+    let reducedBob = b * 0.1; 
+    let ammo = (typeof unitAmmo !== 'undefined') ? unitAmmo : 1;
+    let cd = (typeof cooldown !== 'undefined') ? cooldown : 0;
+    let maxCd = (typeof unit !== 'undefined' && unit.stats && unit.stats.cooldown) ? unit.stats.cooldown : 1000; 
+    
+    // Unified cycle logic for flicker-free movement
+    let cycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 1.0;
 
-        // Base Cannon Barrel
-        ctx.strokeStyle = "#212121"; ctx.lineWidth = 3.5;
-        ctx.beginPath(); ctx.moveTo(0, cannonY); ctx.lineTo(16, cannonY); ctx.stroke();
+    // ==========================================
+    // 1. DRAW RIDER
+    // ==========================================
+    ctx.save();
+    ctx.translate(2.0, reducedBob + 11.0); 
+    ctx.scale(1.275, 1.275); 
+    
+    ctx.strokeStyle = "#1a1a1a"; 
+    ctx.lineJoin = "round";
 
-        if (isAttacking) { 
-            if (cycle < 0.15) {
-                // Phase 1: Fire & Recoil
-                let recoil = Math.sin((cycle / 0.15) * Math.PI) * 4;
-                ctx.fillStyle = "#212121"; ctx.fillRect(0 - recoil, cannonY - 1.5, 16, 3); // Recoiling barrel
-                ctx.fillStyle = "#ff9800"; ctx.beginPath(); ctx.arc(16 - recoil, cannonY, 6, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = "rgba(158, 158, 158, 0.6)"; ctx.beginPath(); ctx.arc(22 - recoil, cannonY - 3, 8, 0, Math.PI * 2); ctx.fill();
-            } else if (cycle < 0.4) {
-                // Phase 2: Pouring Powder (leaning over muzzle)
-                let pourBob = Math.sin(cycle * Math.PI * 15) * 1.5;
-                ctx.fillStyle = "#795548"; ctx.fillRect(14, cannonY - 8 + pourBob, 3, 5); // Flask
-                ctx.fillStyle = "#424242"; ctx.fillRect(15, cannonY - 3 + pourBob, 1, 3); // Falling powder
-            } else if (cycle < 0.8) {
-                // Phase 3: Ramming (Ramrod going in and out of the barrel)
-                let strokes = 3;
-                let ramDepth = Math.sin((cycle - 0.4) * strokes * Math.PI * 2) * 6 + 6; 
-                ctx.strokeStyle = "#8d6e63"; ctx.lineWidth = 1.5;
-                ctx.beginPath(); 
-                ctx.moveTo(16 - ramDepth, cannonY); 
-                ctx.lineTo(26 - ramDepth, cannonY - 5); // Rod sticking out diagonally to rider's hand
-                ctx.stroke();
-                // Ramrod brush/head
-                ctx.fillStyle = "#3e2723"; ctx.fillRect(15 - ramDepth, cannonY - 1.5, 3, 3);
-            } else {
-                // Phase 4: Ready/Aiming 
-                ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(2, cannonY - 2, 2, 0, Math.PI * 2); ctx.fill(); // Hand resting on breech
+    // Legs
+   // Old line: let gLegSwing = Math.sin(animFrame * 0.4) * 2;
+let gLegSwing = moving ? Math.sin(animFrame * 0.4) * 2 : 0;
+    ctx.strokeStyle = "#3e2723"; 
+    ctx.lineWidth = 1.8; 
+    ctx.beginPath();
+    ctx.moveTo(-1.5, -1); ctx.lineTo(-3 + gLegSwing, 6); 
+    ctx.moveTo(1.5, -1); ctx.lineTo(3 - gLegSwing, 6);
+    ctx.stroke();
+
+    // Body (Thobe)
+    ctx.fillStyle = factionColor;
+    ctx.lineWidth = 1.0;
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.beginPath(); ctx.rect(-3.5, -8, 7, 8.5); ctx.fill(); ctx.stroke();
+
+    // Head & Keffiyeh
+    ctx.fillStyle = "#ffccbc"; 
+    ctx.beginPath(); ctx.arc(0, -10.5, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = factionColor;
+    ctx.strokeStyle = "#212121"; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(-3.5, -12); ctx.lineTo(3.5, -12); ctx.stroke();
+
+    ctx.restore();
+
+    // ==========================================
+    // 2. COMBAT LOGIC (Ranged vs Melee)
+    // ==========================================
+    if (ammo <= 0) {
+        // --- MODE A: SWORD COMBAT (CANNON STOWED) ---
+        
+        // 1. Draw Cannon stowed on back (Inside Rider space)
+        ctx.save();
+        ctx.translate(-1, reducedBob + 6); // Position on rider's back
+        ctx.rotate(Math.PI / 4); // Slanted across back
+        ctx.fillStyle = "#4e342e"; ctx.fillRect(-4, -1, 8, 2); // Stock
+        ctx.fillStyle = "#424242"; ctx.fillRect(2, -1.5, 12, 3); // Barrel
+        ctx.restore();
+
+        // 2. Shortsword Animation Logic
+        var meleeCycle = cycle; 
+        var swingAngle = -Math.PI / 2; // Ready position
+        var handX = 4, handY = 8;
+
+        if (isAttacking) {
+            if (meleeCycle < 0.2) { 
+                // Wind up
+                swingAngle = -Math.PI / 1.2; 
+            } else if (meleeCycle < 0.5) { 
+                // Swing down
+                var p = (meleeCycle - 0.2) / 0.3;
+                swingAngle = -Math.PI / 1.2 + (Math.PI * 1.5 * p);
+                handX = 4 + (p * 6);
+            } else { 
+                // Recover
+                var p = (meleeCycle - 0.5) / 0.5;
+                swingAngle = Math.PI * 0.3 - (Math.PI * 0.8 * p);
+                handX = 10 - (p * 6);
             }
         }
-    } else {
-        // MELEE LANCE
-        let meleeTime = Date.now() / 600; // 0.6 second combo loop
+		else{}
+
+        // 3. Render Shortsword
+        ctx.save();
+        ctx.translate(handX, handY + reducedBob);
+        ctx.rotate(swingAngle);
+        
+        // Blade
+        ctx.fillStyle = "#cfd8dc"; // Steel
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(12, -1);
+        ctx.lineTo(14, 0); // Point
+        ctx.lineTo(12, 1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#90a4ae";
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+
+        // Crossguard & Hilt
+        ctx.fillStyle = "#ffca28"; // Gold/Brass
+        ctx.fillRect(-1, -3, 2, 6); // Guard
+        ctx.fillStyle = "#4e342e"; 
+        ctx.fillRect(-4, -1, 4, 2); // Handle
+        
+        // Hand
+        ctx.fillStyle = "#ffccbc";
+        ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+        
+        ctx.restore();
+
+ 
+} else {
+    // --- MODE B: RANGED CANNON (SURGERY FIX REPLICATED) ---
+    
+    // 1. Unified Timing Logic (Matches Hand Cannoner success)
+    let maxCd = 300; 
+    let cd = (typeof cooldown !== 'undefined') ? cooldown : 0;
+    let cycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 1.0;
+
+    // 2. Recuperation & Positioning
+    // Recoil kicks back hard during the first 15% of the cycle
+    let recoil = (isAttacking && cycle < 0.15) ? Math.sin((cycle / 0.15) * Math.PI) * 5 : 0;
+    
+    let gunAngle = -Math.PI / 30; 
+    let gunY = 0;
+    // Tilt up for swabbing/loading phases
+    if (isAttacking && cycle > 0.15 && cycle < 0.95) { 
+        gunAngle = Math.PI / 20; 
+        gunY = 1.0; 
+    }
+
+    ctx.save();
+    // Offset for the camel's back and apply bobbing
+    ctx.translate(8.0 + recoil, gunY + (reducedBob || 0) + 8); 
+    ctx.rotate(gunAngle); 
+
+    // --- Main Cannon Body ---
+    ctx.fillStyle = "#4e342e"; ctx.fillRect(-6, -1, 14, 3);
+    ctx.fillStyle = "#424242"; ctx.strokeStyle = "#212121"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(20, -1.5); ctx.lineTo(20, 2.5); ctx.lineTo(2, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#616161"; ctx.fillRect(20, -2.5, 3, 6); // Muzzle ring
+
+    // Support hand holding the stock
+    ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(10, 2, 2, 0, Math.PI*2); ctx.fill();
+
+    // ==========================================
+    // 1. REPLICATED MUZZLE FLASH & CLOUD
+    // ==========================================
+    // Triggering via CD check (like the infantry) ensures it never skips frames
+    if (isAttacking && cd > 270) { 
+        // CORE FLASH
+        ctx.fillStyle = "#fff176"; ctx.beginPath(); 
+        ctx.arc(23, 0.5, 3 + Math.random() * 2, 0, Math.PI * 2); ctx.fill();
+        
+        // OUTER FLASH
+        ctx.fillStyle = "#ff5722"; ctx.beginPath(); 
+        ctx.arc(25, 0.5, 5 + Math.random() * 3, 0, Math.PI * 2); ctx.fill();
+        
+        // THE SMOKE CLOUD
+        ctx.fillStyle = "rgba(180, 180, 180, 0.7)"; 
+        ctx.beginPath(); 
+        ctx.arc(30, -2, 7 + Math.random() * 4, 0, Math.PI * 2); // Main puff
+        ctx.arc(35, 1, 5 + Math.random() * 4, 0, Math.PI * 2);  // Forward puff
+        ctx.fill();
+    }
+    // ==========================================
+    // 2. RELOAD SEQUENCE (SWAB -> BALL -> RAM)
+    // ==========================================
+    else if (isAttacking && cycle < 0.55) { 
+        let p = (cycle - 0.15) / 0.40; 
+        let depth = Math.sin(p * Math.PI) * 15;
+        ctx.strokeStyle = "#546e7a"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(23 - depth, 0.5); ctx.lineTo(33 - depth, 0.5); ctx.stroke();
+    }
+    else if (isAttacking && cycle < 0.65) { 
+        ctx.fillStyle = "#212121"; 
+        ctx.beginPath(); ctx.arc(22, -1 + Math.sin(cycle*40)*2, 2, 0, Math.PI*2); ctx.fill();
+    } 
+    else if (isAttacking && cycle < 0.90) { 
+        let p = (cycle - 0.65) / 0.25;
+        let depth = Math.sin(p * Math.PI) * 18; 
+        ctx.strokeStyle = "#cfd8dc"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(23 - depth, 0.5); ctx.lineTo(35 - depth, 0.5); ctx.stroke();
+    }
+    else if (isAttacking && cycle < 0.99) { 
+        let matchDip = Math.sin((cycle - 0.90) * 15) * 4;
+        ctx.strokeStyle = "#ff5722"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(4, -7 + matchDip); ctx.lineTo(4, -2); ctx.stroke();
+    }
+
+    ctx.restore();
+}}
+ else {
+ 
+
+        // --- MELEE LANCE ---
+        let b = bob || 0; // Ensure 'b' (bob) from the top of drawCavalryUnit is used
+        let meleeTime = Date.now() / 600; 
         let cycle = isAttacking ? meleeTime % 1.0 : 0;
         
         let lanceRot = 0;
@@ -789,41 +979,56 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
         if (isAttacking) {
             // 3-Hit Combo System
             if (cycle < 0.33) {
-                // Swing Left/Up
                 let p = cycle / 0.33;
                 lanceRot = -Math.PI / 4 * Math.sin(p * Math.PI); 
             } else if (cycle < 0.66) {
-                // Swing Right/Down
                 let p = (cycle - 0.33) / 0.33;
                 lanceRot = Math.PI / 3 * Math.sin(p * Math.PI); 
             } else {
-                // Power Thrust
                 let p = (cycle - 0.66) / 0.34;
-                thrustX = Math.sin(p * Math.PI) * 18; // Huge thrust forward
+                thrustX = Math.sin(p * Math.PI) * 18; 
                 thrustY = Math.sin(p * Math.PI) * 3;
             }
         }
 
+        // --- RENDER LANCE ---
         ctx.save();
-        ctx.translate(2, -4); // Anchor at rider's hand
+        ctx.translate(2, -4 + b); 
         ctx.rotate(lanceRot);
 
         // Draw Lance Shaft
-        ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-6 + thrustX, 0 + thrustY); ctx.lineTo(26 + thrustX, 0 + thrustY); ctx.stroke();
+        ctx.strokeStyle = "#4e342e"; 
+        ctx.lineWidth = 2.5; 
+        ctx.beginPath(); 
+        ctx.moveTo(-6 + thrustX, 0 + thrustY); 
+        ctx.lineTo(26 + thrustX, 0 + thrustY); 
+        ctx.stroke();
         
-        // Draw Lance Tip (longer and sharper)
+        // Hand
+        ctx.fillStyle = "#ffccbc";
+        ctx.beginPath();
+        ctx.arc(thrustX, thrustY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw Lance Tip
         ctx.fillStyle = "#bdbdbd"; 
         ctx.beginPath(); 
         ctx.moveTo(26 + thrustX, -2 + thrustY); 
-        ctx.lineTo(36 + thrustX, 0 + thrustY); // 10px blade
+        ctx.lineTo(38 + thrustX, 0 + thrustY); 
         ctx.lineTo(26 + thrustX, 2 + thrustY); 
         ctx.fill();
 
-        ctx.restore();
-    }
-    ctx.restore();
+        // Highlight
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(26 + thrustX, 0 + thrustY);
+        ctx.lineTo(37 + thrustX, 0 + thrustY);
+        ctx.stroke();
 
-    // The final main restore for the base mount translation at the start of the function
-    ctx.restore();
-}
+		ctx.restore(); // 1. Restores the Melee Lance rotation
+    } // Closes the final 'else' weapon block
+
+    ctx.restore(); // 2. Restores the Rider's 'bob' and elevation layer 
+
+}  

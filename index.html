@@ -177,10 +177,29 @@ const canvas = document.getElementById('gameCanvas');
  
 let activeCity = null;
 const ctx = canvas.getContext('2d');
-canvas.width = window.screen.width; 
-canvas.height = window.screen.height;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+function resizeCanvasAndResetCamera() {
+    // Resize canvas to new window size
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
+    // 🔥 CAMERA RESET LOGIC
+    // Keep player centered relative to new viewport
+    // (camera is implicitly player-centered, so just re-anchor logic if needed)
 
+    // Optional: snap zoom or clamp
+    zoom = Math.max(0.1, Math.min(3, zoom));
+
+    // Optional: force redraw once (prevents 1-frame visual glitch)
+    // draw(); <-- usually not needed since loop is running
+}
+
+// Run once at start
+resizeCanvasAndResetCamera();
+
+// Run ONLY when resizing (NOT every frame)
+window.addEventListener('resize', resizeCanvasAndResetCamera);
 
 // Start game initialize
 
@@ -556,15 +575,46 @@ AudioManager.playMusic("WorldMap_Calm");
         isMoving: false,
         anim: 0,
         color: "#ffffff", 
-        troops: 10,
+        troops: 30,
         food: 100,
         gold: 500,
         hp: 100,
         distTrack: 0, // <--- NEW: Track distance for food mechanic
         
-        // ---> SURGICAL FIX: PRE-LOAD STARTING ROSTER <---
-        // This gives you 10 actual Axe Militia recruits at Level 1
-        roster: Array.from({ length: 10 }, () => ({ type: "Militia", exp: 1 }))
+   
+  //  roster: Array(5).fill("Militia").map(u => ({ type: u, exp: 1 }))
+		
+		// Roster containing exactly one of every unit in the game
+roster: [
+    "Militia", 
+    "Crossbowman", 
+    "Heavy Crossbowman", 
+    "Bomb", 
+    "Spearman", 
+    "Firelance", 
+    "Heavy Firelance", 
+    "Archer", 
+    "Horse Archer", 
+    "Heavy Horse Archer", 
+    "Shielded Infantry", 
+    "Light Two Handed", 
+    "Heavy Two Handed", 
+    "Lancer", 
+    "Heavy Lancer", 
+    "Elite Lancer", 
+    "Rocket", 
+    "Mangudai", 
+    "Hand Cannoneer", 
+    "Camel Cannon", 
+    "Poison Crossbowman", 
+    "War Elephant", 
+    "Repeater Crossbowman", 
+    "Slinger", 
+    "Glaiveman", 
+    "Javelinier"
+].map(u => ({ type: u, exp: 1 }))
+
+
     };
 	const keys = {};
 
