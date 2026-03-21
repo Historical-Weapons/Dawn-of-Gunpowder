@@ -296,7 +296,7 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     }
     // -----------------------------------------------------
 
-    // --- 2. INPUT PROCESSING ---
+    // --- 2. battleINPUT PROCESSING ---
     if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
     if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
     if (keys['a'] || keys['arrowleft']) { dx -= currentSpeed; player.isMoving = true; }
@@ -311,11 +311,37 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     // --- 3. SURGERY: MOVEMENT LOGIC & BOUNDARIES ---
     
     if (inBattleMode) {
+        // -> THE FIX: Save the old coordinates BEFORE we move the player!
+        let oldX = player.x;
+        let oldY = player.y;
+
         // --- BATTLEFIELD INVISIBLE WALL ---
         // Clamp the destination so the player never crosses the 0 or Max bounds
         player.x = Math.max(0, Math.min(nextX, BATTLE_WORLD_WIDTH));
         player.y = Math.max(0, Math.min(nextY, BATTLE_WORLD_HEIGHT));
-    } 
+   
+        // --- THE FIX FOR CAVSCRIPT ---
+        // Find the actual Commander unit in the battle array to sync animations
+        let cmdUnit = battleEnvironment.units.find(u => u.isCommander);
+        if (cmdUnit) {
+            // Update the Commander's physical position to match the player object
+            cmdUnit.x = player.x;
+            cmdUnit.y = player.y;
+
+            // Calculate Velocity: This now works because oldX and oldY exist!
+            cmdUnit.vx = cmdUnit.x - oldX;
+            cmdUnit.vy = cmdUnit.y - oldY;
+
+            // Set the state so the renderer knows which animation to play
+            if (player.isMoving) {
+                cmdUnit.state = "moving";
+            } else if (cmdUnit.state !== "attacking") {
+                cmdUnit.state = "idle";
+                cmdUnit.vx = 0;
+                cmdUnit.vy = 0;
+            }
+        }
+   } 
     else if (!isCity) {
         // --- WORLD MAP COLLISION (Original Logic) ---
         let ntx = Math.floor(nextX / tileSize);
@@ -346,7 +372,6 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
         }
     }
 }
-		
     function populateCities() {
         console.log("Settling the Empire...");
         let attempts = 0;

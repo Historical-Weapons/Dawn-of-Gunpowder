@@ -280,66 +280,172 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
         totalTroops = totalRosterSize;
 
     } else {
-        // =========================================================
-        // ENEMY AI: Use the hardcoded percentage templates
-        // =========================================================
-        if (faction === "Great Khaganate") {
-            composition = [
-                {type: "Light Horse Archer", pct: 0.35}, {type: "Horse Archer", pct: 0.30},
-                {type: "Heavy Horse Archer", pct: 0.20}, {type: "Lancer", pct: 0.10}, {type: "Heavy Lancer", pct: 0.05}
-            ];
-        } else if (faction === "Shahdom of Iransar") {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.10}, {type: "Archer", pct: 0.10}, {type: "Spearman", pct: 0.10},
-                {type: "Horse Archer", pct: 0.20}, {type: "Heavy Lancer", pct: 0.20}, {type: "Bomb", pct: 0.10}, {type: "Heavy Horse Archer", pct: 0.20}
-            ];
-        } else if (faction === "Hong Dynasty") {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.40}, {type: "Spearman", pct: 0.10}, {type: "Poison Crossbowman", pct: 0.05},
-                {type: "Repeater Crossbowman", pct: 0.10}, {type: "Heavy Crossbowman", pct: 0.10}, {type: "Bomb", pct: 0.05},
-                {type: "Firelance", pct: 0.05}, {type: "Rocket", pct: 0.05}, {type: "Archer", pct: 0.10}
-            ];
-        } else if (faction === "Vietan Realm") {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.15}, {type: "Glaiveman", pct: 0.20}, {type: "Repeater Crossbowman", pct: 0.15},
-                {type: "Poison Crossbowman", pct: 0.15}, {type: "Firelance", pct: 0.15}, {type: "Archer", pct: 0.10}, {type: "Heavy Horse Archer", pct: 0.10}
-            ];
-        } else if (faction === "Jinlord Confederacy") {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.15}, {type: "Spearman", pct: 0.15}, {type: "Crossbowman", pct: 0.20},
-                {type: "Heavy Crossbowman", pct: 0.15}, {type: "Hand Cannoneer", pct: 0.15}, {type: "Heavy Lancer", pct: 0.10}, {type: "Archer", pct: 0.10}
-            ];
-        } else if (faction === "Xiaran Dominion") {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.15}, {type: "Heavy Shielded Spear", pct: 0.15}, {type: "Crossbowman", pct: 0.15},
-                {type: "Camel Cannon", pct: 0.15}, {type: "Hand Cannoneer", pct: 0.15}, {type: "Bomb", pct: 0.10}, {type: "Lancer", pct: 0.15}
-            ];
-        } else if (faction === "Goryun Kingdom") {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.20}, {type: "Heavy Shielded Spear", pct: 0.15}, {type: "Heavy Crossbowman", pct: 0.15},
-                {type: "Crossbowman", pct: 0.15}, {type: "Hand Cannoneer", pct: 0.15}, {type: "Rocket", pct: 0.10}, {type: "Archer", pct: 0.10}
-            ];
-        } else if (faction === "High Plateau Kingdoms") {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.15}, {type: "Spearman", pct: 0.15}, {type: "Heavy Two Handed", pct: 0.20},
-                {type: "Light Two Handed", pct: 0.15}, {type: "Archer", pct: 0.15}, {type: "Slinger", pct: 0.10}, {type: "Lancer", pct: 0.10}
-            ];
-        } else if (faction === "Yamato Clans") {
-            composition = [
-                {type: "Spearman", pct: 0.20}, {type: "Glaiveman", pct: 0.20}, {type: "Light Two Handed", pct: 0.15},
-                {type: "Heavy Two Handed", pct: 0.10}, {type: "Archer", pct: 0.20}, {type: "Lancer", pct: 0.10}, {type: "Heavy Horse Archer", pct: 0.05}
-            ];
-        } else if (faction === "Bandits") {
-            composition = [
-                {type: "Militia", pct: 0.60}, {type: "Spearman", pct: 0.40}
-            ];
-        } else {
-            composition = [
-                {type: "Shielded Infantry", pct: 0.25}, {type: "Spearman", pct: 0.20}, {type: "Archer", pct: 0.20},
-                {type: "Crossbowman", pct: 0.15}, {type: "Lancer", pct: 0.10}, {type: "Light Two Handed", pct: 0.10}
-            ];
-        }
-    }
+   // =========================================================
+// ENEMY AI: Updated Composition Templates (v2.1)
+// =========================================================
+I've moved the Jinlord Confederacy down. With their elite cavalry slashed by 20% and replaced with squishy 20 HP Foot Archers, they no longer hold the top spot. The Great Khaganate is now your statistical king due to their high-speed, all-mounted health pools.
+
+// RANK 1: Great Khaganate (The Golden Horde)
+// * 10% Mangudai // 45 HP, 1.8 Speed, Super Heavy Armor.
+// * 20% Heavy Horse Archer // 40 HP, 1.4 Speed, Full Lamellar Armor.
+// * 50% Horse Archer // 40 HP, 1.6 Speed, Partial Lamellar Armor.
+// * 05% Heavy Lancer // 50 HP, 24 Melee Atk.
+// * 15% Lancer // 25 HP, 1.5 Speed.
+
+// RANK 2: Shahdom of Iransar (The Imperial Heavyweight)
+// * 05% War Elephant // 100 HP, 35 Melee Atk, Juggernaut Armor.
+// * 25% Heavy Lancer // 50 HP, 24 Melee Atk, Full Lamellar.
+// * 25% Horse Archer // 40 HP, 1.6 Speed.
+// * 25% Spearman // 20 HP, +20 Bonus vs Large.
+// * 20% Shielded Infantry // 40 HP, 18 Melee Defense.
+
+// RANK 3: Jinlord Confederacy (The Professional Infantry)
+// * 05% Elite Lancer // Nerfed from 15%.
+// * 10% Heavy Lancer // Nerfed from 20%.
+// * 20% Archer // New addition (20 HP) - Creates a vulnerable backline.
+// * 30% Heavy Crossbowman // 40 HP, 800 Range, 30 AP Damage.
+// * 15% Hand Cannoneer // 800 Range, 50 AP Damage.
+// * 20% Shielded Infantry // 40 HP, 25% Block Chance.
+
+// RANK 4: Hong Dynasty (The Gunpowder State)
+// * 15% Rocket // 520 Range, 50 Ammo.
+// * 25% Heavy Crossbowman // 40 HP, 30 AP Damage.
+// * 30% Shielded Infantry // 40 HP, Leather Armor.
+// * 10% Firelance // 45 AP Missile Damage.
+// * 05% Heavy Firelance // 60 AP Missile Damage.
+// * 05% Bomb // 100 AP Damage.
+// * 10% Repeater/Archer // Volume and utility fire.
+
+// RANK 5: Xiaran Dominion (The Artillery Battery)
+// * 20% Camel Cannon // 850 Range, 80 AP Damage.
+// * 20% Hand Cannoneer // 800 Range, 50 AP Damage.
+// * 25% Slinger // 650 Range, 12 AP Damage.
+// * 20% Spearman // 16 Melee Defense.
+// * 15% Lancer // 1.5 Speed.
+
+// RANK 6: Yamato Clans (The Shock Infantry)
+// * 40% Glaiveman // 30 HP, 18 Melee Atk.
+// * 20% Heavy Two Handed // 25 HP, 36 Melee Atk.
+// * 10% Heavy Horse Archer // 40 HP, 75 Morale.
+// * 30% Archer // 700 Range, 20 HP.
+
+// RANK 7: Goryun Kingdom (The Strategic Defense)
+// * 40% Archer // 700 Range, 55 Accuracy.
+// * 10% Rocket // 520 Range, 15 AP Damage.
+// * 20% Shielded Infantry // 40 HP, 18 Melee Def.
+// * 20% Spearman // 14 Melee Atk, 16 Melee Def.
+// * 10% Hand Cannon/Repeater // High AP and high speed support.
+
+// RANK 8: Vietan Realm (The Poison Skirmishers)
+// * 25% Poison Crossbowman // 90 Accuracy, 60 Base Damage.
+// * 30% Glaiveman // 30 HP, 18 Melee Atk.
+// * 20% Javelinier // 300 Range, 15 AP Damage.
+// * 25% Archer/Spearman // Standard support line.
+
+// RANK 9: High Plateau Kingdoms (The Endurance Light)
+// * 20% Heavy Horse Archer // 40 HP, 75 Morale.
+// * 30% Slinger // 650 Range, 12 AP.
+// * 25% Archer // 700 Range, 50 Morale.
+// * 25% Shielded Infantry // 40 HP, 25% Block.
+
+// RANK 10: Bandits (The Expendables)
+// * 70% Militia // 20 HP, 6 Atk, 6 Def, 35 Morale.
+// * 15% Slinger // 20 HP, 40 Morale.
+// * 15% Javelinier // 20 HP, 4 Ammo.
+
+if (faction === "Great Khaganate") {
+    composition = [
+        {type: "Horse Archer", pct: 0.50}, 
+        {type: "Heavy Horse Archer", pct: 0.20},
+        {type: "Mangudai", pct: 0.10}, 
+        {type: "Lancer", pct: 0.15}, 
+        {type: "Heavy Lancer", pct: 0.05}
+    ];
+} else if (faction === "Shahdom of Iransar") {
+    // Replaced Firelance with Shielded Infantry for a more traditional Persian-style front line
+    composition = [
+        {type: "War Elephant", pct: 0.05}, 
+        {type: "Heavy Lancer", pct: 0.25}, 
+        {type: "Horse Archer", pct: 0.25},
+        {type: "Spearman", pct: 0.25}, 
+        {type: "Shielded Infantry", pct: 0.20} 
+    ];
+} else if (faction === "Hong Dynasty") {
+    composition = [
+{type: "Shielded Infantry", pct: 0.30}, 
+        {type: "Heavy Crossbowman", pct: 0.25}, 
+        {type: "Rocket", pct: 0.15},
+        {type: "Firelance", pct: 0.10}, 
+        {type: "Repeater Crossbowman", pct: 0.05}, 
+        {type: "Heavy Firelance", pct: 0.05}, 
+        {type: "Bomb", pct: 0.05},
+        {type: "Archer", pct: 0.05}
+    ];
+} else if (faction === "Vietan Realm") {
+    composition = [
+        {type: "Glaiveman", pct: 0.30}, 
+        {type: "Poison Crossbowman", pct: 0.25}, 
+        {type: "Javelinier", pct: 0.20},
+        {type: "Archer", pct: 0.15}, 
+        {type: "Spearman", pct: 0.10}
+    ];
+} else if (faction === "Jinlord Confederacy") {
+    composition = [
+ {type: "Archer", pct: 0.20}, 
+        {type: "Heavy Crossbowman", pct: 0.30},
+        {type: "Shielded Infantry", pct: 0.20},
+        {type: "Hand Cannoneer", pct: 0.15}, 
+        {type: "Heavy Lancer", pct: 0.10}, 
+        {type: "Elite Lancer", pct: 0.05}
+    ];
+} else if (faction === "Xiaran Dominion") {
+    composition = [
+        {type: "Camel Cannon", pct: 0.20}, 
+        {type: "Hand Cannoneer", pct: 0.20}, 
+        {type: "Slinger", pct: 0.25},
+        {type: "Spearman", pct: 0.20}, 
+        {type: "Lancer", pct: 0.15}
+    ];
+} else if (faction === "Goryun Kingdom") {
+    composition = [
+		{type: "Archer", pct: 0.40}, 
+        {type: "Spearman", pct: 0.20}, 
+        {type: "Shielded Infantry", pct: 0.20},
+        {type: "Rocket", pct: 0.10}, 
+        {type: "Hand Cannoneer", pct: 0.05}, 
+        {type: "Repeater Crossbowman", pct: 0.05}
+    ];
+} else if (faction === "High Plateau Kingdoms") {
+    // Tibet-inspired: Heavy on skirmishers and high-altitude endurance
+    composition = [
+        {type: "Slinger", pct: 0.30}, 
+        {type: "Heavy Horse Archer", pct: 0.20}, 
+        {type: "Archer", pct: 0.25}, 
+        {type: "Shielded Infantry", pct: 0.25}
+    ];
+} else if (faction === "Yamato Clans") {
+    composition = [
+        {type: "Glaiveman", pct: 0.40}, 
+        {type: "Heavy Two Handed", pct: 0.20}, 
+        {type: "Archer", pct: 0.30},
+        {type: "Heavy Horse Archer", pct: 0.10}
+    ];
+} else if (faction === "Bandits") {
+    composition = [
+        {type: "Militia", pct: 0.70}, 
+        {type: "Slinger", pct: 0.15}, 
+        {type: "Javelinier", pct: 0.15}
+    ];
+} else {
+    composition = [
+        {type: "Shielded Infantry", pct: 0.25}, 
+        {type: "Spearman", pct: 0.20}, 
+        {type: "Archer", pct: 0.20},
+        {type: "Crossbowman", pct: 0.15}, 
+        {type: "Lancer", pct: 0.10}, 
+        {type: "Light Two Handed", pct: 0.10}
+    ];
+}
 
     currentBattleData.initialCounts[side] += totalTroops;
 
@@ -688,65 +794,83 @@ function updateBattleUnits() {
             });
             unit.target = nearestEnemy;
         }
+	  // --- TRACK POSITION BEFORE MOVEMENT ---
+    let oldX = unit.x;
+    let oldY = unit.y;
+	
+	if (unit.target) 
+	{
+    let dx = unit.target.x - unit.x;
+    let dy = unit.target.y - unit.y;
+    let dist = Math.hypot(dx, dy);
 
-        if (unit.target) {
-            let dx = unit.target.x - unit.x;
-            let dy = unit.target.y - unit.y;
-            let dist = Math.hypot(dx, dy);
+    unit.stats.updateStance(dist);
+    let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
 
-            unit.stats.updateStance(dist);
-            let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
+  
 
-            if (dist > effectiveRange * 0.8) {
-                
-                // ONLY AI CONTROLLED UNITS MOVE AUTOMATICALLY
-                if (!unit.isCommander) {
-                    unit.state = "moving";
-                    if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
-                    
-                    let speedMod = 1.0;
-                    let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-                    let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-                    
-                    if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4;
-                    if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6;
+    if (dist > effectiveRange * 0.8) {
+        // Only AI units auto-move
+       // --- INSIDE YOUR if (dist > effectiveRange * 0.8) BLOCK ---
 
-                    if (unit.stats.morale > 3 && unit.stats.morale < 10) {
-                        let dir = unit.side === "player" ? 1 : -1;
-                        let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
-                        let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
-                        
-                        if (notAtEdge) {
-                            unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
-                            unit.x += (Math.random() - 0.5); 
-                        }
-                    } else {
-          /* Revised: Added 0.2 jitter so they don't move in perfect robotic lines */
-unit.x += (dx / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
-unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
-                    }
+        // Only AI units auto-move
+        if (!unit.isCommander) {
+            if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
+
+            let speedMod = 1.0;
+            let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+            let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
+
+            if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4; // Forest/Mud
+            if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6; // Broken Ground
+
+            if (unit.stats.morale > 3 && unit.stats.morale < 10) {
+                // Skirmishing/Retreating logic
+                let dir = unit.side === "player" ? 1 : -1;
+                let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
+                let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
+
+                if (notAtEdge) {
+                    unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
+                    unit.x += (Math.random() - 0.5);
                 }
-
             } else {
-                /* Attack Logic */
-                unit.state = "attacking";
+                // Standard Aggressive Movement
+                unit.x += (dx / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
+                unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
+            }
+
+            // --- DYNAMIC STATE DETECTION (MOVED INSIDE THE AI BLOCK) ---
+            // Only calculate this for AI units so we don't overwrite the Commander's keyboard state!
+            let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
+            if (hasMoved) { unit.state = "moving"; } 
+            else if (unit.state !== "attacking") { unit.state = "idle"; } 
+        }
+
+    } // end if (dist > effectiveRange * 0.8) {
+    else { //atack logic
+       // FIX: Only set state to "attacking" if this isn't the Commander OR if the Commander isn't moving
+if (!unit.isCommander || !player.isMoving) {
+    unit.state = "attacking";
+}
+                 
                 if (unit.cooldown <= 0) {
                     if (unit.stats.currentStance === "statusrange") {
                         
-                        /* Ranged Combat */
-                        let isRepeater = unit.unitType === "Repeater Crossbowman";
-                        
-                        if (isRepeater && unit.stats.magazine > 0) { 
-						//repeater burst 
-                            unit.cooldown = 30; //0.5 sec a shot
-                            unit.stats.magazine--; 
-                        } else {
-						//reload
-                            unit.cooldown = getReloadTime(unit);
-                            if (isRepeater) unit.stats.magazine = 10;
-                        }
-						unit.stats.ammo--; 
-                        
+							/* Ranged Combat */
+							let isRepeater = unit.unitType === "Repeater Crossbowman";
+							
+							if (isRepeater && unit.stats.magazine > 0) { 
+							//repeater burst 
+								unit.cooldown = 30; //0.5 sec a shot
+								unit.stats.magazine--; 
+							} else {
+							//reload
+								unit.cooldown = getReloadTime(unit);
+								if (isRepeater) unit.stats.magazine = 10;
+							}
+							unit.stats.ammo--; 
+							
                         // 1. Amplified Spread Math (0.6 -> 2.5) for true visual scatter
                         let spread = (100 - unit.stats.accuracy) * 2.5;
                         let targetX = unit.target.x + (Math.random() - 0.5) * spread;
@@ -818,16 +942,15 @@ unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedM
                     }
                 }
             }
-        } else {
-            /* Idle Recovery */
-            // ONLY set idle if it's an AI so player movement isn't overwritten
-            if (!unit.isCommander) {
-                 unit.state = "idle";
-            }
-            if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
-        }
-        
-        if (unit.cooldown > 0) unit.cooldown--;
+} else {
+// Make sure we don't accidentally freeze the Commander here either
+    if (!unit.isCommander) {
+        unit.state = "idle";
+    }
+    if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+}
+
+if (unit.cooldown > 0) unit.cooldown--;
     });
 
 /* 4. UPDATE PROJECTILES (PHYSICS BASED COLLISION) */

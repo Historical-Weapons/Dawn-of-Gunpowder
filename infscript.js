@@ -117,11 +117,43 @@ function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttack
             ctx.fillStyle = "#212121"; ctx.strokeStyle = "#fbc02d"; ctx.lineWidth = 0.5;
             ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(0, -15); ctx.lineTo(6, -12);
             ctx.closePath(); ctx.fill(); ctx.stroke();
-        } else if (factionColor === "#1976d2" || factionColor === "#455a64") { 
-            // Mongol -> Fur-trimmed Leather Cap
-            ctx.fillStyle = "#4e342e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill();
-            ctx.fillStyle = "#795548"; ctx.fillRect(-4, -13, 8, 2); 
-        } else if (factionColor === "#00838f") {
+        } else if (factionColor === "#1976d2" || factionColor === "#455a64") {
+
+			
+// --- SURGERY: Replace the Mongol/Nomad helmet logic in infscript.js ---
+
+// Identify if this is an elite/heavy unit that should keep its default armor
+const isEliteMongol = unitName && (unitName.includes("Heavy") || unitName.includes("Elite") || unitName.includes("Mangadai"));
+const isMongolFaction = (factionColor === "#1976d2" || factionColor === "#455a64");
+
+if (isMongolFaction) {
+    if (isEliteMongol || armorVal >= 25) {
+        // DEFAULT: Heavy Spiked Steel Helmet (for elites/heavy)
+        ctx.fillStyle = "#9e9e9e"; ctx.strokeStyle = "#424242"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(0, -13, 4.5, Math.PI, 0); ctx.fill(); ctx.stroke(); 
+        ctx.fillStyle = "#616161";
+        ctx.beginPath(); ctx.moveTo(-1.5, -17.5); ctx.lineTo(1.5, -17.5); ctx.lineTo(0, -22); ctx.fill(); 
+        ctx.fillStyle = "#4e342e"; 
+        ctx.fillRect(-5, -13, 3, 5); ctx.fillRect(2, -13, 3, 5); // Flaps
+    } else {
+        // NEW: Universal Mongol Hat (Conical fur cap)
+        // 1. Fur Brim
+        ctx.fillStyle = "#5d4037"; 
+        ctx.fillRect(-4.5, -14, 9, 3);
+        // 2. Conical Top (Faction colored)
+        ctx.fillStyle = factionColor;
+        ctx.beginPath();
+        ctx.moveTo(-4, -13);
+        ctx.lineTo(0, -19);
+        ctx.lineTo(4, -13);
+        ctx.fill();
+        // 3. Small Red Tassel
+        ctx.fillStyle = "#d32f2f";
+        ctx.fillRect(-0.5, -20, 1, 2);
+    }
+}
+        
+		} else if (factionColor === "#00838f") {
             // Iransar -> Simple Cloth Turban
             ctx.fillStyle = "#eeeeee";
             ctx.beginPath(); ctx.arc(0, -13.5, 3.5, 0, Math.PI * 2); ctx.fill();
@@ -1172,31 +1204,41 @@ else if (unitName && unitName.includes("Firelance")) {
             ctx.stroke();
         }
     }
-else if (type === "gun") {
+	else if (type === "gun") {
         // SURGERY: Complete Hand Cannon Reload Cycle & Direct Ignition
         let maxCd = 300;
         let cd = cooldown || 0;
         let cycle = isAttacking ? (maxCd - cd) / maxCd : 1.0;
 
         let gunRot = 0;
-        let hasMatch = false;
+        let shakeRot = 0;
+        let recoilX = 0;
 
+        // Determine Gun Angle & Shake based on specific reload phase
         if (isAttacking && cd > 0) {
-            if (cycle < 0.15) {
-                gunRot = (-Math.PI / 12) * dir; // Recoil tilt
-            } else if (cycle < 0.4) {
-                gunRot = (Math.PI / 4) * dir;   // Gun pointed up for pouring
-            } else if (cycle < 0.7) {
-                gunRot = (Math.PI / 4) * dir;   // Ramming
+            if (cycle < 0.05) {
+                // 0% - 5%: FIRING! (Heavy recoil, shaking only happens here)
+                gunRot = (-Math.PI / 10) * dir;
+                shakeRot = (Math.random() - 0.5) * 0.2; 
+                recoilX = -4 * dir;
+            } else if (cycle < 0.15) {
+                // 5% - 15%: Transition to reload position
+                gunRot = (Math.PI / 6) * dir; 
+            } else if (cycle < 0.65) {
+                // 15% - 65%: Gun pointed steeply up for loading down the muzzle
+                gunRot = (Math.PI / 3) * dir; 
+            } else if (cycle < 0.75) {
+                // 65% - 75%: Lowering slightly to access the touchhole (priming)
+                gunRot = (Math.PI / 8) * dir; 
             } else {
-                gunRot = 0;                     // Level
-                hasMatch = true;                // Bringing fuse to touchhole
+                // 75% - 100%: Leveling out, holding fuse, lighting
+                gunRot = 0; 
             }
         }
 
         ctx.save();
-        ctx.translate(0, weaponBob);
-        ctx.rotate(gunRot);
+        ctx.translate(recoilX, weaponBob); // Removed random bobbing; keeping it smooth
+        ctx.rotate(gunRot + shakeRot);
 
         // Tiller (Wooden Stock) - NO TRIGGER
         ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 3.5;
@@ -1206,39 +1248,73 @@ else if (type === "gun") {
         ctx.strokeStyle = "#424242"; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(6 * dir, -5); ctx.lineTo(16 * dir, -5); ctx.stroke();
 
-        // Hands & Reloading Action
+        // Hands & Elaborate Reloading Action
         ctx.fillStyle = "#ffccbc";
-        ctx.beginPath(); ctx.arc(2 * dir, -5, 2, 0, Math.PI*2); ctx.fill(); // Back hand
+        ctx.beginPath(); ctx.arc(2 * dir, -5, 2, 0, Math.PI*2); ctx.fill(); // Back hand holding tiller
         
-        if (cycle >= 0.4 && cycle < 0.7 && isAttacking && cd > 0) {
-            // Ramming hand in motion
-            let ramMove = Math.sin(cycle * Math.PI * 10) * 4;
-            ctx.beginPath(); ctx.arc((18 + ramMove) * dir, -5, 2, 0, Math.PI*2); ctx.fill();
-            // Ramrod
-            ctx.strokeStyle = "#8d6e63"; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo((18 + ramMove) * dir, -5); ctx.lineTo((10 + ramMove) * dir, -5); ctx.stroke();
-        } else if (hasMatch) {
-            // Front hand applying the slow match (fuse)
-            ctx.beginPath(); ctx.arc(6 * dir, -8, 2, 0, Math.PI*2); ctx.fill();
-            // Burning Fuse
-            ctx.strokeStyle = "#e65100"; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(6 * dir, -8); ctx.lineTo(8 * dir, -6); ctx.stroke();
-            ctx.fillStyle = "#ffeb3b"; ctx.beginPath(); ctx.arc(8 * dir, -6, 1.5, 0, Math.PI*2); ctx.fill(); // Spark
+        if (isAttacking && cd > 0) {
+            if (cycle >= 0.15 && cycle < 0.25) { 
+                // 1. Pouring Powder
+                let drop = (cycle - 0.15) * 10; // Animation progress (0 to 1)
+                ctx.beginPath(); ctx.arc(18 * dir, -12, 2, 0, Math.PI*2); ctx.fill(); // Hand
+                ctx.fillStyle = "#795548"; ctx.fillRect(16 * dir, -16, 4 * dir, 6); // Flask
+                ctx.fillStyle = "#212121"; ctx.fillRect(17.5 * dir, -10 + (drop * 4), 1.5 * dir, 2); // Powder falling
+            } 
+            else if (cycle >= 0.25 && cycle < 0.32) { 
+                // 2. Inserting Projectile
+                let drop = (cycle - 0.25) * 14; 
+                ctx.beginPath(); ctx.arc(18 * dir, -10, 2, 0, Math.PI*2); ctx.fill(); // Hand
+                ctx.fillStyle = "#424242"; ctx.beginPath(); ctx.arc(18 * dir, -8 + (drop * 3), 1.5, 0, Math.PI*2); ctx.fill(); // Iron ball
+            } 
+            else if (cycle >= 0.32 && cycle < 0.40) { 
+                // 3. Inserting Wadding
+                let drop = (cycle - 0.32) * 12; 
+                ctx.beginPath(); ctx.arc(18 * dir, -10, 2, 0, Math.PI*2); ctx.fill(); // Hand
+                ctx.fillStyle = "#d7ccc8"; ctx.beginPath(); ctx.arc(18 * dir, -8 + (drop * 3), 1.5, 0, Math.PI*2); ctx.fill(); // Wadding
+            } 
+            else if (cycle >= 0.40 && cycle < 0.65) { 
+                // 4. Ramming down the barrel
+                let ramMove = Math.sin((cycle - 0.40) * Math.PI * 12) * 5; // Up and down motions
+                ctx.beginPath(); ctx.arc((18 + ramMove) * dir, -5, 2, 0, Math.PI*2); ctx.fill(); // Hand
+                ctx.strokeStyle = "#8d6e63"; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo((18 + ramMove) * dir, -5); ctx.lineTo((8 + ramMove) * dir, -5); ctx.stroke(); // Ramrod
+            } 
+            else if (cycle >= 0.65 && cycle < 0.75) { 
+                // 5. Priming the touchhole
+                ctx.beginPath(); ctx.arc(6 * dir, -8, 2, 0, Math.PI*2); ctx.fill(); // Hand at breech
+                ctx.fillStyle = "#212121"; ctx.fillRect(5.5 * dir, -6, 1.5 * dir, 1.5); // Pinch of powder
+            } 
+            else if (cycle >= 0.90 && cycle < 1.0) { 
+                // 6. Lighting the fuse
+                ctx.beginPath(); ctx.arc(6 * dir, -8, 2, 0, Math.PI*2); ctx.fill(); // Hand bringing fuse down
+                ctx.strokeStyle = "#e65100"; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(6 * dir, -8); ctx.lineTo(7 * dir, -5.5); ctx.stroke(); // Slow match
+                ctx.fillStyle = "#ffeb3b"; ctx.beginPath(); ctx.arc(7 * dir, -5.5, 1.5 + Math.random(), 0, Math.PI*2); ctx.fill(); // Sparks!
+            } 
+            else {
+                // Idle / Resting / Waiting for next phase
+                ctx.beginPath(); ctx.arc(8 * dir, -5, 2, 0, Math.PI*2); ctx.fill(); 
+            }
         } else {
-            // Normal front hand resting
+            // Not attacking - Normal front hand resting
             ctx.beginPath(); ctx.arc(8 * dir, -5, 2, 0, Math.PI*2); ctx.fill(); 
         }
 
-        // Muzzle Flash (Only for the first 20 frames of the cooldown cycle)
-        if (isAttacking && cd > 280) { 
-            ctx.fillStyle = "#ff5722"; ctx.beginPath(); ctx.arc(18 * dir, -5, 2 + Math.random(), 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "rgba(140, 140, 140, 0.5)"; 
-            ctx.beginPath(); ctx.arc(22 * dir, -7, 5 + Math.random()*4, 0, Math.PI * 2); ctx.fill();
+        // Muzzle Flash & Smoke (Only triggers in the first 5% of the cooldown cycle)
+        if (isAttacking && cycle < 0.05) { 
+            ctx.fillStyle = "#ffeb3b"; // Core flash
+            ctx.beginPath(); ctx.arc(18 * dir, -5, 3 + Math.random() * 2, 0, Math.PI * 2); ctx.fill();
+            
+            ctx.fillStyle = "#ff5722"; // Secondary flame
+            ctx.beginPath(); ctx.arc(22 * dir, -5, 6 + Math.random() * 4, 0, Math.PI * 2); ctx.fill();
+            
+            ctx.fillStyle = "rgba(140, 140, 140, 0.6)"; // Smoke expanding
+            ctx.beginPath(); ctx.arc(26 * dir, -5, 8 + Math.random() * 5, 0, Math.PI * 2); ctx.fill();
         }
+
         ctx.restore();
     }
-	
-    else if (unitName && unitName.includes("Bomb")) {
+	else if (unitName && unitName.includes("Bomb")) {
         // 1. Context & Ammo State
         const currentAmmo = (typeof unit !== 'undefined' && unit.ammo !== undefined) ? unit.ammo : 2;
         const hasAmmo = currentAmmo > 0;
@@ -1274,14 +1350,13 @@ else if (type === "gun") {
             // --- STATE: HAS AMMO (Staff Sling Animation) ---
             
             // 2. Draw Stored Bombs (Dynamic based on ammo)
-            // If ammo > 1, show one bomb in a satchel or tied to belt
             if (currentAmmo > 1) {
                 ctx.fillStyle = "#212121";
                 for (let i = 0; i < Math.min(currentAmmo - 1, 3); i++) {
                     ctx.beginPath(); 
                     ctx.arc((-5 - i*2) * dir, 0 + (i*1), 3.5, 0, Math.PI * 2); 
                     ctx.fill();
-                    // Small fuse detail on stored bombs
+                    // Small fuse detail on stored bombs (Unlit)
                     ctx.strokeStyle = "#5d4037"; ctx.beginPath();
                     ctx.moveTo((-5 - i*2) * dir, -3 + (i*1)); ctx.lineTo((-7 - i*2) * dir, -6 + (i*1)); ctx.stroke();
                 }
@@ -1305,7 +1380,6 @@ else if (type === "gun") {
                     let p = (cycle - 0.4) / 0.4;
                     let ease = p * p; // Accelerates
                     staffRotation = (-Math.PI / 2) + (ease * Math.PI * 1.2);
-                    // Pouch trails behind staff due to inertia
                     pouchRotation = -Math.PI / 2 + (p * Math.PI);
                 } else {
                     // PHASE 3: Follow-through (Release)
@@ -1344,10 +1418,25 @@ else if (type === "gun") {
                 ctx.fillStyle = "#212121";
                 ctx.beginPath(); ctx.arc(0, 10, 3.5, 0, Math.PI * 2); ctx.fill();
                 
-                // Sparking Fuse (while in sling)
-                let spark = Math.random() * 2;
-                ctx.fillStyle = "#ff9800";
-                ctx.beginPath(); ctx.arc(2, 7, spark, 0, Math.PI * 2); ctx.fill();
+                // --- QUICK FUSE LOGIC ---
+                // Only spark if attacking and specifically in the "snap" phase (0.6 to 0.8)
+                // This prevents the "eternal fuse" look.
+                if (isAttacking && cycle > 0.6 && cycle < 0.8) {
+                    let spark = Math.random() * 2.5;
+                    ctx.fillStyle = (Math.random() > 0.5) ? "#ff9800" : "#ffeb3b"; // Flicker color
+                    ctx.beginPath(); 
+                    ctx.arc(2, 7, spark, 0, Math.PI * 2); 
+                    ctx.fill();
+                    
+                    // Added a tiny white core to the spark for intensity
+                    ctx.fillStyle = "#ffffff";
+                    ctx.beginPath(); ctx.arc(2, 7, spark/2, 0, Math.PI * 2); ctx.fill();
+                } else {
+                    // Draw a plain brown thread for the unlit fuse
+                    ctx.strokeStyle = "#5d4037";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(1, 9); ctx.lineTo(3, 6); ctx.stroke();
+                }
             }
             
             ctx.restore(); // End pouch
@@ -1417,8 +1506,8 @@ else if (type === "gun") {
     ctx.restore(); // <--- CRITICAL: Returns coordinates back to the Man's center
 
     // 3. Draw the Operator (The Man)
-    ctx.fillStyle = factionColor; 
-    ctx.fillRect(-3, -10 + bob, 6, 10); // Body
+  //  ctx.fillStyle = factionColor; 
+//ctx.fillRect(-3, -10 + bob, 6, 10); // Body
 
     // Forward Hand (Holding cart handle)
     ctx.fillStyle = "#ffccbc";

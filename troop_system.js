@@ -187,7 +187,7 @@ const UnitRoster = {
         this.create("Mangudai", "Mangudai", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 35, health: 45, meleeAttack: 18, meleeDefense: 16, missileBaseDamage: 14, missileAPDamage: 8, accuracy: 75, armor: ARMOR_TIERS.SUPER_HEAVY, speed: 1.8, range: 700, morale: 80, cost: 155 });
         this.create("Hand Cannoneer", "Hand Cannoneer", ROLES.GUNNER, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 12, missileBaseDamage: 25, missileAPDamage: 50, accuracy: 65, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 800, morale: 70, cost: 70 });
         this.create("Camel Cannon", "Camel Cannon", ROLES.MOUNTED_GUNNER, true, { isRanged: true, ammo: 60, health: 50, meleeAttack: 12, meleeDefense: 14, missileBaseDamage: 35, missileAPDamage: 80, accuracy: 40, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 850, morale: 80, cost: 100 });
-        this.create("Poison Crossbowman", "Poison Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 12, meleeDefense: 12, missileBaseDamage: 100, missileAPDamage: 4, accuracy: 60, armor: ARMOR_TIERS.LEATHER, speed: 0.8, range: 400, morale: 55, cost: 45 });
+        this.create("Poison Crossbowman", "Poison Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 12, meleeDefense: 12, missileBaseDamage: 60, missileAPDamage: 1, accuracy: 90, armor: ARMOR_TIERS.LEATHER, speed: 0.8, range: 400, morale: 55, cost: 45 });
       //poison crossbow ammo is 2 for debugging stowed
 	  this.create("War Elephant", "War Elephant", ROLES.CAVALRY, true, { health: 100, meleeAttack: 35, meleeDefense: 20, armor: ARMOR_TIERS.JUGGERNAUT, speed: 0.9, range: 25, morale: 100, cost: 300 });
         this.create("Repeater Crossbowman", "Repeater Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 40, health: 30, meleeAttack: 8, meleeDefense: 10, missileBaseDamage: 15, missileAPDamage: 2, accuracy: 45, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 700, morale: 55, cost: 40 });
@@ -354,7 +354,7 @@ function drawBattleUnits(ctx) {
         
 // --- UPDATED VISUAL TYPE LOGIC ---
 if ((typeof player !== 'undefined' && unit === player) || unit.isPlayer) {
-    visType = "cavalry"; 
+    visType = "horse_archer"; 
 } else if (unit.stats.role === ROLES.CAVALRY || unit.stats.role === ROLES.MOUNTED_GUNNER) {
     // If it's a mounted gunner or the name contains "Camel", use the camel renderer
     if (unit.unitType === "War Elephant") {
@@ -470,18 +470,18 @@ if (unit.side === "player") {
 
 // 5. HEALTH BAR RENDERING
 // Draw Background (Red/Empty)
-//ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
-//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
+ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 
 // Draw Health Fill (Green for Allies, Orange/Red for Enemies)
-//const healthPercent = Math.max(0, unit.hp / unit.stats.health);
-//ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
-//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
+const healthPercent = Math.max(0, unit.hp / unit.stats.health);
+ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
+ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
 
 // Draw Border
-//ctx.strokeStyle = "#000";
-//ctx.lineWidth = 1;
-//ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+ctx.strokeStyle = "#000";
+ctx.lineWidth = 1;
+ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 }); 
 battleEnvironment.projectiles.forEach(p => {
 		if (isNaN(p.x) || isNaN(p.y)) return; // Safety check

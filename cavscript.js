@@ -681,47 +681,54 @@ else if (type === "horse_archer") {
             ctx.beginPath(); ctx.moveTo(16, -1.5); ctx.lineTo(22, 0); ctx.lineTo(16, 1.5); ctx.fill();
             ctx.restore();
 
-            // 2. Active Archery Animation
-            let cycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 0.9; 
+// --- 2. ACTIVE ARCHERY ANIMATION (SMOOTH VERSION) ---
 
-            let bowKhatra = 0;
-            let hasArrow = false;
-            let handX = 6 + weaponBob; 
-            let handY = -6 + b; // Added 'b' so the bow bounces with the horse
-            let rightHandX = handX, rightHandY = handY;
-            let stringX = rightHandX; 
+// FIX: A unit is "Action Active" as long as the cooldown is counting.
+// This prevents the arm from snapping when you start moving.
+let isActionActive = (cd > 0); 
 
-            // MATH DISCONTINUITY FIXED HERE:
-            if (cycle < 0.2) {
-                // 0.0 to 0.2: Empty hand reaches back to quiver (-5, -2)
-                let reachProgress = cycle / 0.2;
-                rightHandX = (handX - 8) + ( (-5) - (handX - 8) ) * Math.sin(reachProgress * Math.PI/2);
-                rightHandY = handY + ( (-2 + b) - handY ) * Math.sin(reachProgress * Math.PI/2);
-                hasArrow = false; 
-                stringX = handX - 4; 
-            } else if (cycle < 0.4) {
-                // 0.2 to 0.4: Pull arrow from quiver to bow
-                let nockProgress = (cycle - 0.2) / 0.2;
-                rightHandX = -5 + (handX - (-5)) * nockProgress;
-                rightHandY = (-2 + b) + (handY - (-2 + b)) * nockProgress;
-                hasArrow = true;
-                stringX = handX - 4; 
-            } else if (cycle < 0.95) { 
-                // 0.4 to 0.95: Draw string back
-                let drawProgress = (cycle - 0.4) / 0.55;
-                rightHandX = handX - (drawProgress * 14); 
-                rightHandY = handY;
-                hasArrow = true;
-                stringX = rightHandX; 
-            } else {
-                // 0.95 to 1.0: Release
-                let releaseProgress = (cycle - 0.95) / 0.05;
-                bowKhatra = 0.6 * (1 - releaseProgress); 
-                rightHandX = (handX - 14) + (releaseProgress * 6); 
-                hasArrow = false; 
-                stringX = handX - 4; 
-            }
+// If the timer is running, use it. Otherwise, stay in "Ready" pose (0.9)
+let cycle = isActionActive ? Math.max(0, maxCd - cd) / maxCd : 0.9; 
 
+let bowKhatra = 0;
+let hasArrow = false;
+let handX = 6 + weaponBob; 
+let handY = -6 + b; 
+let rightHandX = handX, rightHandY = handY;
+let stringX = handX - 4; 
+
+// --- ANIMATION STAGES ---
+if (cycle < 0.2) {
+    // Reaching for quiver
+    let reachProgress = cycle / 0.2;
+    rightHandX = (handX - 8) + ((-5) - (handX - 8)) * Math.sin(reachProgress * Math.PI / 2);
+    rightHandY = handY + ((-2 + b) - handY) * Math.sin(reachProgress * Math.PI / 2);
+    hasArrow = false; 
+    stringX = handX - 4; 
+} else if (cycle < 0.4) {
+    // Nocking the arrow
+    let nockProgress = (cycle - 0.2) / 0.2;
+    rightHandX = -5 + (handX - (-5)) * nockProgress;
+    rightHandY = (-2 + b) + (handY - (-2 + b)) * nockProgress;
+    hasArrow = true;
+    stringX = handX - 4; 
+} else if (cycle < 0.95) { 
+    // Drawing the string back
+    let drawProgress = (cycle - 0.4) / 0.55;
+    rightHandX = handX - (drawProgress * 14); 
+    rightHandY = handY;
+    hasArrow = true;
+    stringX = rightHandX; 
+} else {
+    // Release (The "Pop")
+    let releaseProgress = (cycle - 0.95) / 0.05;
+    bowKhatra = 0.6 * (1 - releaseProgress); 
+    rightHandX = (handX - 14) + (releaseProgress * 6); 
+    hasArrow = false; 
+    stringX = handX - 4; 
+}
+
+// ... (Rest of your Drawing code: Draw Bow, Draw Arrow, Draw Right Hand) ...
             // Draw Bow
             ctx.save();
             ctx.translate(handX, handY); 
