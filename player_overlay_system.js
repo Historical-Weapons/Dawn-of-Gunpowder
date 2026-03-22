@@ -111,9 +111,11 @@ function drawPlayerOverlay(ctx, player, zoom) {
     ctx.font = "bold 28px Georgia";
     ctx.fillText("PLAYER DATA", paddingX, startY + 50);
 
-    // 5. PLAYER CHARACTER STATUS
-    const pLvl = player.stats ? (player.stats.experienceLevel || 1) : 1;
-    const pExp = (pLvl % 1);
+   // 5. PLAYER CHARACTER STATUS (Surgical Fix)
+    // We check for player.exp first. If it doesn't exist, we default to 1.0
+    const rawPExp = player.exp || 1.0; 
+    const pLvl = Math.floor(rawPExp);
+    const pExpPercent = (rawPExp % 1); // Get the decimal part for the bar
     
     ctx.font = "bold 16px Georgia";
     ctx.fillStyle = "#d4b886";
@@ -121,15 +123,17 @@ function drawPlayerOverlay(ctx, player, zoom) {
 
     ctx.font = "14px monospace";
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(`LEVEL: ${Math.floor(pLvl)} (${(pExp * 100).toFixed(0)}% EXP)`, paddingX, startY + 120);
-    ctx.fillText(`HEALTH: ${Math.floor(player.hp || 100)}% | SPEED: ${player.speed || 2}`, paddingX, startY + 145);
+    
+    // Display Level and calculated Percent
+    ctx.fillText(`LEVEL: ${pLvl} (${(pExpPercent * 100).toFixed(0)}% EXP)`, paddingX, startY + 120);
+    ctx.fillText(`HEALTH: ${Math.floor(player.hp || 100)}% | SPEED: ${player.speed || 15}`, paddingX, startY + 145);
     ctx.fillText(`GOLD: ${Math.floor(player.gold || 0)} | FOOD: ${Math.floor(player.food || 0)} | FORCE: ${player.troops}`, paddingX, startY + 170);
 
-    // EXP Bar 
+    // EXP Bar - Corrected to use pExpPercent
     ctx.fillStyle = "#222";
     ctx.fillRect(paddingX, startY + 185, 300, 6);
     ctx.fillStyle = "#ffca28";
-    ctx.fillRect(paddingX, startY + 185, 300 * pExp, 6);
+    ctx.fillRect(paddingX, startY + 185, 300 * pExpPercent, 6);
 
     // 6. ARMY ROSTER (Anchored inside the compact box)
     const rosterStartY = startY + 230; 

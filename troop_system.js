@@ -28,6 +28,18 @@ const ARMOR_TIERS = {
     JUGGERNAUT: 60        // War Elephants, massive natural armor
 };
 
+// --- NEW: PHYSICAL WEIGHT CLASSES ---
+// Tier determines who pushes who (Light cannot push Heavy). 
+// Mass determines push ratio if tiers are equal.
+// Radius determines how much physical space they take up.
+const WEIGHT_CLASSES = {
+    LIGHT_INF: { tier: 1, mass: 10,  radius: 5 },   // Peasants, Archers
+    HEAVY_INF: { tier: 2, mass: 25,  radius: 7 },   // Armored Infantry, Pikemen
+    CAV:       { tier: 3, mass: 80,  radius: 10 },  // Standard horses
+    HEAVY_CAV: { tier: 4, mass: 150, radius: 12 },  // Barded Cataphracts
+    ELEPHANT:  { tier: 5, mass: 500, radius: 18 }   // Unmovable Behemoths
+};
+
 class Troop {
     constructor(name, role, isLarge, faction = "Generic") 
 	{
@@ -36,6 +48,12 @@ class Troop {
         this.isLarge = isLarge;
         this.faction = faction;
         
+		// Default fallbacks (will be overwritten by the roster)
+        this.weightTier = WEIGHT_CLASSES.LIGHT_INF.tier;
+        this.mass = WEIGHT_CLASSES.LIGHT_INF.mass;
+        this.radius = WEIGHT_CLASSES.LIGHT_INF.radius;
+		
+		
 		this.level = 1; this.morale = 20; this.maxMorale = 20; this.stamina = 100; this.health = 50; this.meleeAttack = 10; this.meleeDefense = 10;
         this.armor = ARMOR_TIERS.CLOTH; this.shieldBlockChance = 0; this.bonusVsLarge = 0;  this.isRanged = false; this.ammo = 0; this.accuracy = 0; this.reloadSpeed = 0; this.missileBaseDamage = 0; this.missileAPDamage = 0;
 		this.speed = 0.8;  this.range = 20; 
@@ -134,6 +152,15 @@ const UnitRoster = {
     create: function(id, name, role, isLarge, stats, faction = "Generic") {
         let t = new Troop(name, role, isLarge, faction);
         Object.assign(t, stats);
+		
+		// 2. ---> INSERT THE NEW WEIGHT LOGIC HERE <---
+    // This maps the WEIGHT_CLASSES object data onto the individual unit
+    if (stats.weightClass) {
+        t.weightTier = stats.weightClass.tier;
+        t.mass = stats.weightClass.mass;
+        t.radius = stats.weightClass.radius;
+    }
+		
         t.morale = stats.morale || 20; 
         t.maxMorale = stats.morale || 20;
         t.currentStance = t.isRanged ? "statusrange" : "statusmelee"; 
@@ -151,51 +178,48 @@ const UnitRoster = {
         this.allUnits[id] = t;
     },
     
-    init: function() {
+init: function() {
         // --- BASE MILITIA (Tier 0) ---
-        this.create("Militia", "Militia", ROLES.INFANTRY, false, { health: 20, meleeAttack: 6, meleeDefense: 6, armor: ARMOR_TIERS.CLOTH, speed: 1.1, range: 15, morale: 35, cost: 5 });
+        this.create("Militia", "Militia", ROLES.INFANTRY, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, health: 20, meleeAttack: 6, meleeDefense: 6, armor: ARMOR_TIERS.CLOTH, speed: 1.1, range: 15, morale: 35, cost: 5 });
 
         // --- CROSSBOW LINE ---
-        this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 10, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.7, range: 700, morale: 50, cost: 35 });
-  
-	   this.create("Heavy Crossbowman", "Heavy Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 25, health: 40, meleeAttack: 14, meleeDefense: 14, missileBaseDamage: 15, missileAPDamage: 30, accuracy: 70, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.6, range: 800, morale: 65, cost: 50 });
-      
-	  this.create("Bomb", "Bomb", ROLES.BOMB, false, { isRanged: true, ammo: 2, health: 20, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 30, missileAPDamage: 100, accuracy: 50, armor: ARMOR_TIERS.LEATHER, speed: 0.7, range: 140, morale: 60, cost: 65 });
+        this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 10, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.7, range: 700, morale: 50, cost: 35 });
+        this.create("Heavy Crossbowman", "Heavy Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, isRanged: true, ammo: 25, health: 40, meleeAttack: 14, meleeDefense: 14, missileBaseDamage: 15, missileAPDamage: 30, accuracy: 70, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.6, range: 800, morale: 65, cost: 50 });
+        this.create("Bomb", "Bomb", ROLES.BOMB, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 2, health: 20, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 30, missileAPDamage: 100, accuracy: 50, armor: ARMOR_TIERS.LEATHER, speed: 0.7, range: 140, morale: 60, cost: 65 });
 
         // --- SPEAR LINE ---
-        this.create("Spearman", "Spearman", ROLES.PIKE, false, { health: 20, meleeAttack: 14, meleeDefense: 16, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, bonusVsLarge: 20, speed: 0.75, range: 30, morale: 55, cost: 10 });
-        this.create("Firelance", "Firelance", ROLES.FIRELANCE, false, { isRanged: true, ammo: 1, health: 20, meleeAttack: 16, meleeDefense: 14, missileBaseDamage: 14, missileAPDamage: 45, accuracy: 55, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.8, range: 30, morale: 60, cost: 50 });
-        this.create("Heavy Firelance", "Heavy Firelance", ROLES.FIRELANCE, false, { isRanged: true, ammo: 2, health: 40, meleeAttack: 20, meleeDefense: 20, missileBaseDamage: 20, missileAPDamage: 60, accuracy: 60, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.75, range: 30, morale: 70, cost: 80 });
+        this.create("Spearman", "Spearman", ROLES.PIKE, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 20, meleeAttack: 14, meleeDefense: 16, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, bonusVsLarge: 20, speed: 0.75, range: 30, morale: 55, cost: 10 });
+        this.create("Firelance", "Firelance", ROLES.FIRELANCE, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, isRanged: true, ammo: 1, health: 20, meleeAttack: 16, meleeDefense: 14, missileBaseDamage: 14, missileAPDamage: 45, accuracy: 55, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.8, range: 30, morale: 60, cost: 50 });
+        this.create("Heavy Firelance", "Heavy Firelance", ROLES.FIRELANCE, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, isRanged: true, ammo: 2, health: 40, meleeAttack: 20, meleeDefense: 20, missileBaseDamage: 20, missileAPDamage: 60, accuracy: 60, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.75, range: 30, morale: 70, cost: 80 });
 
         // --- ARCHER LINE ---
-        this.create("Archer", "Archer", ROLES.ARCHER, false, { isRanged: true, ammo: 20, health: 20, meleeAttack: 8, meleeDefense: 10, missileBaseDamage: 13, missileAPDamage: 4, accuracy: 55, armor: ARMOR_TIERS.LEATHER, speed: 0.85, range: 700, morale: 50, cost: 25 });
-        this.create("Horse Archer", "Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 20, health: 40, meleeAttack: 12, meleeDefense: 12, missileBaseDamage: 11, missileAPDamage: 4, accuracy: 60, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 1.6, range: 700, morale: 60, cost: 50 });
-        this.create("Heavy Horse Archer", "Heavy Horse Archer", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 20, health: 40, meleeAttack: 16, meleeDefense: 18, missileBaseDamage: 11, missileAPDamage: 6, accuracy: 65, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 1.4, range: 700, morale: 70, cost: 75 });
+        this.create("Archer", "Archer", ROLES.ARCHER, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 20, health: 20, meleeAttack: 8, meleeDefense: 10, missileBaseDamage: 13, missileAPDamage: 4, accuracy: 55, armor: ARMOR_TIERS.LEATHER, speed: 0.85, range: 700, morale: 50, cost: 25 });
+        this.create("Horse Archer", "Horse Archer", ROLES.HORSE_ARCHER, true, { weightClass: WEIGHT_CLASSES.CAV, isRanged: true, ammo: 20, health: 40, meleeAttack: 12, meleeDefense: 12, missileBaseDamage: 11, missileAPDamage: 4, accuracy: 60, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 1.6, range: 700, morale: 60, cost: 50 });
+        this.create("Heavy Horse Archer", "Heavy Horse Archer", ROLES.HORSE_ARCHER, true, { weightClass: WEIGHT_CLASSES.HEAVY_CAV, isRanged: true, ammo: 20, health: 40, meleeAttack: 16, meleeDefense: 18, missileBaseDamage: 11, missileAPDamage: 6, accuracy: 65, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 1.4, range: 700, morale: 70, cost: 75 });
 
         // --- SABRE LINE ---
-        this.create("Shielded Infantry", "Shielded Infantry", ROLES.SHIELD, false, { health: 40, meleeAttack: 10, meleeDefense: 18, armor: ARMOR_TIERS.LEATHER, shieldBlockChance: 25, speed: 0.5, range: 20, morale: 60, cost: 30 });
-        this.create("Light Two Handed", "Light Two Handed", ROLES.TWO_HANDED, false, { health: 20, meleeAttack: 30, meleeDefense: 12, armor: ARMOR_TIERS.LEATHER, speed: 0.9, range: 20, morale: 65, cost: 35 });
-        this.create("Heavy Two Handed", "Heavy Two Handed", ROLES.TWO_HANDED, false, { health: 25, meleeAttack: 36, meleeDefense: 16, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.65, range: 20, morale: 75, cost: 60 });
+        this.create("Shielded Infantry", "Shielded Infantry", ROLES.SHIELD, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 40, meleeAttack: 10, meleeDefense: 18, armor: ARMOR_TIERS.LEATHER, shieldBlockChance: 25, speed: 0.5, range: 20, morale: 60, cost: 30 });
+        this.create("Light Two Handed", "Light Two Handed", ROLES.TWO_HANDED, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, health: 20, meleeAttack: 30, meleeDefense: 12, armor: ARMOR_TIERS.LEATHER, speed: 0.9, range: 20, morale: 65, cost: 35 });
+        this.create("Heavy Two Handed", "Heavy Two Handed", ROLES.TWO_HANDED, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 25, meleeAttack: 36, meleeDefense: 16, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.65, range: 20, morale: 75, cost: 60 });
 
         // --- SCOUT LINE ---
-        this.create("Lancer", "Lancer", ROLES.CAVALRY, true, { health: 25, meleeAttack: 18, meleeDefense: 14, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 1.5, range: 25, morale: 60, cost: 60 });
-        this.create("Heavy Lancer", "Heavy Lancer", ROLES.CAVALRY, true, { health: 50, meleeAttack: 24, meleeDefense: 20, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 1.2, range: 25, morale: 75, cost: 90 });
-        this.create("Elite Lancer", "Elite Lancer", ROLES.CAVALRY, true, { health: 100, meleeAttack: 28, meleeDefense: 24, armor: ARMOR_TIERS.SUPER_HEAVY + 5, speed: 1.2, range: 25, morale: 85, cost: 150 }); 
+        this.create("Lancer", "Lancer", ROLES.CAVALRY, true, { weightClass: WEIGHT_CLASSES.CAV, health: 25, meleeAttack: 18, meleeDefense: 14, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 1.5, range: 25, morale: 60, cost: 60 });
+        this.create("Heavy Lancer", "Heavy Lancer", ROLES.CAVALRY, true, { weightClass: WEIGHT_CLASSES.HEAVY_CAV, health: 50, meleeAttack: 24, meleeDefense: 20, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 1.2, range: 25, morale: 75, cost: 90 });
+        this.create("Elite Lancer", "Elite Lancer", ROLES.CAVALRY, true, { weightClass: WEIGHT_CLASSES.HEAVY_CAV, health: 100, meleeAttack: 28, meleeDefense: 24, armor: ARMOR_TIERS.SUPER_HEAVY + 5, speed: 1.2, range: 25, morale: 85, cost: 150 }); 
 
         // --- FACTION UNIQUES ---
-        this.create("Rocket", "Rocket", ROLES.ROCKET, false, { isRanged: true, ammo: 50, health: 30, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 15, missileAPDamage: 15, accuracy: 55, armor: ARMOR_TIERS.LEATHER, speed: 0.5, range: 520, morale: 55, cost: 55 });
-        this.create("Mangudai", "Mangudai", ROLES.HORSE_ARCHER, true, { isRanged: true, ammo: 35, health: 45, meleeAttack: 18, meleeDefense: 16, missileBaseDamage: 14, missileAPDamage: 8, accuracy: 75, armor: ARMOR_TIERS.SUPER_HEAVY, speed: 1.8, range: 700, morale: 80, cost: 155 });
-        this.create("Hand Cannoneer", "Hand Cannoneer", ROLES.GUNNER, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 12, missileBaseDamage: 25, missileAPDamage: 50, accuracy: 65, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 800, morale: 70, cost: 70 });
-        this.create("Camel Cannon", "Camel Cannon", ROLES.MOUNTED_GUNNER, true, { isRanged: true, ammo: 60, health: 50, meleeAttack: 12, meleeDefense: 14, missileBaseDamage: 35, missileAPDamage: 80, accuracy: 40, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 850, morale: 80, cost: 100 });
-        this.create("Poison Crossbowman", "Poison Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 12, meleeDefense: 12, missileBaseDamage: 60, missileAPDamage: 1, accuracy: 90, armor: ARMOR_TIERS.LEATHER, speed: 0.8, range: 400, morale: 55, cost: 45 });
-      //poison crossbow ammo is 2 for debugging stowed
-	  this.create("War Elephant", "War Elephant", ROLES.CAVALRY, true, { health: 100, meleeAttack: 35, meleeDefense: 20, armor: ARMOR_TIERS.JUGGERNAUT, speed: 0.9, range: 25, morale: 100, cost: 300 });
-        this.create("Repeater Crossbowman", "Repeater Crossbowman", ROLES.CROSSBOW, false, { isRanged: true, ammo: 40, health: 30, meleeAttack: 8, meleeDefense: 10, missileBaseDamage: 15, missileAPDamage: 2, accuracy: 45, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 700, morale: 55, cost: 40 });
-        this.create("Slinger", "Slinger", ROLES.THROWING, false, { isRanged: true, ammo: 30, health: 20, meleeAttack: 6, meleeDefense: 8, missileBaseDamage: 8, missileAPDamage: 12, accuracy: 50, armor: ARMOR_TIERS.CLOTH, speed: 1.0, range: 650, morale: 40, cost: 15 });
-        this.create("Glaiveman", "Glaiveman", ROLES.INFANTRY, false, { health: 30, meleeAttack: 18, meleeDefense: 14, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 20, morale: 65, cost: 45 });
+        this.create("Rocket", "Rocket", ROLES.ROCKET, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 50, health: 30, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 15, missileAPDamage: 15, accuracy: 55, armor: ARMOR_TIERS.LEATHER, speed: 0.5, range: 520, morale: 55, cost: 55 });
+        this.create("Mangudai", "Mangudai", ROLES.HORSE_ARCHER, true, { weightClass: WEIGHT_CLASSES.HEAVY_CAV, isRanged: true, ammo: 35, health: 45, meleeAttack: 18, meleeDefense: 16, missileBaseDamage: 14, missileAPDamage: 8, accuracy: 75, armor: ARMOR_TIERS.SUPER_HEAVY, speed: 1.8, range: 700, morale: 80, cost: 155 });
+        this.create("Hand Cannoneer", "Hand Cannoneer", ROLES.GUNNER, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 12, missileBaseDamage: 25, missileAPDamage: 50, accuracy: 65, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 800, morale: 70, cost: 70 });
+        this.create("Camel Cannon", "Camel Cannon", ROLES.MOUNTED_GUNNER, true, { weightClass: WEIGHT_CLASSES.CAV, isRanged: true, ammo: 60, health: 50, meleeAttack: 12, meleeDefense: 14, missileBaseDamage: 35, missileAPDamage: 80, accuracy: 40, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 850, morale: 80, cost: 100 });
+        this.create("Poison Crossbowman", "Poison Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 12, meleeDefense: 12, missileBaseDamage: 60, missileAPDamage: 1, accuracy: 90, armor: ARMOR_TIERS.LEATHER, speed: 0.8, range: 400, morale: 55, cost: 45 });
+        this.create("War Elephant", "War Elephant", ROLES.CAVALRY, true, { weightClass: WEIGHT_CLASSES.ELEPHANT, health: 100, meleeAttack: 35, meleeDefense: 20, armor: ARMOR_TIERS.JUGGERNAUT, speed: 0.9, range: 25, morale: 100, cost: 300 });
+        this.create("Repeater Crossbowman", "Repeater Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 40, health: 30, meleeAttack: 8, meleeDefense: 10, missileBaseDamage: 15, missileAPDamage: 2, accuracy: 45, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 700, morale: 55, cost: 40 });
+        this.create("Slinger", "Slinger", ROLES.THROWING, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 6, meleeDefense: 8, missileBaseDamage: 8, missileAPDamage: 12, accuracy: 50, armor: ARMOR_TIERS.CLOTH, speed: 1.0, range: 650, morale: 40, cost: 15 });
+        this.create("Glaiveman", "Glaiveman", ROLES.INFANTRY, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 30, meleeAttack: 18, meleeDefense: 14, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 20, morale: 65, cost: 45 });
         
         // --- EXISTING NON-GUI UNITS ---
-        this.create("Javelinier", "Javelinier", ROLES.THROWING, false, { isRanged: true, ammo: 4, health: 20, meleeAttack: 10, meleeDefense: 10, missileBaseDamage: 18, missileAPDamage: 15, accuracy: 50, armor: ARMOR_TIERS.LEATHER, speed: 0.85, range: 300, morale: 50, cost: 25 });
+        this.create("Javelinier", "Javelinier", ROLES.THROWING, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 4, health: 20, meleeAttack: 10, meleeDefense: 10, missileBaseDamage: 18, missileAPDamage: 15, accuracy: 50, armor: ARMOR_TIERS.LEATHER, speed: 0.85, range: 300, morale: 50, cost: 25 });
     }
 };
 
@@ -285,7 +309,7 @@ function getReloadTime(unit) {
 // Repeater full cycle | 5.83 sec
 // Bomb                | 5.8 sec
 // Rocket              | near instant
-// Gunner / Firelance  | 8.3 sec
+ 
 
     if (name === "Rocket") return 15;
     if (name === "Repeater Crossbowman") return 150;
@@ -293,7 +317,7 @@ function getReloadTime(unit) {
     if (role === ROLES.ARCHER || role === ROLES.HORSE_ARCHER) return 150;
     if (role === ROLES.CROSSBOW) return 300;
     if (role === ROLES.GUNNER || role === ROLES.MOUNTED_GUNNER) return 300; 
-    if (role === ROLES.FIRELANCE) return 500;
+    if (role === ROLES.FIRELANCE) return 200;
     if (role === ROLES.THROWING) return 120;
     if (role === ROLES.BOMB) return 250;
 
@@ -375,7 +399,12 @@ if ((typeof player !== 'undefined' && unit === player) || unit.isPlayer) {
             visType = "two_handed";
         } else if (unit.stats.role === ROLES.CROSSBOW) {
             visType = "crossbow";
-        } else if (unit.stats.role === ROLES.ARCHER) {
+        } 
+		else if (unit.stats.role === ROLES.FIRELANCE) {
+    // Dedicated line for Firelances
+		visType = "firelance";}
+		
+		else if (unit.stats.role === ROLES.ARCHER) {
             visType = "archer";
         } else if (unit.stats.role === ROLES.THROWING) {
             visType = "throwing"; 
@@ -411,14 +440,14 @@ if (["cavalry", "elephant", "camel", "horse_archer"].includes(visType)) {
     drawCavalryUnit(
         ctx, unit.x, unit.y, isMoving, frame, unit.color, 
         isAttacking, visType, unit.side, unit.unitType, 
-        isFleeing, unit.cooldown, unit.ammo
+        isFleeing, unit.cooldown, unit.ammo, unit
     );
 } else {
     // SURGERY: Appended unit.cooldown and unit.ammo
     drawInfantryUnit(
         ctx, unit.x, unit.y, isMoving, frame, unit.color, 
         visType, isAttacking, unit.side, unit.unitType, 
-        isFleeing, unit.cooldown, unit.ammo
+        isFleeing, unit.cooldown, unit.ammo, unit
     );
 }
 // 2. SURGICAL NAME OVERRIDE: Show "PLAYER" if it's the commander
@@ -429,9 +458,9 @@ let displayName = unit.isCommander ? "PLAYER" : unit.unitType;
 ctx.fillText(displayName, unit.x, unit.y - 21);
 
 // 3. HEALTH BAR CONFIG
-const barWidth = 24;
-const barHeight = 4;
-const barY = unit.y - 30; 
+//const barWidth = 24;
+//const barHeight = 4;
+//const barY = unit.y - 30; 
 
 // --- SURGICAL DEBUG UI OVERRIDE --- 
 // Changed from 'unit.isCommander' so ALL player troops show stats
@@ -470,18 +499,18 @@ if (unit.side === "player") {
 
 // 5. HEALTH BAR RENDERING
 // Draw Background (Red/Empty)
-ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
-ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+//ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
+//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 
 // Draw Health Fill (Green for Allies, Orange/Red for Enemies)
-const healthPercent = Math.max(0, unit.hp / unit.stats.health);
-ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
-ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
+//const healthPercent = Math.max(0, unit.hp / unit.stats.health);
+//ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
+//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
 
 // Draw Border
-ctx.strokeStyle = "#000";
-ctx.lineWidth = 1;
-ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+//ctx.strokeStyle = "#000";
+//ctx.lineWidth = 1;
+///ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 }); 
 battleEnvironment.projectiles.forEach(p => {
 		if (isNaN(p.x) || isNaN(p.y)) return; // Safety check
@@ -614,12 +643,58 @@ if (isBomb) {
     }
 }
 		
-else if (p.isFire) {
-            // Firelance blast
+else if (p.isFire || p.projectileType === "firelance" || (p.projectileType && p.projectileType.includes("Firelance"))) {
+            // ==========================================
+            // 🔥 MASSIVE FIRELANCE BLAST REVISION
+            // ==========================================
             ctx.rotate(angle);
-            ctx.fillStyle = "#ff9800"; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "rgba(255, 152, 0, 0.5)"; ctx.beginPath(); ctx.arc(-6, 0, 6, 0, Math.PI * 2); ctx.fill(); // Smoke/Flame trail
-		} 
+
+            // 1. Scale Settings (5x the original size)
+            // Original was ~6px wide, now 30-50px wide spread
+            const blastLength = 65; 
+            const blastWidth = 40; 
+            const jitter = (Math.random() - 0.5) * 10; // Adds "flicker" effect
+
+            // 2. Create the "Hot Core" to "Fading Ember" Gradient
+            // This removes the "bullet" look by blending the origin into the flame
+            let fireGrd = ctx.createRadialGradient(0, 0, 2, 20, 0, blastLength);
+            fireGrd.addColorStop(0, "rgba(255, 255, 255, 0.9)");   // White-hot center
+            fireGrd.addColorStop(0.2, "rgba(255, 230, 100, 0.8)"); // Bright Yellow
+            fireGrd.addColorStop(0.4, "rgba(255, 100, 0, 0.6)");   // Deep Orange
+            fireGrd.addColorStop(0.7, "rgba(200, 40, 0, 0.3)");    // Red Glow
+            fireGrd.addColorStop(1, "rgba(50, 50, 50, 0)");        // Dissipating Smoke
+
+            // 3. Draw the Conical Blast Shape
+            ctx.fillStyle = fireGrd;
+            ctx.beginPath();
+            ctx.moveTo(-5, 0); // Start slightly behind the tip for better "attachment"
+            
+            // Top curve of the jet
+            ctx.quadraticCurveTo(blastLength * 0.4, -blastWidth + jitter, blastLength, jitter);
+            // Bottom curve of the jet back to origin
+            ctx.quadraticCurveTo(blastLength * 0.4, blastWidth + jitter, -5, 0);
+            
+            ctx.fill();
+
+            // 4. Heat Distortion / Inner Turbulence
+            // This adds extra "thickness" to the blast without adding "bullets"
+            ctx.globalCompositeOperation = "lighter"; // Makes the fire "glow" onto itself
+            ctx.fillStyle = "rgba(255, 150, 50, 0.2)";
+            for (let i = 0; i < 2; i++) {
+                let s = 10 + Math.random() * 15;
+                ctx.beginPath();
+                ctx.arc(Math.random() * 30, (Math.random() - 0.5) * 15, s, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalCompositeOperation = "source-over"; // Reset to normal
+
+            // 5. Large Smoke Clouds (Tail)
+            ctx.fillStyle = "rgba(100, 100, 100, 0.2)";
+            ctx.beginPath();
+            ctx.arc(-15, jitter, 15, 0, Math.PI * 2);
+            ctx.arc(-25, -jitter, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
 else if (isJavelin) {
             // --- SURGERY START: High-Fidelity Javelin ---
             // Long thrown spear

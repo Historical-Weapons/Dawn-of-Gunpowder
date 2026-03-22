@@ -884,6 +884,9 @@ if (!unit.isCommander || !player.isMoving) {
 if (unit.cooldown > 0) unit.cooldown--;
     });
 
+// ---> collison<---
+applyUnitCollisions(units);
+
 /* 4. UPDATE PROJECTILES (PHYSICS BASED COLLISION) */
     for (let i = battleEnvironment.projectiles.length - 1; i >= 0; i--) {
         let p = battleEnvironment.projectiles[i];
@@ -951,73 +954,60 @@ if (unit.cooldown > 0) unit.cooldown--;
 	
 }
 
-/* --- I DONT THINK THIS ONE IS EVEN USED --- */
-// --- MAIN RENDER LOOP ---
-function drawBattlefield(ctx, camera) {
-    if (!inBattleMode) return;
+// --- DYNAMIC TIERED COLLISION ENGINE ---
+function applyUnitCollisions(units) {
+    for (let i = 0; i < units.length; i++) {
+        let u1 = units[i];
+        if (u1.hp <= 0 || u1.state === "FLEEING") continue; 
 
-    // 1. CLEAR SCREEN (Dynamic Palette Fix)
-    // This fills the screen with the ground color we saved in Surgery 1
-    ctx.fillStyle = battleEnvironment.groundColor || "#000000"; 
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        for (let j = i + 1; j < units.length; j++) {
+            let u2 = units[j];
+            if (u2.hp <= 0 || u2.state === "FLEEING") continue;
 
-  // 2. DRAW BACKGROUND (bgCanvas)
-    if (battleEnvironment.bgCanvas) {
-        ctx.drawImage(
-            battleEnvironment.bgCanvas,
-            // SOURCE: Add the padding so (0,0) in world-space is the start of the red line
-            camera.x + battleEnvironment.visualPadding, 
-            camera.y + battleEnvironment.visualPadding, 
-            camera.width, camera.height,
-            // DESTINATION: Fill the screen
-            0, 0, ctx.canvas.width, ctx.canvas.height
-        );
-    }
-
-// --- SUPPLY WAGONS (OUTSIDE BOUNDS) ---
-// --- EMERGENCY RENDER: SUPPLY LINES ---
-    // We use BATTLE_WORLD_WIDTH/2 to center them.
-    const centerX = BATTLE_WORLD_WIDTH / 2 - 150; // Offset for the group of 5
-    
-    // Hardcoded colors to ensure they show up even if data is missing
-    const pColor = (currentBattleData && currentBattleData.playerColor) ? currentBattleData.playerColor : "#2196f3";
-    const eColor = (currentBattleData && currentBattleData.enemyColor) ? currentBattleData.enemyColor : "#f44336";
-
-    // TOP WAGONS (Enemy) - Placed at Y: 80 (Inside the map)
-    drawSupplyLines(ctx, centerX, 80, eColor, camera);
-
-    // BOTTOM WAGONS (Player) - Placed at Y: 1520 (Inside the map)
-    drawSupplyLines(ctx, centerX, BATTLE_WORLD_HEIGHT - 80, pColor, camera);
-	
-	
-	
-    // 3. DRAW UNITS
-    battleEnvironment.units.forEach(unit => {
-        if (isOnScreen(unit, camera)) {
-            // Convert world coordinates to screen coordinates
-            let screenX = (unit.x - camera.x) * (ctx.canvas.width / camera.width);
-            let screenY = (unit.y - camera.y) * (ctx.canvas.height / camera.height);
+            // Use our new dynamic radiuses for collision distance
+            let minDistance = u1.stats.radius + u2.stats.radius;
             
-            // Draw the unit (Assuming drawTroop exists in troop_system.js)
-            if (typeof drawTroop === "function") {
-                drawTroop(ctx, screenX, screenY, unit);
+            let dx = u2.x - u1.x;
+            let dy = u2.y - u1.y;
+            let distSq = dx * dx + dy * dy;
+
+            if (distSq < minDistance * minDistance && distSq > 0) {
+                let dist = Math.sqrt(distSq);
+                let overlap = minDistance - dist;
+
+                let nx = dx / dist;
+                let ny = dy / dist;
+
+                let push1 = 0;
+                let push2 = 0;
+
+                // --- THE HIERARCHY RULE ---
+                if (u1.stats.weightTier > u2.stats.weightTier) {
+                    // u1 is heavier. u2 takes 100% of the displacement.
+                    push2 = overlap; 
+                    push1 = 0;       
+                } 
+                else if (u2.stats.weightTier > u1.stats.weightTier) {
+                    // u2 is heavier. u1 takes 100% of the displacement.
+                    push1 = overlap; 
+                    push2 = 0;       
+                } 
+                else {
+                    // Same Tier? Distribute the push based on exact mass.
+                    let totalMass = u1.stats.mass + u2.stats.mass;
+                    push1 = (u2.stats.mass / totalMass) * overlap;
+                    push2 = (u1.stats.mass / totalMass) * overlap;
+                }
+
+                // Apply physical separation
+                u1.x -= nx * push1;
+                u1.y -= ny * push1;
+                u2.x += nx * push2;
+                u2.y += ny * push2;
             }
         }
-    });
-
-    // 4. DRAW PROJECTILES
-    battleEnvironment.projectiles.forEach(p => {
-        let screenX = (p.x - camera.x) * (ctx.canvas.width / camera.width);
-        let screenY = (p.y - camera.y) * (ctx.canvas.height / camera.height);
-        
-        ctx.fillStyle = p.isFire ? "#ff4500" : "#ffffff";
-        ctx.beginPath();
-        ctx.arc(screenX, screenY, 2, 0, Math.PI * 2);
-        ctx.fill();
-    });
+    }
 }
-/* --- END SURGERY --- */
-
 function isBattleCollision(x, y) {
     let tx = Math.floor(x / BATTLE_TILE_SIZE);
     let ty = Math.floor(y / BATTLE_TILE_SIZE);
