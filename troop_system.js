@@ -215,7 +215,7 @@ init: function() {
         this.create("Poison Crossbowman", "Poison Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 12, meleeDefense: 12, missileBaseDamage: 60, missileAPDamage: 1, accuracy: 90, armor: ARMOR_TIERS.LEATHER, speed: 0.8, range: 400, morale: 55, cost: 45 });
         this.create("War Elephant", "War Elephant", ROLES.CAVALRY, true, { weightClass: WEIGHT_CLASSES.ELEPHANT, health: 100, meleeAttack: 35, meleeDefense: 20, armor: ARMOR_TIERS.JUGGERNAUT, speed: 0.9, range: 25, morale: 100, cost: 300 });
         this.create("Repeater Crossbowman", "Repeater Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 40, health: 30, meleeAttack: 8, meleeDefense: 10, missileBaseDamage: 15, missileAPDamage: 2, accuracy: 45, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 700, morale: 55, cost: 40 });
-        this.create("Slinger", "Slinger", ROLES.THROWING, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 6, meleeDefense: 8, missileBaseDamage: 8, missileAPDamage: 12, accuracy: 50, armor: ARMOR_TIERS.CLOTH, speed: 1.0, range: 650, morale: 40, cost: 15 });
+        this.create("Slinger", "Slinger", ROLES.THROWING, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 6, meleeDefense: 8, missileBaseDamage: 5, missileAPDamage: 7, accuracy: 50, armor: ARMOR_TIERS.CLOTH, speed: 1.0, range: 650, morale: 40, cost: 15 });
         this.create("Glaiveman", "Glaiveman", ROLES.INFANTRY, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 30, meleeAttack: 18, meleeDefense: 14, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 20, morale: 65, cost: 45 });
         
         // --- EXISTING NON-GUI UNITS ---
@@ -225,67 +225,59 @@ init: function() {
 
 UnitRoster.init(); 
 function getTacticalPosition(role, side, unitType) {
-
-    // 1. WE RETURN RELATIVE OFFSETS, NOT ABSOLUTE COORDINATES!
-    // deployArmy already centers the units at BATTLE_WORLD_WIDTH / 2.
-    // We only need to tell the engine how far to shift them from that center.
     let offsetX = 0;
     let offsetY = 0;
-
-    // 2. DIRECTION CALCULATION
-    // The player spawns at the bottom and faces UP (negative Y is forward).
-    // The enemy spawns at the top and faces DOWN (positive Y is forward).
     let dir = (side === "player") ? -1 : 1;
 
-    // 3. TACTICAL FORMATION LOGIC
+    // 3. TACTICAL FORMATION LOGIC (Historical Setup)
     switch(role) {
-        // --- FRONT LINE: RANGED SKIRMISHERS ---
+        // --- FRONT LINE: MELEE INFANTRY ---
+        // Tightened from 80 to 45 to close the gap to the ranged units
+        case ROLES.SHIELD:
+        case ROLES.PIKE:
+        case ROLES.INFANTRY: 
+        case ROLES.TWO_HANDED:
+            offsetY = (45 * dir) + (Math.random() * 10 - 5); 
+            break;
+
+        // --- SECOND LINE: RANGED & SPECIALISTS ---
+        // Tightened from 30 to 15 to stay immediately behind the infantry
         case ROLES.THROWING:
         case ROLES.GUNNER:
         case ROLES.CROSSBOW:
         case ROLES.ARCHER:
-            offsetY = 80 * dir; // Pushed furthest forward
-            break;
-
-        // --- MIDDLE LINE: HEAVY/SHIELD INFANTRY ---
-        case ROLES.SHIELD:
-        case ROLES.PIKE:
-        case ROLES.INFANTRY: // (Added missing Infantry role)
-            offsetY = 20 * dir; // Just behind the ranged units
-            break;
-
-        // --- BACK LINE: SHOCK TROOPS & SPECIALISTS ---
-        case ROLES.TWO_HANDED:
         case ROLES.FIRELANCE:
         case ROLES.BOMB:
-            offsetY = -30 * dir; // Negative 'dir' pushes them behind the spawn point
+        case ROLES.ROCKET:
+            offsetY = (15 * dir) + (Math.random() * 6 - 3);
             break;
 
-        // --- FLANKS: CAVALRY & MOBILE UNITS ---
+        // --- FLANKS: CAVALRY, CAMELS, ELEPHANTS ---
+        // Cavalry is now centered vertically with the army core (0 offset)
         case ROLES.CAVALRY:
         case ROLES.HORSE_ARCHER:
         case ROLES.MOUNTED_GUNNER:
-            offsetY = 10 * dir; // Slightly forward to wrap around
+            offsetY = (0 * dir) + (Math.random() * 10 - 5);
             
-            // Randomly assign to the Left (-1) or Right (1) flank
             let flankSide = (Math.random() > 0.5) ? 1 : -1;
             let isHeavy = unitType && (unitType.includes("Elephant") || unitType.includes("Cannon"));
             
-            // Push them far to the sides (overriding deployArmy's default spread)
-            offsetX = flankSide * (isHeavy ? 450 : 350); 
+            // Fixed base width to keep them out of the center-line's way
+            let baseFlankX = isHeavy ? 400 : 320;
+            offsetX = (flankSide * baseFlankX) + (Math.random() * 40 - 20); 
             break;
 
         // --- REARGUARD / COMMANDER / UNKNOWN ---
+        // Moved from -80 to -25. This puts the commander right behind the archers.
         default:
-            offsetY = -80 * dir; // Extremely far back
+            offsetY = (-25 * dir) + (Math.random() * 4 - 2);
             break;
     }
     
-    // 4. MICRO-JITTER
-    // deployArmy already scatters the X values randomly for infantry, 
-    // but we add a tiny bit of noise here just to ensure nobody shares an exact pixel.
-    offsetX += (Math.random() * 20 - 10);
-    offsetY += (Math.random() * 20 - 10);
+    // 4. FINAL MICRO-JITTER
+    // Restricting jitter to sub-pixel levels to maintain the grid feel
+    offsetX += (Math.random() * 2 - 1);
+    offsetY += (Math.random() * 2 - 1);
 
     return { x: offsetX, y: offsetY };
 }
@@ -317,7 +309,7 @@ function getReloadTime(unit) {
     if (role === ROLES.ARCHER || role === ROLES.HORSE_ARCHER) return 150;
     if (role === ROLES.CROSSBOW) return 300;
     if (role === ROLES.GUNNER || role === ROLES.MOUNTED_GUNNER) return 300; 
-    if (role === ROLES.FIRELANCE) return 200;
+    if (role === ROLES.FIRELANCE) return 80;
     if (role === ROLES.THROWING) return 120;
     if (role === ROLES.BOMB) return 250;
 
@@ -373,6 +365,20 @@ function drawBattleUnits(ctx) {
         let isMoving = unit.state === "moving";
         let frame = time + unit.animOffset;
         let isAttacking = unit.state === "attacking" && unit.cooldown > (unit.stats.isRanged ? 30 : 40);
+
+// ---> SURGERY: Draw Selection Ring <---
+        if (unit.selected) {
+            ctx.save();
+            ctx.translate(unit.x, unit.y);
+            ctx.strokeStyle = "rgba(255, 235, 59, 0.8)"; // Bright Yellow
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(0, 5, 12, 6, 0, 0, Math.PI * 2.7); // Perspective oval under feet
+            ctx.stroke();
+            ctx.restore();
+        }
+        // ---> END SURGERY <---
+
 
         let visType = "peasant";
         

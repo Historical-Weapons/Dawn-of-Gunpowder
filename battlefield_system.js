@@ -380,98 +380,125 @@ if (faction === "Great Khaganate") {
 
     currentBattleData.initialCounts[side] += totalTroops;
 
-    // 3. Spawning Engine (Keeps your visual scale optimization)
-    let visualScale = totalTroops > 300 ? 5 : 1; 
-    let unitsToSpawn = Math.round(totalTroops / visualScale); 
-    
-    let spawnedSoFar = 0;
+   // --- 3. Spawning Engine (Distributed side-by-side) ---
+let visualScale = totalTroops > 300 ? 5 : 1; 
+let unitsToSpawn = Math.round(totalTroops / visualScale); 
 
-    composition.forEach(comp => {
-        if (spawnedSoFar >= unitsToSpawn) return; 
-        
+// First, calculate the total width of all "Line" units (non-cavalry)
+// This ensures we can center the entire army perfectly.
+let totalLineWidth = 0;
+const spacingX = 18;
+const groupGap = 40; // Pixels between different unit types
+
+composition.forEach(comp => {
+    let baseTemplate = UnitRoster.allUnits[comp.type];
+    if (baseTemplate && !baseTemplate.role.toLowerCase().includes("cavalry") && !baseTemplate.role.toLowerCase().includes("horse")) {
         let count = Math.round(unitsToSpawn * comp.pct);
-        if (count === 0 && unitsToSpawn > 0) count = 1;
-        count = Math.min(count, unitsToSpawn - spawnedSoFar);
-        spawnedSoFar += count;
-
-        let baseTemplate = UnitRoster.allUnits[comp.type];
-        
-        // Safety check just in case a unit type is misspelled or missing
-        if (!baseTemplate) {
-            console.warn(`Unit type ${comp.type} missing from Roster! Defaulting to Militia.`);
-            baseTemplate = UnitRoster.allUnits["Militia"];
+        if (count > 0) {
+            let unitsPerRow = 15;
+            let groupWidth = Math.min(count, unitsPerRow) * spacingX;
+            totalLineWidth += groupWidth + groupGap;
         }
+    }
+});
 
-        for (let i = 0; i < count; i++) {
-            let offsetX = (Math.random() - 0.5) * 600;
-            let offsetY = (Math.random() - 0.5) * 50;
-            
-            // Apply new tactical positions if the function exists
-            if (typeof getTacticalPosition === 'function') {
-                let tacticalOffset = getTacticalPosition(baseTemplate.role, side);
-                offsetX += tacticalOffset.x;
-                offsetY += tacticalOffset.y;
-            }
+let currentLineXOffset = -(totalLineWidth / 2);
+let spawnedSoFar = 0;
 
-            let unitStats = Object.assign(
-                new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
-                baseTemplate
-            );
-
-            unitStats.experienceLevel = baseTemplate.experienceLevel || 1;
-            unitStats.morale = 20;    
-            unitStats.maxMorale = 20; 
-            unitStats.faction = faction;
-
-            battleEnvironment.units.push({
-                id: unitIdCounter++,
-                side: side,
-                faction: faction,
-                color: factionColor,
-                unitType: comp.type, // Will correctly apply "Mangudai", "Rocket", etc.
-                stats: unitStats, 
-                hp: unitStats.health,
-                x: spawnXCenter + offsetX,
-                y: spawnY + offsetY,
-                target: null,
-                state: "idle", 
-                animOffset: Math.random() * 100,
-                cooldown: 0
-            });
-        }
-    });
-}
-
-function spawnUniqueReinforcement(type, side, faction, color, centerX, centerY) {
-    let baseTemplate = UnitRoster.allUnits[type];
-    if (!baseTemplate) return;
-
-    let unitStats = Object.assign(
-        new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
-        baseTemplate
-    );
+composition.forEach(comp => {
+    let count = Math.round(unitsToSpawn * comp.pct);
+    if (count === 0 && unitsToSpawn > 0) count = 1;
+    count = Math.min(count, unitsToSpawn - spawnedSoFar);
     
-    // Position him slightly behind or to the side of the main group
-    let offsetX = (Math.random() - 0.5) * 100;
-    let offsetY = side === "player" ? 50 : -50; 
+    let baseTemplate = UnitRoster.allUnits[comp.type];
+    if (!baseTemplate) {
+        console.warn(`Unit type ${comp.type} missing! Defaulting to Militia.`);
+        baseTemplate = UnitRoster.allUnits["Militia"];
+    }
 
-    battleEnvironment.units.push({
-        id: unitIdCounter++,
-        side: side,
-        faction: faction,
-        color: color,
-        unitType: type,
-        stats: unitStats,
-        hp: unitStats.health,
-        x: centerX + offsetX,
-        y: centerY + offsetY,
-        target: null,
-        state: "idle",
-        animOffset: Math.random() * 100,
-        cooldown: 0
-    });
+    // Grid Constants
+    const unitsPerRow = 15;
+    const spacingY = 16;
+    const dir = (side === "player") ? -1 : 1;
+    const rankDir = (side === "player") ? 1 : -1; 
+
+    // Determine if this is a wing (cavalry) or center-line unit
+    const isFlank = baseTemplate.role.toLowerCase().includes("cavalry") || 
+                    baseTemplate.role.toLowerCase().includes("horse");
+
+    let groupWidth = Math.min(count, unitsPerRow) * spacingX;
+
+    for (let i = 0; i < count; i++) {
+        let row = Math.floor(i / unitsPerRow);
+        let col = i % unitsPerRow;
+
+        // 1. Get Tactical Position (Vertical lines and Flank X)
+        let tacticalX = 0;
+        let tacticalY = 0;
+        if (typeof getTacticalPosition === 'function') {
+            let tPos = getTacticalPosition(baseTemplate.role, side, comp.type);
+            tacticalX = tPos.x;
+            tacticalY = tPos.y;
+        }
+
+        // 2. Calculate X/Y based on unit type
+        let finalX, finalY;
+        
+        if (isFlank) {
+            // Cavalry uses the tacticalX (far left or far right) and centers its own block
+            let internalX = (col * spacingX) - (groupWidth / 2);
+            finalX = spawnXCenter + tacticalX + internalX;
+        } else {
+            // Line units (Infantry/Archers) use the running horizontal offset
+            finalX = spawnXCenter + currentLineXOffset + (col * spacingX);
+            // Move offset to the next rank if necessary is handled by finalY
+        }
+
+        let gridY = row * spacingY * rankDir;
+        finalY = spawnY + tacticalY + gridY;
+
+        // 3. Human Jitter
+        finalX += (Math.random() - 0.5) * 3;
+        finalY += (Math.random() - 0.5) * 2;
+
+        // 4. Create Troop and Push
+        let unitStats = Object.assign(
+            new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
+            baseTemplate
+        );
+        unitStats.morale = 20;    
+        unitStats.maxMorale = 20; 
+        unitStats.faction = faction;
+
+        battleEnvironment.units.push({
+            id: unitIdCounter++,
+            side: side,
+            faction: faction,
+            color: factionColor,
+            unitType: comp.type, 
+            stats: unitStats, 
+            hp: unitStats.health,
+            x: finalX,
+            y: finalY,
+            target: null,
+            state: "idle", 
+            animOffset: Math.random() * 100,
+            cooldown: 0,
+            hasOrders: false
+        });
+    }
+
+    // If it was a line unit, move the "cursor" for the next group to the right
+    if (!isFlank) {
+        currentLineXOffset += groupWidth + groupGap;
+    }
+    
+    spawnedSoFar += count;
+});
+	
+	
+	
 }
-
 // --- Damage Logic ---
 
 function calculateDamageReceived(attacker, defender, stateString) {
@@ -561,6 +588,11 @@ let finalDamage = Math.floor(totalDamage);
  
 /* --- TACTICAL AI UPDATE LOOP --- */
 function updateBattleUnits() {
+	
+	// ---> SURGERY: Inject player commands before AI processes <---
+    if (typeof processTacticalOrders === 'function') {
+        processTacticalOrders();
+    }
     let units = battleEnvironment.units;
     
     /* Clean dead units and initialize global battle trackers */
@@ -744,48 +776,83 @@ function updateBattleUnits() {
         // Only AI units auto-move
        // --- INSIDE YOUR if (dist > effectiveRange * 0.8) BLOCK ---
 
-        // Only AI units auto-move
+// Only AI units auto-move
         if (!unit.isCommander) {
-            if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
-
-            let speedMod = 1.0;
-            let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-            let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-
-            if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4; // Forest/Mud
-            if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6; // Broken Ground
-
-            if (unit.stats.morale > 3 && unit.stats.morale < 10) {
-                // Skirmishing/Retreating logic
-                let dir = unit.side === "player" ? 1 : -1;
-                let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
-                let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
-
-                if (notAtEdge) {
-                    unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
-                    unit.x += (Math.random() - 0.5);
+            
+            // --- NEW: HOLD POSITION & PANIC LOGIC ---
+            let shouldHold = false;
+            
+            // Only apply holding logic to allied units that haven't received explicit player orders
+            if (unit.side === "player" && !unit.hasOrders) {
+                if (unit.stats.isRanged) {
+                    // Ranged units stay put and let enemies walk into their killzone
+                    shouldHold = true; 
+                } else if (dist > 50) {
+                    // Melee units hold the shield wall UNTIL enemies breach 50px (Panic Charge)
+                    shouldHold = true;
                 }
-            } else {
-                // Standard Aggressive Movement
-                unit.x += (dx / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
-                unit.y += (dy / dist + (Math.random() - 0.5) * 0.2) * (unit.stats.speed * speedMod);
             }
 
-            // --- DYNAMIC STATE DETECTION (MOVED INSIDE THE AI BLOCK) ---
-            // Only calculate this for AI units so we don't overwrite the Commander's keyboard state!
+            // Execute movement or hold ground
+            if (shouldHold) {
+                // Bypass movement coordinates entirely
+                unit.state = "idle";
+                if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+            } else {
+                // --- EXISTING TARGET PURSUIT LOGIC ---
+                if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
+
+                let speedMod = 1.0;
+                let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+                let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
+
+                if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4; // Forest/Mud
+                if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6; // Broken Ground
+
+                if (unit.stats.morale > 3 && unit.stats.morale < 10) {
+                    // Skirmishing/Retreating logic
+                    let dir = unit.side === "player" ? 1 : -1;
+                    let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
+                    let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
+
+                    if (notAtEdge) {
+                        unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
+                        unit.x += (Math.random() - 0.5);
+                    }
+                } else {
+                    // Standard Aggressive Movement
+// Remove the (Math.random() - 0.5) * 0.2 noise entirely for a clean line
+unit.x += (dx / dist) * (unit.stats.speed * speedMod);
+unit.y += (dy / dist) * (unit.stats.speed * speedMod);
+                }
+            }
+
+            // --- DYNAMIC STATE DETECTION ---
             let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
             if (hasMoved) { unit.state = "moving"; } 
             else if (unit.state !== "attacking") { unit.state = "idle"; } 
         }
+		//commander doesn't need else for commands and attack logic is later
 
-    } // end if (dist > effectiveRange * 0.8) {
-    else { //atack logic
-       // FIX: Only set state to "attacking" if this isn't the Commander OR if the Commander isn't moving
-if (!unit.isCommander || !player.isMoving) {
-    unit.state = "attacking";
-}
+} // end if (dist > effectiveRange * 0.8) {
+    else { //attack logic
+        
+        // ---> SURGERY: STAND DOWN IF TARGET IS A WAYPOINT <---
+        if (unit.target.isDummy) {
+            // We reached our formation spot. Stand idle and recover stamina.
+            if (!unit.isCommander) {
+                unit.state = "idle";
+            }
+            if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+        } 
+        else {
+            // ---> NORMAL COMBAT EXECUTION <---
+            // FIX: Only set state to "attacking" if this isn't the Commander OR if the Commander isn't moving
+            if (!unit.isCommander || !player.isMoving) {
+                unit.state = "attacking";
+            }
                  
-                if (unit.cooldown <= 0) {
+            if (unit.cooldown <= 0) {
                     if (unit.stats.currentStance === "statusrange") {
                         
 							/* Ranged Combat */
@@ -873,6 +940,7 @@ if (!unit.isCommander || !player.isMoving) {
                     }
                 }
             }
+	}
 } else {
 // Make sure we don't accidentally freeze the Commander here either
     if (!unit.isCommander) {
@@ -1119,99 +1187,9 @@ function createBattleSummaryUI(title, pLost, eLost) {
 
 
 
- 
-document.addEventListener("keydown", (event) => {
-    if (!inBattleMode) return; // Only process if in a battle
-// Guard: make sure event + key exist
-if (!event || typeof event.key !== "string") return;
-
-// Normalize key safely
-const key = event.key.toLowerCase();
-
-// Guard: make sure battleEnvironment + units exist
-if (!battleEnvironment || !Array.isArray(battleEnvironment.units)) {
-    console.warn("Battle environment not ready yet");
-    return;
-}
-
-switch (key) {
-
-    // =========================
-    // UNIT SELECTION
-    // =========================
-    case "1":
-        console.log("Command 1: Select All Infantry");
-        battleEnvironment.units.forEach(u => {
-            if (!u || !u.stats) return;
-            u.selected = (
-                u.side === "player" &&
-                !u.stats.isLarge &&
-                !u.stats.isRanged
-            );
-        });
-        break;
-
-    case "2":
-        console.log("Command 2: Select All Archers");
-        break;
-
-    case "3":
-        console.log("Command 3: Select All Cavalry");
-        break;
-
-    case "4":
-        console.log("Command 4: Select All Artillery");
-        break;
-
-    case "5":
-        console.log("Command 5: Select All Units");
-        break;
 
 
-    // =========================
-    // FORMATIONS
-    // =========================
-    case "z":
-        console.log("Formation: Tight Formation");
-        break;
-
-    case "x":
-        console.log("Formation: Loose Formation");
-        break;
-
-    case "c":
-        console.log("Formation: Line Formation");
-        break;
-
-    case "v":
-        console.log("Formation: Circle Formation");
-        break;
-
-
-    // =========================
-    // COMMANDS
-    // =========================
-    case "f":
-        console.log("Order: Follow Commander");
-        break;
-
-    case "q":
-        console.log("Order: Advance");
-        break;
-
-    case "r":
-        console.log("Order: Retreat");
-        break;
-
-    case "e":
-        console.log("Order: Stop");
-        break;
-
-    default:
-        console.log(`Unassigned key pressed: ${key}`);
-        break;
-}
-});function drawSupplyLines(ctx, x, y, factionColor, camera) {
+function drawSupplyLines(ctx, x, y, factionColor, camera) {
     // Spacing increased slightly to account for the more detailed profile
     for (let i = 0; i < 5; i++) {
         const spacing = i * 85; 

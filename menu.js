@@ -250,7 +250,8 @@ const playBtn = createBtn("Enter World", () => {
                 <li><strong style="color: #f5d76e;">WASD to Travel</li>
                 <li><strong style="color: #f5d76e;">SCROLL to Zoom Map</li>
 			    <li><strong style="color: #f5d76e;">12345 to Select Unit Type in Battlefield</li>
-			    <li><strong style="color: #f5d76e;">Press Q,E,R to Command Unit Type in Battlefield</li>
+			    <li><strong style="color: #f5d76e;">Press Q,E,R,F to Select Unit Type in Battlefield</li>
+							    <li><strong style="color: #f5d76e;">Press Z,X,C,V,B to Command Unit Formation</li>
                 <li><strong style="color: #f5d76e;">Press P to Return to Overworld unless still in Live Battle</li>
 				                <li><strong style="color: #f5d76e;">Press T to view Troops & EXP in Overworld</li>
             </ul>
