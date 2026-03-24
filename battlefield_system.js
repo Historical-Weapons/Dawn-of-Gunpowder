@@ -519,11 +519,9 @@ function calculateDamageReceived(attacker, defender, stateString) {
 
     let defenseValue = defender.meleeDefense;
 
-
-// We removed the weak 0.5 multiplier. Stats are saved permanently now, 
-    // but we add a dynamic +2 to reward highly leveled troops with an edge in combat calculation.
-    attackValue += (attacker.experienceLevel * 2); 
-    defenseValue += (defender.experienceLevel * 2);
+// SURGERY: Add fallback to 0 to prevent NaN damage if a unit has no experience value
+    attackValue += ((attacker.experienceLevel || 0) * 2); 
+    defenseValue += ((defender.experienceLevel || 0) * 2);
     
 
     if (states.includes("flanked")) defenseValue *= 0.5;
@@ -588,16 +586,29 @@ let finalDamage = Math.floor(totalDamage);
  
 /* --- TACTICAL AI UPDATE LOOP --- */
 function updateBattleUnits() {
-	
-	// ---> SURGERY: Inject player commands before AI processes <---
+const now = Date.now();
+
     if (typeof processTacticalOrders === 'function') {
         processTacticalOrders();
     }
+
+    // --- REVISED SURGERY: Keep dead units for 10 seconds ---
+    battleEnvironment.units = battleEnvironment.units.filter(u => {
+        if (u.hp <= 0) {
+            // If we haven't marked the death time yet, do it now
+            if (!u.deathTime) handleUnitDeath(u);
+            
+            // Keep the unit if it died less than 10,000ms (10s) ago
+            return (now - u.deathTime) < 10000;
+        }
+        return true; // Always keep living units
+    });
+
     let units = battleEnvironment.units;
     
     /* Clean dead units and initialize global battle trackers */
-    battleEnvironment.units = units.filter(u => u.hp > 0);
-    units = battleEnvironment.units;
+    //battleEnvironment.units = units.filter(u => u.hp > 0);
+    //units = battleEnvironment.units;
 
     if (!currentBattleData.fledCounts) {
         currentBattleData.fledCounts = { player: 0, enemy: 0 };
@@ -611,346 +622,354 @@ function updateBattleUnits() {
     const eCount = units.filter(u => u.side === 'enemy').length;
 
     /* Process Units */
-    units.forEach(unit => {
+units.forEach(unit => {
         
-        /* 1. SKIP DEAD UNITS ONLY (Let Commander pass through) */
-        if (unit.hp <= 0) return;
+		// --- DEATH HOOK ---
+				if (unit.hp <= 0) {
+					handleUnitDeath(unit);
+					return; // Skip normal AI/Movement for dead units
+				}
 
-        /* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
-        /* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
-        if (!unit.isCommander) {
-            let hpPct = unit.hp / unit.stats.health;
-            let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
-            
-            // Base drain only starts if they are actually hurt (below 80% HP)
-            let baseTick = (hpPct <= 0.1) ? 0.12 : (hpPct <= 0.8 ? 0.04 : 0);
+				/* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
+				/* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
+				if (!unit.isCommander) {
+					let hpPct = unit.hp / unit.stats.health;
+					let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
+					
+					// Base drain only starts if they are actually hurt (below 80% HP)
+					let baseTick = (hpPct <= 0.1) ? 0.12 : (hpPct <= 0.8 ? 0.04 : 0);
 
-            /* REVISED OUTNUMBERING: Confidence Boost */
-            // If our side has more units than the enemy, we don't lose morale from "combat stress"
-            const weOutnumberEnemy = (unit.side === 'player' && pCount > eCount) || (unit.side === 'enemy' && eCount > pCount);
-            
-            if (weOutnumberEnemy) {
-                baseTick = 0; 
-            } else if ((unit.side === 'player' && eCount >= pCount * 5) || 
-                       (unit.side === 'enemy' && pCount >= eCount * 5)) {
-                /* Severe Cowardice: Only triggers if heavily outnumbered 5-to-1 */
-                baseTick = 0.2; 
-            }
+					/* REVISED OUTNUMBERING: Confidence Boost */
+					// If our side has more units than the enemy, we don't lose morale from "combat stress"
+					const weOutnumberEnemy = (unit.side === 'player' && pCount > eCount) || (unit.side === 'enemy' && eCount > pCount);
+					
+					if (weOutnumberEnemy) {
+						baseTick = 0; 
+					} else if ((unit.side === 'player' && eCount >= pCount * 5) || 
+							   (unit.side === 'enemy' && pCount >= eCount * 5)) {
+						/* Severe Cowardice: Only triggers if heavily outnumbered 5-to-1 */
+						baseTick = 0.2; 
+					}
 
-            /* Armor check: Brave veterans (30+ armor) rarely flee early on */
-            if (unit.stats.armor >= 30 && currentBattleData.frames < 18000) {
-                baseTick *= 0.01; 
-            }
+					/* Armor check: Brave veterans (30+ armor) rarely flee early on */
+					if (unit.stats.armor >= 30 && currentBattleData.frames < 18000) {
+						baseTick *= 0.01; 
+					}
 
-            /* REVISED TRASH MOB LOGIC: Only drain if they are zero-armor AND losing/hurt */
-            if (unit.stats.armor < 5 && unit.target && hpPct < 0.9 && !weOutnumberEnemy) {
-                baseTick += 0.02;
-            }
+					/* REVISED TRASH MOB LOGIC: Only drain if they are zero-armor AND losing/hurt */
+					if (unit.stats.armor < 5 && unit.target && hpPct < 0.9 && !weOutnumberEnemy) {
+						baseTick += 0.02;
+					}
 
-            // Apply the drain or the recovery
-            if (baseTick > 0) {
-                unit.stats.morale -= baseTick * Math.max(0.1, (1.1 - armorEffect));
-            } else if (unit.stats.morale < 20) { 
-                // Recovery: If winning or safe, slowly regain morale (up to max of 20)
-                unit.stats.morale += 0.005; 
-            }
+					// Apply the drain or the recovery
+					if (baseTick > 0) {
+						unit.stats.morale -= baseTick * Math.max(0.1, (1.1 - armorEffect));
+					} else if (unit.stats.morale < 20) { 
+						// Recovery: If winning or safe, slowly regain morale (up to max of 20)
+						unit.stats.morale += 0.005; 
+					}
 
-            /* FLEEING MECHANICS (TWO-STAGE) */
-            /* STAGE 2: Broken (Run Off Map, White Flag outside border) */
-            if (unit.stats.morale <= 0) {
-                unit.state = "FLEEING";
-                
-                if (!unit.escapePoint || unit.escapeType !== "OUTER") {
-                    let distToLeft = unit.x;
-                    let distToRight = BATTLE_WORLD_WIDTH - unit.x;
-                    let distToTop = unit.y;
-                    let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
-                    let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
-                    
-                    // Make the escape point massive so they never reach it and just keep running
-                    let outerPadding = -2000; 
-                    
-                    if (minDist === distToLeft) unit.escapePoint = { x: outerPadding, y: unit.y };
-                    else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - outerPadding, y: unit.y };
-                    else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: outerPadding };
-                    else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - outerPadding };
-                    
-                    unit.escapeType = "OUTER";
-                    unit.fleeTimer = 0; // Initialize our new despawn timer
-                }
-
-                let dx = unit.escapePoint.x - unit.x;
-                let dy = unit.escapePoint.y - unit.y;
-                let dist = Math.hypot(dx, dy);
-
-                // They will always be > 8 distance away, so they keep running continuously
-                if (dist > 8) {
-                    unit.x += (dx / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
-                    unit.y += (dy / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
-                }
-
-                // Check if they have officially crossed the red boundary line
-                let isOutsideBorder = unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT;
-                
-                if (isOutsideBorder) {
-                    unit.fleeTimer = (unit.fleeTimer || 0) + 1;
-                    
-                     if (unit.fleeTimer >= 300) { 
-                        unit.hp = 0; 
-                        let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
-                        let scale = sideTotal > 300 ? 5 : 1;
-                        currentBattleData.fledCounts[unit.side] += scale; 
-                    }
-                }
-                return; 
-            }
-            
-            /* STAGE 1: Wavering (Linger at Inner Border until Morale hits 0 or restores) */
-            else if (unit.stats.morale <= 3) {
-                unit.state = "WAVERING";
-                
-                if (!unit.escapePoint || unit.escapeType !== "INNER") {
-                    let distToLeft = unit.x;
-                    let distToRight = BATTLE_WORLD_WIDTH - unit.x;
-                    let distToTop = unit.y;
-                    let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
-                    let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
-                    
-                    let innerPadding = 20;
-                    
-                    if (minDist === distToLeft) unit.escapePoint = { x: innerPadding, y: unit.y };
-                    else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - innerPadding, y: unit.y };
-                    else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: innerPadding };
-                    else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - innerPadding };
-                    
-                    unit.escapeType = "INNER";
-                }
-
-                let dx = unit.escapePoint.x - unit.x;
-                let dy = unit.escapePoint.y - unit.y;
-                let dist = Math.hypot(dx, dy);
-
-                if (dist > 8) {
-                    unit.x += (dx / dist) * (unit.stats.speed * 1.5);
-                    unit.y += (dy / dist) * (unit.stats.speed * 1.5);
-                } else {
-                    unit.state = "idle";
-                }
-                return;
-            }
-
-            unit.escapePoint = null;
-            unit.escapeType = null;
-        }
-        /* 3. COMBAT & TARGETING LOGIC */
-        if (!unit.target || unit.target.hp <= 0) {
-            let nearestDist = Infinity;
-            let nearestEnemy = null;
-            units.forEach(other => {
-                if (other.side !== unit.side) {
-                    let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
-                    if (dist < nearestDist) {
-                        nearestDist = dist;
-                        nearestEnemy = other;
-                    }
-                }
-            });
-            unit.target = nearestEnemy;
-        }
-	  // --- TRACK POSITION BEFORE MOVEMENT ---
-    let oldX = unit.x;
-    let oldY = unit.y;
-	
-	if (unit.target) 
-	{
-    let dx = unit.target.x - unit.x;
-    let dy = unit.target.y - unit.y;
-    let dist = Math.hypot(dx, dy);
-
-    unit.stats.updateStance(dist);
-    let effectiveRange = unit.stats.currentStance === "statusmelee" ? 20 : unit.stats.range;
-
-  
-
-    if (dist > effectiveRange * 0.8) {
-        // Only AI units auto-move
-       // --- INSIDE YOUR if (dist > effectiveRange * 0.8) BLOCK ---
-
-// Only AI units auto-move
-        if (!unit.isCommander) {
-            
-            // --- NEW: HOLD POSITION & PANIC LOGIC ---
-            let shouldHold = false;
-            
-            // Only apply holding logic to allied units that haven't received explicit player orders
-            if (unit.side === "player" && !unit.hasOrders) {
-                if (unit.stats.isRanged) {
-                    // Ranged units stay put and let enemies walk into their killzone
-                    shouldHold = true; 
-                } else if (dist > 50) {
-                    // Melee units hold the shield wall UNTIL enemies breach 50px (Panic Charge)
-                    shouldHold = true;
-                }
-            }
-
-            // Execute movement or hold ground
-            if (shouldHold) {
-                // Bypass movement coordinates entirely
-                unit.state = "idle";
-                if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
-            } else {
-                // --- EXISTING TARGET PURSUIT LOGIC ---
-                if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
-
-                let speedMod = 1.0;
-                let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-                let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-
-                if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4; // Forest/Mud
-                if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6; // Broken Ground
-
-                if (unit.stats.morale > 3 && unit.stats.morale < 10) {
-                    // Skirmishing/Retreating logic
-                    let dir = unit.side === "player" ? 1 : -1;
-                    let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
-                    let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
-
-                    if (notAtEdge) {
-                        unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
-                        unit.x += (Math.random() - 0.5);
-                    }
-                } else {
-                    // Standard Aggressive Movement
-// Remove the (Math.random() - 0.5) * 0.2 noise entirely for a clean line
-unit.x += (dx / dist) * (unit.stats.speed * speedMod);
-unit.y += (dy / dist) * (unit.stats.speed * speedMod);
-                }
-            }
-
-            // --- DYNAMIC STATE DETECTION ---
-            let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
-            if (hasMoved) { unit.state = "moving"; } 
-            else if (unit.state !== "attacking") { unit.state = "idle"; } 
-        }
-		//commander doesn't need else for commands and attack logic is later
-
-} // end if (dist > effectiveRange * 0.8) {
-    else { //attack logic
-        
-        // ---> SURGERY: STAND DOWN IF TARGET IS A WAYPOINT <---
-        if (unit.target.isDummy) {
-            // We reached our formation spot. Stand idle and recover stamina.
-            if (!unit.isCommander) {
-                unit.state = "idle";
-            }
-            if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
-        } 
-        else {
-            // ---> NORMAL COMBAT EXECUTION <---
-            // FIX: Only set state to "attacking" if this isn't the Commander OR if the Commander isn't moving
-            if (!unit.isCommander || !player.isMoving) {
-                unit.state = "attacking";
-            }
-                 
-            if (unit.cooldown <= 0) {
-                    if (unit.stats.currentStance === "statusrange") {
-                        
-							/* Ranged Combat */
-							let isRepeater = unit.unitType === "Repeater Crossbowman";
+					/* FLEEING MECHANICS (TWO-STAGE) */
+					/* STAGE 2: Broken (Run Off Map, White Flag outside border) */
+					if (unit.stats.morale <= 0) {
+						unit.state = "FLEEING";
+						
+						if (!unit.escapePoint || unit.escapeType !== "OUTER") {
+							let distToLeft = unit.x;
+							let distToRight = BATTLE_WORLD_WIDTH - unit.x;
+							let distToTop = unit.y;
+							let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
+							let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
 							
-							if (isRepeater && unit.stats.magazine > 0) { 
-							//repeater burst 
-								unit.cooldown = 30; //0.5 sec a shot
-								unit.stats.magazine--; 
-							} else {
-							//reload
-								unit.cooldown = getReloadTime(unit);
-								if (isRepeater) unit.stats.magazine = 10;
+							// Make the escape point massive so they never reach it and just keep running
+							let outerPadding = -2000; 
+							
+							if (minDist === distToLeft) unit.escapePoint = { x: outerPadding, y: unit.y };
+							else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - outerPadding, y: unit.y };
+							else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: outerPadding };
+							else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - outerPadding };
+							
+							unit.escapeType = "OUTER";
+							unit.fleeTimer = 0; // Initialize our new despawn timer
+						}
+
+						let dx = unit.escapePoint.x - unit.x;
+						let dy = unit.escapePoint.y - unit.y;
+						let dist = Math.hypot(dx, dy);
+
+						// They will always be > 8 distance away, so they keep running continuously
+						if (dist > 8) {
+							unit.x += (dx / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
+							unit.y += (dy / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
+						}
+
+						// Check if they have officially crossed the red boundary line
+						let isOutsideBorder = unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT;
+						
+						if (isOutsideBorder) {
+							unit.fleeTimer = (unit.fleeTimer || 0) + 1;
+							
+							 if (unit.fleeTimer >= 300) { 
+								unit.hp = 0; 
+								let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
+								let scale = sideTotal > 300 ? 5 : 1;
+								currentBattleData.fledCounts[unit.side] += scale; 
 							}
-							unit.stats.ammo--; 
+						}
+						return; 
+					}
+					
+					/* STAGE 1: Wavering (Linger at Inner Border until Morale hits 0 or restores) */
+					else if (unit.stats.morale <= 3) {
+						unit.state = "WAVERING";
+						
+						if (!unit.escapePoint || unit.escapeType !== "INNER") {
+							let distToLeft = unit.x;
+							let distToRight = BATTLE_WORLD_WIDTH - unit.x;
+							let distToTop = unit.y;
+							let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
+							let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
 							
-                        // 1. Amplified Spread Math (0.6 -> 2.5) for true visual scatter
-                        let spread = (100 - unit.stats.accuracy) * 2.5;
-                        let targetX = unit.target.x + (Math.random() - 0.5) * spread;
-                        let targetY = unit.target.y + (Math.random() - 0.5) * spread;
-                        
-                        // 2. Calculate continuous velocity vector
-                        let angle = Math.atan2(targetY - unit.y, targetX - unit.x);
-                        let speed = 8; // Projectile flight speed
+							let innerPadding = 20;
+							
+							if (minDist === distToLeft) unit.escapePoint = { x: innerPadding, y: unit.y };
+							else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - innerPadding, y: unit.y };
+							else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: innerPadding };
+							else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - innerPadding };
+							
+							unit.escapeType = "INNER";
+						}
 
-                        battleEnvironment.projectiles.push({
-                            x: unit.x, y: unit.y, 
-                            vx: Math.cos(angle) * speed, // Velocity X
-                            vy: Math.sin(angle) * speed, // Velocity Y
-                            startX: unit.x, startY: unit.y,
-                            maxRange: unit.stats.range + 50, // Fly slightly past max range
-                            attackerStats: unit.stats,
-                            side: unit.side, // Track side to prevent friendly fire
-                            projectileType: (unit.unitType === "Rocket") ? "Archer" : unit.unitType,
-                            isFire: unit.unitType === "Firelance" || unit.unitType === "Bomb" || unit.unitType === "Rocket"
-                        });
-                        /* Ranged Audio */
-                        if (unit.unitType === "Bomb" || unit.unitType === "Camel Cannon") {
-                            AudioManager.playSound('bomb');
-                        } else if (unit.unitType === "Firelance" || unit.unitType === "Hand Cannoneer" || unit.unitType === "Rocket") {
-                            AudioManager.playSound('firelance');
-                        } else {
-                            AudioManager.playSound('arrow');
-                        }
-                        
-                    } else {
-                        
-                        /* Melee Combat */
-                   unit.cooldown = getReloadTime(unit);
-						
-                        let stateStr = "melee_attack";
-                        if (unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
-                        
-                        let dmg = calculateDamageReceived(unit.stats, unit.target.stats, stateStr);
-                        unit.target.hp -= dmg;
-						
-						// --- EXP GAIN SURGERY (MELEE) ---
-                        if (unit.side === "player" && unit.stats.gainExperience) {
-                            // Commander gets 80% less (0.05), Ally troops gain much faster (0.35)
-                            let baseExp = unit.isCommander ? 0.05 : 0.35; 
-                            if (unit.target.hp <= 0) baseExp *= 3; // Triple EXP for a kill
-                            unit.stats.gainExperience(baseExp);
-                        }
-                        // --------------------------------
-                        
-                        if (dmg > (unit.target.stats.health * 0.25)) {
-                            unit.target.stats.morale -= 5;
-                        }
-                        
-                        /* Melee Audio */
-                        if (unit.unitType === "War Elephant") {
-                            AudioManager.playSound('elephant');
-                        } else {
-                            AudioManager.playSound('sword_clash');
-                        }
-                        if (dmg > 0) {
-                            AudioManager.playSound('hit');
-                        } else {
-                            AudioManager.playSound('shield_block');
-                        }
-                        
-                        /* Knockback */
-                        unit.target.x += (dx / dist) * 5;
-                        unit.target.y += (dy / dist) * 5;
-                    }
-                }
-            }
-	}
-} else {
-// Make sure we don't accidentally freeze the Commander here either
-    if (!unit.isCommander) {
-        unit.state = "idle";
-    }
-    if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
-}
+						let dx = unit.escapePoint.x - unit.x;
+						let dy = unit.escapePoint.y - unit.y;
+						let dist = Math.hypot(dx, dy);
 
-if (unit.cooldown > 0) unit.cooldown--;
-    });
+						if (dist > 8) {
+							unit.x += (dx / dist) * (unit.stats.speed * 1.5);
+							unit.y += (dy / dist) * (unit.stats.speed * 1.5);
+						} else {
+							unit.state = "idle";
+						}
+						return;
+					}
+
+					unit.escapePoint = null;
+					unit.escapeType = null;
+				}
+				/* 3. COMBAT & TARGETING LOGIC */
+				if (!unit.target || unit.target.hp <= 0) {
+					let nearestDist = Infinity;
+					let nearestEnemy = null;
+					units.forEach(other => {
+			if (other.side !== unit.side && other.hp > 0) {
+							let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
+							if (dist < nearestDist) {
+								nearestDist = dist;
+								nearestEnemy = other;
+							}
+						}
+					});
+					unit.target = nearestEnemy;
+				}
+			  // --- TRACK POSITION BEFORE MOVEMENT ---
+			let oldX = unit.x;
+			let oldY = unit.y;
+			
+			if (unit.target) 
+			{
+			let dx = unit.target.x - unit.x;
+			let dy = unit.target.y - unit.y;
+			let dist = Math.hypot(dx, dy);
+
+			unit.stats.updateStance(dist);
+			let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
+
+		  
+
+			if (dist > effectiveRange * 0.8) {
+				// Only AI units auto-move
+			   // --- INSIDE YOUR if (dist > effectiveRange * 0.8) BLOCK ---
+
+		// Only AI units auto-move
+				if (!unit.isCommander) {
+					
+					// --- NEW: HOLD POSITION & PANIC LOGIC ---
+					let shouldHold = false;
+					
+					// Only apply holding logic to allied units that haven't received explicit player orders
+					if (unit.side === "player" && !unit.hasOrders) {
+						if (unit.stats.isRanged) {
+							// Ranged units stay put and let enemies walk into their killzone
+							shouldHold = true; 
+						} else if (dist > 50) {
+							// Melee units hold the shield wall UNTIL enemies breach 50px (Panic Charge)
+							shouldHold = true;
+						}
+					}
+
+					// Execute movement or hold ground
+					if (shouldHold) {
+						// Bypass movement coordinates entirely
+						unit.state = "idle";
+						if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+					} else {
+						// --- EXISTING TARGET PURSUIT LOGIC ---
+						if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
+
+						let speedMod = 1.0;
+						let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+						let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
+
+						if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4; // Forest/Mud
+						if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6; // Broken Ground
+
+						if (unit.stats.morale > 3 && unit.stats.morale < 10) {
+							// Skirmishing/Retreating logic
+							let dir = unit.side === "player" ? 1 : -1;
+							let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
+							let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
+
+							if (notAtEdge) {
+								unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
+								unit.x += (Math.random() - 0.5);
+							}
+						} else {
+							// Standard Aggressive Movement
+		// Remove the (Math.random() - 0.5) * 0.2 noise entirely for a clean line
+		unit.x += (dx / dist) * (unit.stats.speed * speedMod);
+		unit.y += (dy / dist) * (unit.stats.speed * speedMod);
+						}
+					}
+
+					// --- DYNAMIC STATE DETECTION ---
+					let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
+					if (hasMoved) { unit.state = "moving"; } 
+					else if (unit.state !== "attacking") { unit.state = "idle"; } 
+				}
+				//commander doesn't need else for commands and attack logic is later
+
+		} // end if (dist > effectiveRange * 0.8) {
+			else { //attack logic
+				
+				// ---> SURGERY: STAND DOWN IF TARGET IS A WAYPOINT <---
+				if (unit.target.isDummy) {
+					// We reached our formation spot. Stand idle and recover stamina.
+					if (!unit.isCommander) {
+						unit.state = "idle";
+					}
+					if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+				} 
+				else {
+					// ---> NORMAL COMBAT EXECUTION <---
+					// FIX: Only set state to "attacking" if this isn't the Commander OR if the Commander isn't moving
+					if (!unit.isCommander || !player.isMoving) {
+						unit.state = "attacking";
+					}
+						 
+					if (unit.cooldown <= 0) {
+							if (unit.stats.currentStance === "statusrange") {
+								
+									/* Ranged Combat */
+									let isRepeater = unit.unitType === "Repeater Crossbowman";
+									
+									if (isRepeater && unit.stats.magazine > 0) { 
+									//repeater burst 
+										unit.cooldown = 30; //0.5 sec a shot
+										unit.stats.magazine--; 
+									} else {
+									//reload
+										unit.cooldown = getReloadTime(unit);
+										if (isRepeater) unit.stats.magazine = 10;
+									}
+									unit.stats.ammo--; 
+									
+								// 1. Amplified Spread Math (0.6 -> 2.5) for true visual scatter
+								let spread = (100 - unit.stats.accuracy) * 2.5;
+								let targetX = unit.target.x + (Math.random() - 0.5) * spread;
+								let targetY = unit.target.y + (Math.random() - 0.5) * spread;
+								
+								// 2. Calculate continuous velocity vector
+								let angle = Math.atan2(targetY - unit.y, targetX - unit.x);
+								let speed = 8; // Projectile flight speed
+
+								battleEnvironment.projectiles.push({
+									x: unit.x, y: unit.y, 
+									vx: Math.cos(angle) * speed, // Velocity X
+									vy: Math.sin(angle) * speed, // Velocity Y
+									startX: unit.x, startY: unit.y,
+									maxRange: unit.stats.range + 50, // Fly slightly past max range
+									attackerStats: unit.stats,
+									side: unit.side, // Track side to prevent friendly fire
+									projectileType: (unit.unitType === "Rocket") ? "Archer" : unit.unitType,
+									isFire: unit.unitType === "Firelance" || unit.unitType === "Bomb" || unit.unitType === "Rocket"
+								});
+								/* Ranged Audio */
+								if (unit.unitType === "Bomb" || unit.unitType === "Camel Cannon") {
+									AudioManager.playSound('bomb');
+								} else if (unit.unitType === "Firelance" || unit.unitType === "Hand Cannoneer" || unit.unitType === "Rocket") {
+									AudioManager.playSound('firelance');
+								} else {
+									AudioManager.playSound('arrow');
+								}
+								
+							} else {
+								
+								/* Melee Combat */
+						   unit.cooldown = getReloadTime(unit);
+								
+								let stateStr = "melee_attack";
+								if (unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
+								
+								let dmg = calculateDamageReceived(unit.stats, unit.target.stats, stateStr);
+								unit.target.hp -= dmg;
+								
+								// --- EXP GAIN SURGERY (MELEE) ---
+								if (unit.side === "player" && unit.stats.gainExperience) {
+									// Commander gets 80% less (0.05), Ally troops gain much faster (0.35)
+									let baseExp = unit.isCommander ? 0.05 : 0.35; 
+									if (unit.target.hp <= 0) baseExp *= 3; // Triple EXP for a kill
+									unit.stats.gainExperience(baseExp);
+									
+									// 2. SURGERY: If it's the Commander, also update the Global Persistent Player
+									if (unit.isCommander) {
+										gainPlayerExperience(baseExp);
+									}
+								}
+								// --------------------------------
+								
+								if (dmg > (unit.target.stats.health * 0.25)) {
+									unit.target.stats.morale -= 5;
+								}
+								
+								/* Melee Audio */
+								if (unit.unitType === "War Elephant") {
+									AudioManager.playSound('elephant');
+								} else {
+									AudioManager.playSound('sword_clash');
+								}
+								if (dmg > 0) {
+									AudioManager.playSound('hit');
+								} else {
+									AudioManager.playSound('shield_block');
+								}
+								
+								/* Knockback */
+								unit.target.x += (dx / dist) * 5;
+								unit.target.y += (dy / dist) * 5;
+							}
+						}
+					}
+			}
+		} else {
+		// Make sure we don't accidentally freeze the Commander here either
+			if (!unit.isCommander) {
+				unit.state = "idle";
+			}
+			if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+		}
+
+		if (unit.cooldown > 0) unit.cooldown--;
+});//end for loop in beginning
 
 // ---> collison<---
 applyUnitCollisions(units);
@@ -997,6 +1016,13 @@ applyUnitCollisions(units);
                         let baseExp = attackerUnit.isCommander ? 0.05 : 0.35; 
                         if (u.hp <= 0) baseExp *= 3; 
                         p.attackerStats.gainExperience(baseExp);
+						
+						
+						// 2. SURGERY: Bridge to Global Player
+								if (attackerUnit.isCommander) {
+									gainPlayerExperience(baseExp);
+								}
+													
                     }
                     // ---------------------------------
                     
@@ -1032,9 +1058,10 @@ function applyUnitCollisions(units) {
             let u2 = units[j];
             if (u2.hp <= 0 || u2.state === "FLEEING") continue;
 
-            // Use our new dynamic radiuses for collision distance
-            let minDistance = u1.stats.radius + u2.stats.radius;
-            
+// REVISION: Multiply the combined radius by 0.6 to shrink the collision bubble.
+            // If both units have radius 10, minDistance becomes 12 instead of 20.
+            // 12 is less than the 16-pixel attack threshold. Perfect.
+            let minDistance = (u1.stats.radius + u2.stats.radius) * 0.6;
             let dx = u2.x - u1.x;
             let dy = u2.y - u1.y;
             let distSq = dx * dx + dy * dy;
@@ -1094,9 +1121,8 @@ function leaveBattlefield(playerObj) {
     // --- 1. CALCULATE EVERYTHING FIRST (While data still exists) ---
     
     // FIX: Ignore the Commander, otherwise the engine thinks you gained a free troop!
-    let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander).length;
-    let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander).length;
-    
+  let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0).length;
+let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander && u.hp > 0).length; 
     // Get the scale and initial counts before we null the data
     let scale = currentBattleData.initialCounts.player > 300 ? 5 : 1; 
     let playerLost = currentBattleData.initialCounts.player - (pUnitsAlive * scale);
@@ -1328,5 +1354,58 @@ function drawSpokedWheel(ctx, x, y, radius) {
         ctx.stroke();
     }
 
+    ctx.restore();
+}
+
+function gainPlayerExperience(amount) {
+    // 1. Safety check for Level Cap
+    if ((player.experienceLevel || 1) >= 20) return;
+
+    // 2. Add XP with safety check for undefined
+    player.experience = (player.experience || 0) + (amount*20);
+    
+    // 3. Calculate dynamic requirement
+    let expNeeded = (player.experienceLevel || 1) * 10.0; 
+
+    // 4. The Loop (Handles multi-leveling and carry-over)
+    while (player.experience >= expNeeded && (player.experienceLevel || 1) < 20) {
+        player.experience -= expNeeded;
+        player.experienceLevel = (player.experienceLevel || 1) + 1;
+        
+        // Permanent stat boosts
+        player.meleeAttack = (player.meleeAttack || 10) + 3;
+        player.meleeDefense = (player.meleeDefense || 10) + 3;
+        player.maxHealth = (player.maxHealth || 100) + 15;
+        player.hp = player.maxHealth; // Full heal reward
+        
+        console.log(`%c LEVEL UP: You are now Level ${player.experienceLevel}!`, "color: #ffca28; font-weight: bold;");
+        
+        // Update requirement for the NEXT level in the loop
+        expNeeded = player.experienceLevel * 10.0;
+    }
+}
+
+
+function handleUnitDeath(unit) {
+    if (unit.isDeadProcessed) return;
+
+    unit.isDeadProcessed = true;
+    unit.deathTime = Date.now();
+    unit.state = "dead";
+    unit.target = null;
+    unit.hasOrders = false;
+    
+    // Set rotation to 90 degrees clockwise (in radians)
+    unit.deathRotation = Math.PI / 2; 
+}
+
+function drawBloodPool(ctx, unit) {
+    ctx.save();
+    // Darker red for a "period-authentic" blood look
+    ctx.fillStyle = "rgba(100, 0, 0, 0.5)"; 
+    ctx.beginPath();
+    // Draw a flattened circle under the unit
+    ctx.ellipse(unit.x, unit.y, 12, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 }

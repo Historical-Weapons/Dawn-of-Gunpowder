@@ -199,17 +199,25 @@ function calculateFormationOffsets(units, style, commander) {
     };
 
     switch (style) {
-		case "tight": 
-			assignBlock([...shields, ...infantry], -50, 16, 30); 
-			assignBlock(ranged, -25, 16, 30);
-			assignBlock(gunpowder, -50, 18, 5, true, 180); 
-			
-			// REVISED: 
-			// 1. xOffset: Moved to 60 (places them behind the gunpowder/infantry line)
-			// 2. spacing: Reduced to 15 (makes the horses stand shoulder-to-shoulder)
-			// 3. unitsPerRow: Set to 99 (forces all units into 1 single line)
-			assignBlock(cavalry, 100, 15, 99, false);                 
-			break; 
+case "tight": 
+    // LINE 1: SHIELDS (Absolute Front)
+    // -75 puts them at the very tip of the formation
+    assignBlock(shields, -75, 16, 30); 
+
+    // LINE 2: OTHER INFANTRY (Directly behind shields)
+    // -50 keeps them close enough to support the shield wall
+    assignBlock(infantry, -50, 16, 30);
+
+    // LINE 3: RANGED (Behind the infantry)
+    // -25 gives them a clear view over the heads of the front lines
+    assignBlock(ranged, -25, 16, 30);
+
+    // GUNPOWDER: Specialized narrow line
+    assignBlock(gunpowder, -55, 18, 5, true, 180); 
+    
+    // CAVALRY: Single-rank rear reserve (as per your previous revision)
+    assignBlock(cavalry, 100, 15, 99, false);                  
+    break;
         case "loose":
             assignBlock([...shields, ...infantry], -50, 40, 20);
             assignBlock(ranged, -90, 40, 20);
@@ -223,11 +231,14 @@ function calculateFormationOffsets(units, style, commander) {
             assignBlock(cavalry, -30, 22, 6, true, 250); 
             break;
             
-        case "circle":
+case "circle":
             let allInfantry = [...shields, ...infantry, ...ranged, ...gunpowder];
-            assignRing(cavalry, 40); 
             
-            let outerRadius = Math.max(90, allInfantry.length * 3); 
+            // Expanded inner ring to give breathing room in the center
+            assignRing(cavalry, 80); 
+            
+            // Pushed outer ring further out (minimum 150px) to create a wide "lane" for pathing
+            let outerRadius = Math.max(150, allInfantry.length * 4); 
             assignRing(allInfantry, outerRadius); 
             break;
             
@@ -293,15 +304,27 @@ function processTacticalOrders() {
 
         const tacticalRole = getTacticalRole(unit);
         const isRanged = (tacticalRole === "RANGED" || tacticalRole === "GUNPOWDER");
-        let emergencyThreshold = isRanged ? 50 : 80;
+        
+        let emergencyThreshold = 100; 
 
-        // Melee units override orders strictly if an enemy is in emergency range
+        // ====================================================================
+        // SURVIVAL OVERRIDE (FIXED): Absolute priority if enemy is < 100px
+        // ====================================================================
         if (nearestDist < emergencyThreshold && nearestEnemy) {
+            // Restore weapons if they were lowered for marching
             if (unit.originalRange) {
                 unit.stats.range = unit.originalRange;
                 unit.originalRange = null;
             }
+            
+            // Snap out of the "marching trance" instantly
+            unit.formationTimer = 0; 
+            
+            // Lock onto the immediate threat
             unit.target = nearestEnemy;
+            
+            // The 'return' halts all waypoint/formation logic below. 
+            // They will fight the danger instead of walking past it. 
             return; 
         }
 
@@ -322,7 +345,7 @@ function processTacticalOrders() {
             let shouldFocusOnShooting = false;
             
             if (distToDest > 20) {
-                // If it's a ranged unit and the 4 second timer has expired, they prioritize shooting over strict formation movement
+                // Ranged units prioritize shooting over strict formation movement if timer is out
                 if (isRanged && unit.formationTimer <= 0) {
                     if (unit.originalRange) {
                         unit.stats.range = unit.originalRange;
@@ -337,12 +360,12 @@ function processTacticalOrders() {
                     }
                 }
 
-                // If they aren't stopping to shoot, lower range and keep marching
+                // Lower weapons and keep marching if not focusing on shooting
                 if (!shouldFocusOnShooting) {
                     if (!unit.originalRange && unit.stats.range > 20) {
                         unit.originalRange = unit.stats.range;
                     }
-                    unit.stats.range = 10; // Weapons lowered
+                    unit.stats.range = 10; 
                 }
             } else {
                 // Arrived at formation spot! Restore range so they can fire.
@@ -374,3 +397,163 @@ function processTacticalOrders() {
         }
     });
 }
+// ============================================================================
+// RTS MOUSE CONTROLS (SELECTION & MOVEMENT) - FIXED VERSION
+// ============================================================================
+
+let isBoxSelecting = false;
+let selectionBoxStart = { x: 0, y: 0 };
+let selectionBoxCurrent = { x: 0, y: 0 };
+let lastClickTime = 0;
+let lastClickedUnitType = null;
+
+// --- BULLETPROOF COORDINATE MAPPER ---
+function getBattleMousePos(e) {
+    // 1. HARD TARGET THE CANVAS
+    const canvas = document.querySelector('canvas'); 
+    if (!canvas) return { x: 0, y: 0 };
+
+    const rect = canvas.getBoundingClientRect();
+
+    // 2. Base screen-to-canvas ratio (Raw Mouse Pixels)
+    let rawX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    let rawY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+    // 3. REVERSE-ENGINEER THE INDEX.HTML CAMERA MATH
+    // In index.html you do: center canvas -> scale by zoom -> move to -player position
+    // Here, we do the exact opposite to turn a mouse click back into world coordinates:
+    
+    // Fallback variables just in case the globals haven't loaded
+    let currentZoom = typeof zoom !== 'undefined' ? zoom : 1;
+    let camX = typeof player !== 'undefined' ? player.x : 0;
+    let camY = typeof player !== 'undefined' ? player.y : 0;
+
+    let worldX = ((rawX - (canvas.width / 2)) / currentZoom) + camX;
+    let worldY = ((rawY - (canvas.height / 2)) / currentZoom) + camY;
+
+    return { x: worldX, y: worldY };
+}
+
+function isCommanderAlive() {
+    return battleEnvironment.units.some(u => u.isCommander && u.hp > 0);
+}
+
+// --- MOUSE DOWN (Start Box Select) ---
+document.addEventListener('mousedown', (e) => {
+    if (!inBattleMode || !battleEnvironment) return;
+    // CRITICAL: Ignore clicks if they clicked a UI element instead of the game
+    if (e.target.tagName !== 'CANVAS') return; 
+    if (!isCommanderAlive()) return;
+
+    if (e.button === 0) { 
+        isBoxSelecting = true;
+        selectionBoxStart = getBattleMousePos(e);
+        selectionBoxCurrent = { x: selectionBoxStart.x, y: selectionBoxStart.y };
+    }
+});
+
+// --- MOUSE MOVE (Update Box Select) ---
+document.addEventListener('mousemove', (e) => {
+    if (!inBattleMode || !isBoxSelecting) return;
+    selectionBoxCurrent = getBattleMousePos(e);
+});
+
+// --- MOUSE UP (Process Box Select & Clicks) ---
+document.addEventListener('mouseup', (e) => {
+    if (!inBattleMode || !battleEnvironment || !isBoxSelecting) {
+        isBoxSelecting = false;
+        return;
+    }
+    
+    isBoxSelecting = false;
+    if (!isCommanderAlive()) return;
+
+    const pos = getBattleMousePos(e);
+    const playerUnits = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0);
+    
+    const dx = pos.x - selectionBoxStart.x;
+    const dy = pos.y - selectionBoxStart.y;
+    const dragDistance = Math.hypot(dx, dy);
+
+    // BOX SELECT
+    if (dragDistance > 10) { // Increased deadzone slightly to prevent accidental box clicks
+        const minX = Math.min(selectionBoxStart.x, pos.x);
+        const maxX = Math.max(selectionBoxStart.x, pos.x);
+        const minY = Math.min(selectionBoxStart.y, pos.y);
+        const maxY = Math.max(selectionBoxStart.y, pos.y);
+
+        playerUnits.forEach(u => {
+            u.selected = (u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY);
+        });
+        
+        currentSelectionGroup = null; 
+        if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
+    } 
+    // SINGLE / DOUBLE CLICK
+    else {
+        let clickedUnit = null;
+        let closestDist = Infinity;
+        
+        playerUnits.forEach(u => {
+            let hitbox = (u.stats.radius || 10) + 20; // Generous clicking area
+            let d = Math.hypot(u.x - pos.x, u.y - pos.y);
+            if (d < hitbox && d < closestDist) {
+                closestDist = d;
+                clickedUnit = u;
+            }
+        });
+
+        const now = Date.now();
+        const isDoubleClick = (now - lastClickTime < 350) && clickedUnit && (lastClickedUnitType === clickedUnit.unitType);
+
+        if (clickedUnit) {
+            if (isDoubleClick) {
+                playerUnits.forEach(u => u.selected = (u.unitType === clickedUnit.unitType));
+            } else {
+                playerUnits.forEach(u => u.selected = false);
+                clickedUnit.selected = true;
+            }
+            lastClickedUnitType = clickedUnit.unitType;
+            if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
+        } else {
+            // Clicked empty dirt -> Deselect all
+            playerUnits.forEach(u => u.selected = false);
+        }
+        
+        currentSelectionGroup = null;
+        lastClickTime = now;
+    }
+});
+
+// --- RIGHT CLICK (Move Command) ---
+document.addEventListener('contextmenu', (e) => {
+    if (!inBattleMode || !battleEnvironment) return;
+    if (e.target.tagName === 'CANVAS') e.preventDefault(); // Only prevent default if clicking the game
+
+    if (!isCommanderAlive()) return;
+
+    const playerUnits = battleEnvironment.units.filter(u => u.selected && u.hp > 0);
+    if (playerUnits.length === 0) return;
+
+    const targetPos = getBattleMousePos(e);
+
+    // Calculate formation shape before issuing orders
+    calculateFormationOffsets(playerUnits, currentFormationStyle, null);
+
+    playerUnits.forEach(u => {
+        u.hasOrders = true;
+        u.orderType = "move_to_point";
+        
+        // Ensure they have a fallback of 0 if formation failed
+        let offX = u.formationOffsetX || 0;
+        let offY = u.formationOffsetY || 0;
+
+        u.orderTargetPoint = {
+            x: targetPos.x + offX,
+            y: targetPos.y + offY
+        };
+        u.formationTimer = 240; 
+    });
+
+    if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
+});

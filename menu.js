@@ -255,12 +255,13 @@ const playBtn = createBtn("Enter World", () => {
                 <li><strong style="color: #f5d76e;">Press P to Return to Overworld unless still in Live Battle</li>
 				                <li><strong style="color: #f5d76e;">Press T to view Troops & EXP in Overworld</li>
             </ul>
-            <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 25px;">
-                Dawn of Gunpowder is a tactical strategy experience set across the diverse landscapes of 13th-century East Asia. Players navigate a living world map contested by powerful factions, including the Great Khaganate, the Hong Dynasty, and the Shahdom of Iransar.
-            </p>
-            <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 15px;">
-                The game features a persistent army management system where recruited units gain experience and level up through engagement. Mechanics emphasize geographic exploration, with the player’s party seamlessly transitioning between land caravans and naval vessels based on terrain. When conflict arises, the game shifts to a tactical battlefield engine.
-            </p>
+<p style="line-height: 1.6; font-size: 1.1rem; margin-top: 25px;">
+    Dawn of Gunpowder is a tactical strategy experience set in a historically inspired 13th-century world shaped by conquest, innovation, and shifting alliances. Though its factions are fictional, each draws heavily from real medieval cultures, technologies, and battlefield traditions of mostly East Asia during the age of Mongol conquest and early gunpowder warfare. Across sweeping steppes, fortified river valleys, dense forests, deserts, and mountain frontiers, rival powers struggle to dominate trade routes, secure borders, and expand their influence. Among them are mobile steppe confederations inspired by the Mongol war machine, disciplined dynastic armies influenced by Song-era gunpowder warfare, and armored cavalry kingdoms modeled after Persianate and Central Asian military traditions. Smaller regional powers, influenced by Korean, Vietnamese, Tibetan, and Japanese warfare, defend their homelands with unique tactics shaped by terrain, culture, and centuries of conflict.
+</p>
+
+<p style="line-height: 1.6; font-size: 1.1rem; margin-top: 15px;">
+    Each faction fields armies built around distinctive historical doctrines rather than simple variations of the same units. Steppe-inspired factions dominate open terrain with fast-moving horse archers, raiders, and elite lancers capable of striking deep behind enemy lines. Gunpowder dynasties deploy disciplined infantry supported by crossbows, rockets, firelances, bombs, and early hand cannons, excelling in defensive warfare and siege-style engagements. Cavalry kingdoms rely on heavily armored riders, spear formations, and combined-arms tactics supported by archers and war beasts such as elephants or camels. Highland and frontier factions favor endurance, skirmishing, and specialized weapons suited to rugged terrain, while coastal and riverine powers protect vital trade routes with flexible, mixed formations. As the campaign unfolds, armies grow through recruitment and battlefield experience, transforming small warbands into veteran forces capable of decisive victories. Every battle reflects the strengths and weaknesses of its faction, ensuring that terrain, composition, and tactical decisions shape the outcome of war.
+</p>
         `;
 
         const closeBtn = createBtn("Close Manual", () => {

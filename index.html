@@ -613,106 +613,22 @@ AudioManager.playMusic("WorldMap_Calm");
         isMoving: false,
         anim: 0,
         color: "#ffffff", 
-        troops: 61,
+        troops: 25,
         food: 100,
         gold: 500,
-        hp: 100,
+        experience: 0,
+    experienceLevel: 1,
+    maxHealth: 100, // Ensure the player has a cap
+    hp: 100,
+    meleeAttack: 15, // Base stats for the player
+    meleeDefense: 15,
         distTrack: 0, // <--- NEW: Track distance for food mechanic
         
    
-  //  roster: Array(5).fill("Militia").map(u => ({ type: u, exp: 1 }))
+    roster: Array(25).fill("Militia").map(u => ({ type: u, exp: 1 }))
 		
 		// Roster containing exactly one of every unit in the game
-				roster: [
-
-				/* --- FRONTLINE CORE (Heavy Infantry Wall) --- */
-				"Militia",
-				"Militia",
-				"Militia",
-
-				"Shielded Infantry",
-				"Shielded Infantry",
-				"Shielded Infantry",
-
-				"Spearman",
-				"Spearman",
-				"Spearman",
-				"Spearman",
-
-				"Glaiveman",
-				"Glaiveman",
-
-				"Light Two Handed",
-				"Heavy Two Handed",
-
-				/* --- FIRELANCE CORE (Early Gunpowder Infantry) --- */
-				"Firelance",
-				"Firelance",
-				"Firelance",
-
-				"Heavy Firelance",
-				"Heavy Firelance",
-
-				/* --- RANGED CORE --- */
-				"Archer",
-				"Archer",
-				"Archer",
-				"Archer",
-
-				"Crossbowman",
-				"Crossbowman",
-				"Crossbowman",
-
-				"Heavy Crossbowman",
-
-				"Repeater Crossbowman",
-				"Poison Crossbowman",
-
-				"Slinger",
-				"Slinger",
-
-				"Javelinier",
-
-				/* --- EARLY GUNPOWDER SPECIALISTS --- */
-				"Bomb",
-				"Rocket",
-				"Hand Cannoneer",
-
-				/* --- CAVALRY FLANK CORE --- */
-				"Lancer",
-				"Lancer",
-				"Lancer",
-
-				"Heavy Lancer",
-				"Heavy Lancer",
-
-				"Horse Archer",
-				"Horse Archer",
-
-				"Heavy Horse Archer",
-
-				"Mangudai",
-
-				"Elite Lancer",
-
-				/* --- SPECIAL FLANK / SHOCK --- */
-				"Camel Cannon",
-
-				"War Elephant",
-
-				/* --- EXTRA INFANTRY MASS (To reach ~60 and keep realism) --- */
-				"Militia",
-				"Militia",
-
-				"Spearman",
-				"Spearman",
-
-				"Shielded Infantry",
-
-				"Archer",
-				"Crossbowman"
-
-				].map(u => ({ type: u, exp: 1 }))
+			
 
     };
 	const keys = {};
@@ -859,9 +775,7 @@ function drawShip(x, y, moving, frame, factionColor = "#ffffff") {
 let economyTick = 0;
 
 function update() {
-
-// 1. ADD THIS TO FREEZE THE GAME:
-    // If the Settlement System exists and the menu is open, stop updating the game logic!
+ 
     if (typeof troopGUI !== 'undefined' && troopGUI.isOpen) {
         return; 
     }
@@ -1105,10 +1019,21 @@ ctx.shadowColor = "black";
 ctx.shadowBlur = 4;
 
 if (aliveEnemies > 0) {
-    // 1. ENEMIES PRESENT: Draw at the current "Ready" position (Bottom Left/Right UI area)
-    ctx.fillStyle = "#ffffff";
-    // Assuming your current position is near the bottom left or relative to a fixed UI element
-    ctx.fillText(`Enemies Remaining: ${aliveEnemies}`, BATTLE_WORLD_WIDTH / 2, canvas.height - 50);
+// 1. ENEMIES PRESENT: Draw at the current "Ready" position (Bottom Left/Right UI area)
+
+// Set small font size
+ctx.font = "10px Arial";
+ctx.fillStyle = "#ffffff";
+
+// Optional: center alignment if you're placing at sceen center
+ctx.textAlign = "center";
+
+// Draw text
+ctx.fillText(
+    `Enemies Remaining: ${aliveEnemies}`,
+    BATTLE_WORLD_WIDTH / 2,
+    canvas.height - 50
+);
 
 } else {
     // 2. BATTLE OVER: Move to the center or fallback position
@@ -1260,8 +1185,9 @@ ctx.shadowBlur = 0;
     }
 	
 		requestAnimationFrame(() => { update(); draw(); });
-		
-		
+		// Add this right before the end of the draw() function
+updateAndDrawPlayerSystems(ctx, player, zoom, WORLD_WIDTH, WORLD_HEIGHT, typeof globalNPCs !== 'undefined' ? globalNPCs : []);
+//	updateAndDrawPlayerSystems(ctx, player, zoom, WORLD_WIDTH, WORLD_HEIGHT, npcs);	
 }//draw() end
 
 

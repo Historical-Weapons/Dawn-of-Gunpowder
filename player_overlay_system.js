@@ -111,29 +111,36 @@ function drawPlayerOverlay(ctx, player, zoom) {
     ctx.font = "bold 28px Georgia";
     ctx.fillText("PLAYER DATA", paddingX, startY + 50);
 
-   // 5. PLAYER CHARACTER STATUS (Surgical Fix)
-    // We check for player.exp first. If it doesn't exist, we default to 1.0
-    const rawPExp = player.exp || 1.0; 
-    const pLvl = Math.floor(rawPExp);
-    const pExpPercent = (rawPExp % 1); // Get the decimal part for the bar
-    
-    ctx.font = "bold 16px Georgia";
-    ctx.fillStyle = "#d4b886";
-    ctx.fillText("CHARACTER STATUS", paddingX, startY + 95);
+// 5. PLAYER CHARACTER STATUS
+const pLvl = player.experienceLevel || 1;
+const pExp = player.experience || 0;
+const expNeeded = pLvl * 10; 
+const pExpPercent = Math.min(1, pExp / expNeeded);
 
-    ctx.font = "14px monospace";
-    ctx.fillStyle = "#ffffff";
-    
-    // Display Level and calculated Percent
-    ctx.fillText(`LEVEL: ${pLvl} (${(pExpPercent * 100).toFixed(0)}% EXP)`, paddingX, startY + 120);
-    ctx.fillText(`HEALTH: ${Math.floor(player.hp || 100)}% | SPEED: ${player.speed || 15}`, paddingX, startY + 145);
-    ctx.fillText(`GOLD: ${Math.floor(player.gold || 0)} | FOOD: ${Math.floor(player.food || 0)} | FORCE: ${player.troops}`, paddingX, startY + 170);
+ctx.font = "bold 16px Georgia";
+ctx.fillStyle = "#d4b886";
+ctx.fillText("CHARACTER STATUS", paddingX, startY + 95);
 
-    // EXP Bar - Corrected to use pExpPercent
-    ctx.fillStyle = "#222";
-    ctx.fillRect(paddingX, startY + 185, 300, 6);
-    ctx.fillStyle = "#ffca28";
-    ctx.fillRect(paddingX, startY + 185, 300 * pExpPercent, 6);
+ctx.font = "14px monospace";
+ctx.fillStyle = "#ffffff";
+ctx.fillText(`LEVEL: ${pLvl} [${Math.floor(pExp)} / ${expNeeded} XP]`, paddingX, startY + 120);
+
+const statsText = `HP: ${Math.floor(player.hp)}/${player.maxHealth} | ATK: ${player.meleeAttack} | DEF: ${player.meleeDefense}`;
+ctx.fillText(statsText, paddingX, startY + 145);
+    
+    const resourcesText = `GOLD: ${Math.floor(player.gold || 0)} | FOOD: ${Math.floor(player.food || 0)} | FORCE: ${player.troops}`;
+    ctx.fillText(resourcesText, paddingX, startY + 170);
+
+    // EXP Bar - Visualizing the progress to next level
+    ctx.fillStyle = "#222"; // Bar Background
+    ctx.fillRect(paddingX, startY + 185, 300, 8); // Slightly thicker bar (8px)
+    
+    ctx.fillStyle = "#ffca28"; // Experience Color (Gold)
+    ctx.fillRect(paddingX, startY + 185, 300 * pExpPercent, 8);
+    
+    // Optional: Add a subtle border to the XP bar
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.strokeRect(paddingX, startY + 185, 300, 8);
 
     // 6. ARMY ROSTER (Anchored inside the compact box)
     const rosterStartY = startY + 230; 

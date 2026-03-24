@@ -242,26 +242,37 @@ leaveBattlefield = function(playerObj) {
     let eSurvivors = battleEnvironment.units.filter(u => u.side === "enemy" && u.hp > 0);
     let enemyRef = currentBattleData.enemyRef;
 
-    // B. Rebuild Player Roster - One survivor = One entry
+// B. Rebuild Player Roster - One survivor = One entry
     playerObj.roster = [];
     pSurvivors.forEach(u => {
-        // Increment unit experience
-        u.stats.experienceLevel = (u.stats.experienceLevel || 1) + 0.05;
+        // If enemy is wiped out, give a massive +1.0 level. If retreating, just 0.05.
+        let troopExpReward = (eSurvivors.length === 0) ? 0.5 : 0.15;
+        u.stats.experienceLevel = (u.stats.experienceLevel || 1) + troopExpReward;
         
         playerObj.roster.push({ 
             type: u.unitType, 
             exp: u.stats.experienceLevel 
         });
     });
-     
 
-    // --- COMMANDER PROGRESSION ---
+// --- COMMANDER PROGRESSION ---
     if (cachedCommander && playerObj.stats) {
-        // Gain Commander XP
+        // Check for victory (no enemies left alive)
+        let isVictory = eSurvivors.length === 0;
+        
+        // Massive payout for victory (50), tiny trickle for retreat (0.1)
+        let expReward = isVictory ? 10 : 2; 
+
+        // Gain Commander Avatar XP
         if (typeof playerObj.stats.gainExperience === 'function') {
-            playerObj.stats.gainExperience(0.1);
+            playerObj.stats.gainExperience(expReward);
         } else {
-            playerObj.stats.experienceLevel += 0.1;
+            playerObj.stats.experienceLevel += expReward;
+        }
+
+        // IMPORTANT: Also trigger the Global Player level up system!
+        if (isVictory && typeof gainPlayerExperience === 'function') {
+            gainPlayerExperience(expReward);
         }
         
         // Sync HP back to the overworld

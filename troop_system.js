@@ -60,11 +60,11 @@ class Troop {
         this.currentStance = "statusmelee"; 
     }
 	
-gainExperience(amount) {
+gainExperience(amount) {//troop non player version of gain exp
     if (this.experienceLevel >= 10) return; // Cap level at 10
 
     // 1. Add to a dedicated experience pool, NOT the level itself
-    this.experience = (this.experience || 0) + amount;
+    this.experience = (this.experience || 0) + (amount*5);
 
     // 2. Define how much is needed for the NEXT level
     // Formula: Level 1 needs 1.0, Level 2 needs 2.0, Level 3 needs 3.0...
@@ -180,7 +180,7 @@ const UnitRoster = {
     
 init: function() {
         // --- BASE MILITIA (Tier 0) ---
-        this.create("Militia", "Militia", ROLES.INFANTRY, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, health: 20, meleeAttack: 6, meleeDefense: 6, armor: ARMOR_TIERS.CLOTH, speed: 1.1, range: 15, morale: 35, cost: 5 });
+        this.create("Militia", "Militia", ROLES.INFANTRY, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, health: 20, meleeAttack: 16, meleeDefense: 16, armor: ARMOR_TIERS.CLOTH, speed: 1.1, range: 25, morale: 35, cost: 5 });
 
         // --- CROSSBOW LINE ---
         this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 10, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.7, range: 700, morale: 50, cost: 35 });
@@ -360,14 +360,19 @@ function drawBattleUnits(ctx) {
 		
 		// --- FIREWALL: Skip corrupt data ---
     if (isNaN(unit.x) || isNaN(unit.y)) return; 
-    
- 
+    // ---> INSERT CULLING HERE <---
+        // Skip rendering if the unit is outside the viewable area
+// ---> INSERT CULLING HERE <---
+        // Skip rendering if the unit is outside the viewable area
+        if (typeof camera !== 'undefined' && camera && typeof isOnScreen === 'function') {
+            if (!isOnScreen(unit, camera)) return;
+        }
         let isMoving = unit.state === "moving";
         let frame = time + unit.animOffset;
         let isAttacking = unit.state === "attacking" && unit.cooldown > (unit.stats.isRanged ? 30 : 40);
 
 // ---> SURGERY: Draw Selection Ring <---
-        if (unit.selected) {
+if (unit.selected && unit.hp > 0) {
             ctx.save();
             ctx.translate(unit.x, unit.y);
             ctx.strokeStyle = "rgba(255, 235, 59, 0.8)"; // Bright Yellow
@@ -440,22 +445,52 @@ if (unit.stats.isRanged && unit.stats.ammo <= 0) {
         let isFleeing = unit.stats.morale <= 0 && 
                         (unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || 
                          unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT);
+						 
+						 
+						 
+						 
+						 
+						 
+// ---> INSERT ANIMATION SYNC HERE <---
+// This calculates the specific frame progress for reload/release cycles
+let reloadProgress = 0;
+if (unit.state === "attacking" && unit.stats.isRanged) {
+    // Standardizing the cycle to a 0.0 - 1.0 range for the renderers
+    reloadProgress = (unit.cooldown / (unit.stats.fireRate || 100));
+}
+// ---> SURGERY: DEAD UNIT RENDERING <---
+let isDead = unit.hp <= 0;
+if (isDead) {
+    drawBloodPool(ctx, unit);
+    ctx.save();
+    ctx.translate(unit.x, unit.y);
+    ctx.rotate(unit.deathRotation || Math.PI / 2);
+    ctx.translate(-unit.x, -unit.y);
+}
+
 // 1. Dispatch to the correct renderer
 if (["cavalry", "elephant", "camel", "horse_archer"].includes(visType)) {
-    // SURGERY: Appended unit.cooldown and unit.ammo
     drawCavalryUnit(
         ctx, unit.x, unit.y, isMoving, frame, unit.color, 
         isAttacking, visType, unit.side, unit.unitType, 
-        isFleeing, unit.cooldown, unit.ammo, unit
+        isFleeing, unit.cooldown, unit.ammo, unit, reloadProgress
     );
 } else {
-    // SURGERY: Appended unit.cooldown and unit.ammo
     drawInfantryUnit(
         ctx, unit.x, unit.y, isMoving, frame, unit.color, 
         visType, isAttacking, unit.side, unit.unitType, 
-        isFleeing, unit.cooldown, unit.ammo, unit
+        isFleeing, unit.cooldown, unit.ammo, unit, reloadProgress
     );
 }
+
+if (isDead) {
+    ctx.restore();
+    return; // EXIT EARLY: Skip drawing health bars, exp bars, and names on corpses
+	}
+	
+	 
+
+
 // 2. SURGICAL NAME OVERRIDE: Show "PLAYER" if it's the commander
 ctx.fillStyle = "#ffffff";
 ctx.font = unit.isCommander ? "bold 6px Georgia" : "4px Georgia"; // Bolder for player
@@ -464,22 +499,22 @@ let displayName = unit.isCommander ? "PLAYER" : unit.unitType;
 ctx.fillText(displayName, unit.x, unit.y - 21);
 
 // 3. HEALTH BAR CONFIG
-//const barWidth = 24;
-//const barHeight = 4;
-//const barY = unit.y - 30; 
+const barWidth = 24;
+const barHeight = 4;
+const barY = unit.y - 30; 
 
 // --- SURGICAL DEBUG UI OVERRIDE --- 
 // Changed from 'unit.isCommander' so ALL player troops show stats
 if (unit.side === "player") {
- //   ctx.save();
+    ctx.save();
     
     // 1. Configure Debug Font (Slightly smaller for troops so it doesn't clutter)
-   // ctx.textAlign = "center";
-  // ctx.font = unit.isCommander ? "bold 8px monospace" : "6px monospace"; 
+   ctx.textAlign = "center";
+  ctx.font = unit.isCommander ? "bold 8px monospace" : "6px monospace"; 
     
     // Change color based on Level (Gold for Level 3+, White for recruits)
-  //  let lvl = unit.stats.experienceLevel || 1;
-  //  ctx.fillStyle = lvl >= 3 ? "#ffca28" : "#ffffff"; 
+    let lvl = unit.stats.experienceLevel || 1;
+   ctx.fillStyle = lvl >= 3 ? "#ffca28" : "#ffffff"; 
 
     // 2. Build the Debug String
   //  let ma = unit.stats.meleeAttack;
@@ -489,37 +524,44 @@ if (unit.side === "player") {
  //   let debugText = `LVL:${Math.floor(lvl)} | ATK:${ma} | DF:${df} | ACC:${acc}`;
 
     // 3. Draw the Label
-   // ctx.fillText(debugText, unit.x, barY - 10);
+  //  ctx.fillText(debugText, unit.x, barY - 10);
 
     // 4. SATISFACTION / EXP BAR
- //   const expProgress = lvl % 1; 
-  //  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  //  ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth, 2); // EXP Background
+    const expProgress = lvl % 1; 
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+   ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth, 2); // EXP Background
     
     // Blue for Commander, Green for regular troops
-  //  ctx.fillStyle = unit.isCommander ? "#4fc3f7" : "#81c784"; 
- //   ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth * expProgress, 2); // EXP Fill
+   ctx.fillStyle = unit.isCommander ? "#4fc3f7" : "#81c784"; 
+   ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth * expProgress, 2); // EXP Fill
 
-    //ctx.restore();
+    ctx.restore();
 }
 
 // 5. HEALTH BAR RENDERING
 // Draw Background (Red/Empty)
-//ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
-//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
+ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 
 // Draw Health Fill (Green for Allies, Orange/Red for Enemies)
-//const healthPercent = Math.max(0, unit.hp / unit.stats.health);
-//ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
-//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
+const healthPercent = Math.max(0, unit.hp / unit.stats.health);
+ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
+ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
 
 // Draw Border
-//ctx.strokeStyle = "#000";
-//ctx.lineWidth = 1;
-///ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+ctx.strokeStyle = "#000";
+ctx.lineWidth = 1;
+ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 }); 
+
 battleEnvironment.projectiles.forEach(p => {
 		if (isNaN(p.x) || isNaN(p.y)) return; // Safety check
+		
+		
+// ---> INSERT CULLING HERE <---
+        if (typeof camera !== 'undefined' && camera && typeof isOnScreen === 'function') {
+            if (!isOnScreen(p, camera)) return;
+        }
 		
 let vx = p.vx || p.dx || 0; 
 let vy = p.vy || p.dy || 0;
@@ -527,16 +569,13 @@ let angle = (vx === 0 && vy === 0) ? 0 : Math.atan2(vy, vx);
         ctx.save(); 
         ctx.translate(p.x, p.y);
 
-// --- SURGERY START: Projectile Type Detection ---
         let isBomb = p.attackerStats && p.attackerStats.role === "bomb";
 		let isRocket = (p.type === "rocket") || 
                (p.attackerStats && (p.attackerStats.role === ROLES.ROCKET || p.attackerStats.name.includes("Rocket")));
 			   let isJavelin = p.attackerStats && p.attackerStats.name === "Javelinier";
         let isSlinger = p.attackerStats && p.attackerStats.name === "Slinger";
 		
-		// SURGERY: Define isBullet so the renderer doesn't crash and swap animations
 
-// Add a name check to guarantee camel cannons shoot bullets
 let isBullet = p.attackerStats && (
     p.attackerStats.role === "gunner" || 
     p.attackerStats.role === "mounted_gunner" ||
@@ -650,9 +689,7 @@ if (isBomb) {
 }
 		
 else if (p.isFire || p.projectileType === "firelance" || (p.projectileType && p.projectileType.includes("Firelance"))) {
-            // ==========================================
-            // 🔥 MASSIVE FIRELANCE BLAST REVISION
-            // ==========================================
+
             ctx.rotate(angle);
 
             // 1. Scale Settings (5x the original size)
@@ -820,4 +857,38 @@ else if (isJavelin) {
         }
 ctx.restore();
     });
+	
+	
+	
+	// --- DRAW RTS SELECTION BOX ---
+    if (typeof isBoxSelecting !== 'undefined' && isBoxSelecting) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(0, 255, 0, 0.8)";
+        ctx.fillStyle = "rgba(0, 255, 0, 0.15)";
+        ctx.lineWidth = 1;
+        
+        let width = selectionBoxCurrent.x - selectionBoxStart.x;
+        let height = selectionBoxCurrent.y - selectionBoxStart.y;
+        
+        ctx.fillRect(selectionBoxStart.x, selectionBoxStart.y, width, height);
+        ctx.strokeRect(selectionBoxStart.x, selectionBoxStart.y, width, height);
+        ctx.restore();
+    }
+	
+	
+	// ---> FINAL UI LAYER <---
+    // This ensures the player stats/roster are never hidden by unit sprites
+    if (typeof drawPlayerOverlay === 'function') {
+        // We use a dummy camera or reset transform if the UI is screen-space
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); 
+        drawPlayerOverlay(ctx, player);
+        ctx.restore();
+    }
+	
+	
+	
 }
+
+
+  
