@@ -246,7 +246,7 @@ leaveBattlefield = function(playerObj) {
     playerObj.roster = [];
     pSurvivors.forEach(u => {
         // If enemy is wiped out, give a massive +1.0 level. If retreating, just 0.05.
-        let troopExpReward = (eSurvivors.length === 0) ? 0.5 : 0.15;
+        let troopExpReward = (eSurvivors.length === 0) ? 0.2 : 0.1;
         u.stats.experienceLevel = (u.stats.experienceLevel || 1) + troopExpReward;
         
         playerObj.roster.push({ 
@@ -261,7 +261,7 @@ leaveBattlefield = function(playerObj) {
         let isVictory = eSurvivors.length === 0;
         
         // Massive payout for victory (50), tiny trickle for retreat (0.1)
-        let expReward = isVictory ? 10 : 2; 
+        let expReward = isVictory ? 1 : 0.2; 
 
         // Gain Commander Avatar XP
         if (typeof playerObj.stats.gainExperience === 'function') {
