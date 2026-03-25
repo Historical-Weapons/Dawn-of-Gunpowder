@@ -180,10 +180,10 @@ const UnitRoster = {
     
 init: function() {
         // --- BASE MILITIA (Tier 0) ---
-        this.create("Militia", "Militia", ROLES.INFANTRY, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, health: 20, meleeAttack: 16, meleeDefense: 16, armor: ARMOR_TIERS.CLOTH, speed: 1.1, range: 25, morale: 35, cost: 5 });
+        this.create("Militia", "Militia", ROLES.INFANTRY, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, health: 20, meleeAttack: 12, meleeDefense: 6, armor: ARMOR_TIERS.CLOTH, speed: 1.1, range: 25, morale: 35, cost: 5 });
 
         // --- CROSSBOW LINE ---
-        this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 10, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.7, range: 700, morale: 50, cost: 35 });
+        this.create("Crossbowman", "Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 5, missileBaseDamage: 12, missileAPDamage: 28, accuracy: 65, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.7, range: 700, morale: 50, cost: 35 });
         this.create("Heavy Crossbowman", "Heavy Crossbowman", ROLES.CROSSBOW, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, isRanged: true, ammo: 25, health: 40, meleeAttack: 14, meleeDefense: 14, missileBaseDamage: 15, missileAPDamage: 30, accuracy: 70, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.6, range: 800, morale: 65, cost: 50 });
         this.create("Bomb", "Bomb", ROLES.BOMB, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 2, health: 20, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 30, missileAPDamage: 100, accuracy: 50, armor: ARMOR_TIERS.LEATHER, speed: 0.7, range: 140, morale: 60, cost: 65 });
 
@@ -198,7 +198,7 @@ init: function() {
         this.create("Heavy Horse Archer", "Heavy Horse Archer", ROLES.HORSE_ARCHER, true, { weightClass: WEIGHT_CLASSES.HEAVY_CAV, isRanged: true, ammo: 20, health: 40, meleeAttack: 16, meleeDefense: 18, missileBaseDamage: 11, missileAPDamage: 6, accuracy: 65, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 1.4, range: 700, morale: 70, cost: 75 });
 
         // --- SABRE LINE ---
-        this.create("Shielded Infantry", "Shielded Infantry", ROLES.SHIELD, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 40, meleeAttack: 10, meleeDefense: 18, armor: ARMOR_TIERS.LEATHER, shieldBlockChance: 25, speed: 0.5, range: 20, morale: 60, cost: 30 });
+        this.create("Shielded Infantry", "Shielded Infantry", ROLES.SHIELD, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 40, meleeAttack: 10, meleeDefense: 28, armor: ARMOR_TIERS.LEATHER, shieldBlockChance: 25, speed: 0.5, range: 20, morale: 60, cost: 30 });
         this.create("Light Two Handed", "Light Two Handed", ROLES.TWO_HANDED, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, health: 20, meleeAttack: 30, meleeDefense: 12, armor: ARMOR_TIERS.LEATHER, speed: 0.9, range: 20, morale: 65, cost: 35 });
         this.create("Heavy Two Handed", "Heavy Two Handed", ROLES.TWO_HANDED, false, { weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 25, meleeAttack: 36, meleeDefense: 16, armor: ARMOR_TIERS.FULL_LAMELLAR, speed: 0.65, range: 20, morale: 75, cost: 60 });
 
@@ -208,7 +208,7 @@ init: function() {
         this.create("Elite Lancer", "Elite Lancer", ROLES.CAVALRY, true, { weightClass: WEIGHT_CLASSES.HEAVY_CAV, health: 100, meleeAttack: 28, meleeDefense: 24, armor: ARMOR_TIERS.SUPER_HEAVY + 5, speed: 1.2, range: 25, morale: 85, cost: 150 }); 
 
         // --- FACTION UNIQUES ---
-        this.create("Rocket", "Rocket", ROLES.ROCKET, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 50, health: 30, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 15, missileAPDamage: 15, accuracy: 55, armor: ARMOR_TIERS.LEATHER, speed: 0.5, range: 520, morale: 55, cost: 55 });
+        this.create("Rocket", "Rocket", ROLES.ROCKET, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 50, health: 30, meleeAttack: 8, meleeDefense: 8, missileBaseDamage: 15, missileAPDamage: 5, accuracy: 55, armor: ARMOR_TIERS.LEATHER, speed: 0.5, range: 520, morale: 55, cost: 55 });
         this.create("Mangudai", "Mangudai", ROLES.HORSE_ARCHER, true, { weightClass: WEIGHT_CLASSES.HEAVY_CAV, isRanged: true, ammo: 35, health: 45, meleeAttack: 18, meleeDefense: 16, missileBaseDamage: 14, missileAPDamage: 8, accuracy: 75, armor: ARMOR_TIERS.SUPER_HEAVY, speed: 1.8, range: 700, morale: 80, cost: 155 });
         this.create("Hand Cannoneer", "Hand Cannoneer", ROLES.GUNNER, false, { weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 20, meleeAttack: 10, meleeDefense: 12, missileBaseDamage: 25, missileAPDamage: 50, accuracy: 65, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 800, morale: 70, cost: 70 });
         this.create("Camel Cannon", "Camel Cannon", ROLES.MOUNTED_GUNNER, true, { weightClass: WEIGHT_CLASSES.CAV, isRanged: true, ammo: 60, health: 50, meleeAttack: 12, meleeDefense: 14, missileBaseDamage: 35, missileAPDamage: 80, accuracy: 40, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 850, morale: 80, cost: 100 });

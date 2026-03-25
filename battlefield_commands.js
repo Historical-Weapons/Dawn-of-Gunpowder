@@ -113,14 +113,14 @@ document.addEventListener("keydown", (event) => {
             calculateFormationOffsets(selectedUnits, currentFormationStyle, commander);
             break;
 
-        case "q": // ADVANCE
-            selectedUnits.forEach(u => {
-                u.hasOrders = true;
-                u.orderType = "advance";
-                u.orderTargetPoint = { x: u.x, y: Math.max(100, u.y - 600) }; 
-                u.formationTimer = 240;
-            });
-            break;
+case "q": // SEEK & ENGAGE (SMART ATTACK MOVE)
+    selectedUnits.forEach(u => {
+        u.hasOrders = true;
+        u.orderType = "seek_engage"; // NEW TYPE
+        u.orderTargetPoint = null;   // IMPORTANT: no waypoint
+        u.formationTimer = 120;      // shorter than normal so they react faster
+    });
+    break;
 
         case "r": // RETREAT 
             selectedUnits.forEach(u => {
@@ -330,6 +330,32 @@ function processTacticalOrders() {
 
         // 2. EXECUTE ORDERS (Safe Waypoints & Ranged Shooting Focus)
         if (unit.hasOrders) {
+			
+			
+			// ==========================
+// SEEK & ENGAGE (NEW LOGIC)
+// ==========================
+if (unit.orderType === "seek_engage") {
+    if (nearestEnemy) {
+        unit.target = nearestEnemy;
+
+        // OPTIONAL: mild forward bias (keeps army advancing instead of stalling)
+        if (unit.stats.morale > 5) {
+            let dx = nearestEnemy.x - unit.x;
+            let dy = nearestEnemy.y - unit.y;
+            let dist = Math.hypot(dx, dy);
+
+            if (dist > unit.stats.range * 0.9) {
+                // set a soft waypoint instead of forcing it
+                unit.target = nearestEnemy;
+            }
+        }
+    }
+    return; // CRITICAL: skip formation movement logic
+}
+
+//standard
+			
             let destX = unit.x;
             let destY = unit.y;
 

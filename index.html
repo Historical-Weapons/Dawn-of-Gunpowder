@@ -76,6 +76,59 @@
     transform: translateY(1px);
     box-shadow: none;
 }
+/* Keep your original #parle-panel exactly as is */
+#parle-panel {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: linear-gradient(to bottom, rgba(35, 25, 15, 0.98), rgba(15, 10, 5, 0.99));
+    color: #d4b886; padding: 25px; border: 3px solid #5d4037; border-radius: 6px;
+    text-align: center; z-index: 2000; font-family: 'Georgia', serif; min-width: 500px;
+    box-shadow: 0 10px 40px rgba(0,0,0,1); display: none;
+    box-sizing: border-box;
+}
+
+#parle-header h2 { margin: 0 0 10px 0; font-size: 2.2rem; color: #ffca28; letter-spacing: 2px; text-shadow: 2px 2px 4px #000; }
+
+/* ADDED height and overflow to your original #parle-dialogue */
+#parle-dialogue { 
+    margin: 15px 0; 
+    font-size: 1.1rem; 
+    color: #eee; 
+    font-style: italic; 
+    background: rgba(0,0,0,0.6); 
+    padding: 10px; 
+    border-radius: 4px;
+    height: 160px;       /* Set a fixed height */
+    overflow-y: auto;    /* Enable scrollbar */
+    text-align: left;    /* Better for reading long text */
+}
+
+/* NEW: Custom Scrollbar Styling */
+#parle-dialogue::-webkit-scrollbar { width: 8px; }
+#parle-dialogue::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+#parle-dialogue::-webkit-scrollbar-thumb { background: #5d4037; border-radius: 4px; border: 1px solid #d4b886; }
+
+/* NEW: Faction Standing Badge */
+.standing-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-left: 10px;
+    vertical-align: middle;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* Rest of your existing CSS remains unchanged... */
+.parle-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; border-top: 1px solid #333; padding-top: 15px; }
+.force-column { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; border: 1px solid #444; text-align: left; }
+.force-header { font-weight: bold; color: #ffca28; margin-bottom: 8px; border-bottom: 1px solid #5d4037; padding-bottom: 3px; font-size: 0.9rem; text-transform: uppercase; }
+.unit-list { font-size: 0.8rem; color: #aaa; list-style: none; padding: 0; margin: 0; font-family: monospace;}
+.unit-list li { margin-bottom: 3px;}
+#parle-action-box { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; border-top: 1px solid #333; padding-top: 15px; margin-top: 10px; }
+
+
 
    </style>
 </head>
@@ -130,42 +183,89 @@
                     alert('Not enough gold!'); 
                 }
             ">
-                Recruit 5 Militia (20 Gold)
-            </button>
+				Recruit 5 Militia (20 Gold)
+						</button>
 
-            <button class="menu-btn" onclick="if(activeCity) { 
-                if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
-                enterCity(activeCity.faction, player); 
-                document.getElementById('city-panel').style.display = 'none'; 
-            }">
-                Visit Settlement
-            </button>
-			
-<button class="menu-btn" onclick="
-    if(typeof troopGUI !== 'undefined') {
-        if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
-        troopGUI.openUpgradeMenu();
-    } else {
-        alert('troopGUI.js not loaded!');
-    }
-">
-    Upgrade Troops
-</button>
+						<button class="menu-btn" onclick="if(activeCity) { 
+							if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
+							enterCity(activeCity.faction, player); 
+							document.getElementById('city-panel').style.display = 'none'; 
+						}">
+							Visit Settlement
+						</button>
+						
+			<button class="menu-btn" onclick="
+				if(typeof troopGUI !== 'undefined') {
+					if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
+					troopGUI.openUpgradeMenu();
+				} else {
+					alert('troopGUI.js not loaded!');
+				}
+			">
+				Upgrade Troops
+			</button>
 
-            <button class="menu-btn" onclick="
-                if(player.gold >= 10) { 
-                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
-                    player.food += 10; 
-                    player.gold -= 10; 
-                } else {
-                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
-                    alert('Not enough gold for rations!'); 
-                }
-            ">
-                Buy Food (10 Gold)
-            </button>
+						<button class="menu-btn" onclick="
+							if(player.gold >= 10) { 
+								if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
+								player.food += 10; 
+								player.gold -= 10; 
+							} else {
+								if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
+								alert('Not enough gold for rations!'); 
+							}
+						">
+							Buy Food (10 Gold)
+						</button>
         </div>
+		
+<div id="hostile-box" style="display: none; flex-direction: column; gap: 8px; align-items: center; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
+		<span style="color: #ff5252; font-weight: bold; font-style: italic; font-size: 0.95rem;">"We are at war. You will find no quarter here."</span>
+		<button id="siege-button" class="menu-btn" style="background: linear-gradient(to bottom, #d32f2f, #b71c1c); border-color: #fff; color: #fff; padding: 10px 20px; font-size: 1rem;" onclick="
+			if(activeCity) {
+				if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
+				if(typeof initiatePlayerSiege === 'function') {
+                    initiatePlayerSiege(activeCity);
+                } else {
+                    console.error('siege_system.js not loaded!');
+                }
+			}
+		">
+			Besiege Settlement
+		</button>
+	</div>
+		
     </div>
+	
+	<div id="parle-panel">
+        <div id="parle-header">
+            <h2 id="parle-npc-name">NPC Force</h2>
+          <span id="parle-npc-faction">Faction Name</span>
+    <span id="parle-faction-standing" class="standing-badge">NEUTRAL</span>
+		
+		</div>
+
+        <div id="parle-dialogue">Hello there...</div>
+
+        <div class="parle-stat-grid">
+            <div class="force-column">
+                <div class="force-header">Our Force</div>
+                Pop: <span id="parle-player-troops" style="color: #fff;">0</span>
+            </div>
+            <div class="force-column">
+                <div class="force-header">Their Force</div>
+                Pop: <span id="parle-npc-troops" style="color: #fff;">0</span><br>
+                <span style="font-size:0.8rem; color: #888;">Notable Troops:</span>
+                <ul id="parle-npc-top-units" class="unit-list">
+                    </ul>
+            </div>
+        </div>
+            
+        <div id="parle-action-box">
+            </div>
+    </div>
+	
+	
     <canvas id="gameCanvas"></canvas>
 
  <script src="camera_effects.js"></script>  
@@ -184,6 +284,12 @@
 <script src="troopGUI.js"></script> 
  <script src="menu.js"></script>  
  <script src="audio_system.js"></script>
+
+<script src="RandomDialogue.js"></script>
+<script src="parler_system.js"></script>
+
+<script src="siege_system.js"></script>
+<script src="faction_dynamics.js"></script>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
@@ -216,7 +322,10 @@ window.addEventListener('resize', resizeCanvasAndResetCamera);
 
 // Start game initialize
 
+if (typeof initDiplomacy === 'function') {initDiplomacy(FACTIONS);}
+
  async function initGame() {
+
     await generateMap(); // wait for map + cities + textures
  
 	draw();              
@@ -290,6 +399,12 @@ async function setLoading(percent, text) {
 
      
 function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
+    // --- NEW: SIEGE LOCK ---
+    if (player.isSieging && !inBattleMode) {
+        player.isMoving = false;
+        return; // Completely bypass all movement logic
+    }
+    
     let dx = 0, dy = 0;
     player.isMoving = false;
 
@@ -308,19 +423,25 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
         }
     }
     // -----------------------------------------------------
+// --- 2. battleINPUT PROCESSING ---
 
-    // --- 2. battleINPUT PROCESSING ---
+// Check if player is alive before allowing WASD/Arrow movement
+if (player.hp > 0) {
     if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
     if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
     if (keys['a'] || keys['arrowleft']) { dx -= currentSpeed; player.isMoving = true; }
     if (keys['d'] || keys['arrowright']) { dx += currentSpeed; player.isMoving = true; }
+} else {
+    // If dead, ensure the moving state is killed so animations stop
+    player.isMoving = false;
+}
 
-    if (player.isMoving) player.anim++;
+if (player.isMoving) player.anim++;
 
-    // Calculate the intended destination
-    let nextX = player.x + dx;
-    let nextY = player.y + dy;
-
+// Calculate the intended destination
+// (dx and dy will remain 0 if the player is dead, keeping nextX/Y equal to current position)
+let nextX = player.x + dx;
+let nextY = player.y + dy;
     // --- 3. SURGERY: MOVEMENT LOGIC & BOUNDARIES ---
     
     if (inBattleMode) {
@@ -624,7 +745,10 @@ AudioManager.playMusic("WorldMap_Calm");
     meleeDefense: 15,
         distTrack: 0, // <--- NEW: Track distance for food mechanic
         
-   
+ 
+        faction: "Player's Kingdom",
+        enemies: ["Bandits"], // Bandits are hostile by default
+		
     roster: Array(25).fill("Militia").map(u => ({ type: u, exp: 1 }))
 		
 		// Roster containing exactly one of every unit in the game
@@ -779,7 +903,22 @@ function update() {
     if (typeof troopGUI !== 'undefined' && troopGUI.isOpen) {
         return; 
     }
+	
+	// --- SURGICAL FIX: UI DOUBLE-CHECKER ---
+    // Force-hide the city panel if we are in battle or a sub-mode
+    const cityPanel = document.getElementById('city-panel');
+    if (inBattleMode || (typeof inCityMode !== 'undefined' && inCityMode)) {
+        if (cityPanel && cityPanel.style.display !== 'none') {
+            cityPanel.style.display = 'none';
+        }
+    }
+    // ---------------------------------------
 
+// SURGICAL FIX: Freeze the entire game loop if the Diplomacy screen is open
+    if (typeof inParleMode !== 'undefined' && inParleMode) {
+        return; 
+    }
+	
     if (inBattleMode) {
         // --- 1. BATTLEFIELD MODE ---
      calculateMovement(player.baseSpeed / 7, null, BATTLE_TILE_SIZE, null, null, true); 
@@ -848,6 +987,12 @@ function update() {
             economyTick = 0;
         }
 
+		// ---> ADD THIS LINE <---
+		// Build the matrix using your global FACTIONS object
+
+		if (typeof updateDiplomacy === 'function') updateDiplomacy();
+        if (typeof updateSieges === 'function') updateSieges();
+		
 // --- PRO MODE: PLAYER FOOD & ATTRITION ---
         let oldX = player.x;
         let oldY = player.y;
@@ -961,7 +1106,7 @@ if (typeof globalNPCs !== 'undefined' && player) {
             }
         }
 
-        const cityPanel = document.getElementById('city-panel');
+const cityPanel = document.getElementById('city-panel');
         if(touchingCity) {
             if(activeCity !== touchingCity) {
                 activeCity = touchingCity;
@@ -969,7 +1114,29 @@ if (typeof globalNPCs !== 'undefined' && player) {
                 document.getElementById('city-name').style.color = activeCity.color;
                 document.getElementById('city-faction').innerText = activeCity.faction;
                 cityPanel.style.display = 'block';
+                
+                // ---> SURGERY: DYNAMIC WAR STATE UI <---
+                const isEnemy = player.enemies && player.enemies.includes(activeCity.faction);
+                const recruitBox = document.getElementById('recruit-box');
+                const hostileBox = document.getElementById('hostile-box');
+
+                if (isEnemy) {
+                    // Disable standard buttons visually and functionally
+                    recruitBox.style.opacity = '0.3';
+                    recruitBox.style.pointerEvents = 'none';
+                    // Show war UI
+                    hostileBox.style.display = 'flex';
+                } else {
+                    // Enable standard buttons
+                    recruitBox.style.opacity = '1';
+                    recruitBox.style.pointerEvents = 'auto';
+                    // Hide war UI
+                    hostileBox.style.display = 'none';
+                }
             }
+			
+			
+			
             document.getElementById('city-pop').innerText = Math.floor(activeCity.pop).toLocaleString();
             document.getElementById('city-garrison').innerText = Math.floor(activeCity.troops).toLocaleString();
             document.getElementById('city-gold').innerText = Math.floor(activeCity.gold).toLocaleString();
@@ -1103,7 +1270,7 @@ ctx.shadowBlur = 0;
 				let camBottom = player.y + halfHeight + 150;
 
 
-				cities.forEach(c => {
+cities.forEach(c => {
 				
 				// SURGERY: If the city is outside the camera view, skip rendering entirely!
 				if (c.x < camLeft || c.x > camRight || c.y < camTop || c.y > camBottom) return;
@@ -1140,6 +1307,9 @@ ctx.shadowBlur = 0;
 					ctx.fillText(c.name, c.x, c.y - 20);
 				});
 		 
+		 // ---> ADD THIS LINE <---
+               if (typeof drawSiegeVisuals === 'function') drawSiegeVisuals(ctx);
+			   
 			   // SURGERY: Pass the camera bounds to the NPC rendering system
 				drawAllNPCs(ctx, drawCaravan, drawShip, zoom, camLeft, camRight, camTop, camBottom);
 				
@@ -1201,6 +1371,24 @@ function enforceNPCBounds(npc, maxWidth, maxHeight) {
     if (npc.x > maxWidth) npc.x = maxWidth;
     if (npc.y < 0) npc.y = 0;
     if (npc.y > maxHeight) npc.y = maxHeight;
+}
+
+// Add this inside your script tag to handle the UI toggle
+function updateCityPanelUI(city) {
+    const recruitBox = document.getElementById('recruit-box');
+    const hostileBox = document.getElementById('hostile-box');
+    
+    // Check if the city belongs to a faction you are at war with
+    // This assumes your faction_dynamics.js is loaded
+    const isHostile = player.enemies.includes(city.faction);
+
+    if (isHostile) {
+        recruitBox.style.display = 'none';
+        hostileBox.style.display = 'flex';
+    } else {
+        recruitBox.style.display = 'flex';
+        hostileBox.style.display = 'none';
+    }
 }
 
 // Optimized: Run bounds check every 100ms instead of every frame (Lag Fix)

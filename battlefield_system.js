@@ -501,6 +501,41 @@ composition.forEach(comp => {
 }
 // --- Damage Logic ---
 
+function isFlanked(attacker, defender) {
+    if (!attacker || !defender) return false;
+    if (attacker.hp <= 0 || defender.hp <= 0) return false;
+    if (attacker.isDummy || defender.isDummy) return false;
+
+    // If the defender is not actively engaging someone, we cannot infer facing safely.
+    const facingTarget = defender.target;
+    if (!facingTarget || facingTarget.hp <= 0 || facingTarget.isDummy) return false;
+
+    // Vector from defender -> defender's current target (the way defender is "facing")
+    const fx = facingTarget.x - defender.x;
+    const fy = facingTarget.y - defender.y;
+
+    // Vector from defender -> attacker
+    const ax = attacker.x - defender.x;
+    const ay = attacker.y - defender.y;
+
+    const fMag = Math.hypot(fx, fy);
+    const aMag = Math.hypot(ax, ay);
+
+    if (fMag < 0.001 || aMag < 0.001) return false;
+
+    let cosTheta = (fx * ax + fy * ay) / (fMag * aMag);
+
+    // Clamp for numerical safety
+    cosTheta = Math.max(-1, Math.min(1, cosTheta));
+
+    const angleDeg = Math.acos(cosTheta) * (180 / Math.PI);
+
+    // 120°+ means side/rear attack.
+    // Higher number = safer, fewer false positives.
+    return angleDeg >= 120;
+}
+
+
 function calculateDamageReceived(attacker, defender, stateString) {
 
     const states = stateString.split(" ");
@@ -918,8 +953,13 @@ units.forEach(unit => {
 						   unit.cooldown = getReloadTime(unit);
 								
 								let stateStr = "melee_attack";
-								if (unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
-								
+
+									if (unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
+
+									if (isFlanked(unit, unit.target)) {
+										stateStr += " flanked";
+									}
+
 								let dmg = calculateDamageReceived(unit.stats, unit.target.stats, stateStr);
 								unit.target.hp -= dmg;
 								
@@ -1116,65 +1156,76 @@ function isBattleCollision(x, y) {
 
     return false;
 }
-
 function leaveBattlefield(playerObj) {
-    // --- 1. CALCULATE EVERYTHING FIRST (While data still exists) ---
-    
-    // FIX: Ignore the Commander, otherwise the engine thinks you gained a free troop!
-  let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0).length;
-let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander && u.hp > 0).length; 
-    // Get the scale and initial counts before we null the data
-    let scale = currentBattleData.initialCounts.player > 300 ? 5 : 1; 
+    console.log("Leaving battlefield. Restoring overworld state...");
+
+    // --- 1. EMERGENCY COORDINATE RESTORATION (The "Teleport" Fix) ---
+    // We do this first so the player is never left at 0,0 if the function crashes
+    if (playerObj && savedWorldPlayerState_Battle) {
+        if (savedWorldPlayerState_Battle.x !== 0 && savedWorldPlayerState_Battle.y !== 0) {
+            playerObj.x = savedWorldPlayerState_Battle.x;
+            playerObj.y = savedWorldPlayerState_Battle.y;
+        }
+    }
+
+    // --- 2. CALCULATE BATTLE RESULTS ---
+    let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0).length;
+    let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander && u.hp > 0).length; 
+
+    // Get the scale and initial counts
+    let scale = (currentBattleData && currentBattleData.initialCounts.player > 300) ? 5 : 1; 
     let playerLost = currentBattleData.initialCounts.player - (pUnitsAlive * scale);
     let enemyLost = currentBattleData.initialCounts.enemy - (eUnitsAlive * scale);
 
     let isFleeing = eUnitsAlive > 0;
-    
-    // ... [The rest of the function remains exactly the same] ...
 
-    // --- 2. APPLY OVERWORLD CONSEQUENCES (Your full logic) ---
-    
-playerObj.troops = Math.max(0, (playerObj.troops || 0) - playerLost);
+    // --- 3. APPLY OVERWORLD CONSEQUENCES ---
+    playerObj.troops = Math.max(0, (playerObj.troops || 0) - playerLost);
 
     if (currentBattleData.enemyRef) {
         let overworldNPC = currentBattleData.enemyRef;
         overworldNPC.count -= enemyLost;
 
-        if (overworldNPC.count <= 0 || !isFleeing) {
+       if (overworldNPC.count <= 0 || !isFleeing) {
             overworldNPC.count = 0; 
-            
-            // THE FIX: Restore the player's coordinates on victory!
-            playerObj.x = savedWorldPlayerState_Battle.x;
-            playerObj.y = savedWorldPlayerState_Battle.y;
-            
+            overworldNPC.isDead = true; // Mark for removal in npc_system
         } else {
-            // Player fled: Bounce away
-            playerObj.x = savedWorldPlayerState_Battle.x + 40;
-            playerObj.y = savedWorldPlayerState_Battle.y + 40;
+            // NPC Survived: Force them to walk away so they don't re-trigger dialogue
+            let escapeAngle = Math.random() * Math.PI * 2;
+            
+            // ---> THE FIX: Physically separate the NPC from the player instantly <---
+            overworldNPC.x += Math.cos(escapeAngle) * 50; 
+            overworldNPC.y += Math.sin(escapeAngle) * 50;
+            
+            overworldNPC.waitTimer = 0; // Make them move IMMEDIATELY instead of waiting
+            overworldNPC.isMoving = true;
+            overworldNPC.targetX = overworldNPC.x + Math.cos(escapeAngle) * 200;
+            overworldNPC.targetY = overworldNPC.y + Math.sin(escapeAngle) * 200;
         }
-    } else {
-        playerObj.x = savedWorldPlayerState_Battle.x;
-        playerObj.y = savedWorldPlayerState_Battle.y;
     }
 
-    // Show the UI using the variables we calculated at the top
-    createBattleSummaryUI(isFleeing ? "Retreat!" : "Victory!", playerLost, enemyLost);
+    // --- 4. HEAL PLAYER IF DEFEATED ---
+    if (playerObj.hp <= 0) {
+        playerObj.hp = playerObj.maxHealth; 
+        console.log("Commander survived their wounds and recovered.");
+    }
 
-    // --- 3. CLEAN UP AT THE VERY END ---
+    // --- 5. UI & CLEANUP ---
+    if (typeof createBattleSummaryUI === 'function') {
+        createBattleSummaryUI(isFleeing ? "Retreat!" : "Victory!", playerLost, enemyLost);
+    }
+
+    // Reset Global States
     inBattleMode = false;
-    currentBattleData = null; // Safe to null now
-    battleEnvironment.units = []; // Safe to clear now
+    currentBattleData = null; 
+    battleEnvironment.units = []; 
     battleEnvironment.projectiles = [];
-	lastBattleTime = Date.now();
-	
-	// --- 4. HOOK BATTLE EXIT (Fixes Teleportation & UI bugs) ---
-//const originalLeaveBattlefield = leaveBattlefield;
-
-
-//;
-	
+    
+    // Set the cooldown timer to prevent instant re-entry into diplomacy/battle
+    lastBattleTime = Date.now();
+    
+    console.log("World Map Resumed at: ", playerObj.x, playerObj.y);
 }
-
 function createBattleSummaryUI(title, pLost, eLost) {
     const summaryDiv = document.createElement('div');
 	
