@@ -3,53 +3,79 @@
 // ============================================================================
 
 // 1. GLOBAL UI & MOUSE STATES
-// Defined at top level so all systems can access mouse position and UI status
 let worldMouseX = 0;
 let worldMouseY = 0;
 let isHoveringPlayer = false;
 window.isRosterOpen = false; 
+let siegeUiCheckTick = 0;
 
 // 2. NPC BOUNDS FIX
 function enforceNPCBounds(npc, worldWidth, worldHeight) {
-    const margin = 50; // Keep them away from the absolute edge
+    const margin = 50; 
     if (npc.x < margin) { npc.x = margin; npc.vx *= -1; }
     if (npc.x > worldWidth - margin) { npc.x = worldWidth - margin; npc.vx *= -1; }
     if (npc.y < margin) { npc.y = margin; npc.vy *= -1; }
     if (npc.y > worldHeight - margin) { npc.y = worldHeight - margin; npc.vy *= -1; }
 }
 
-// 3. EVENT LISTENERS (Declared once)
+// 3. EVENT LISTENERS
 window.addEventListener('keydown', (e) => {
-    // Block overlay toggle if in battle or specific modes
     if (typeof inBattleMode !== 'undefined' && (inBattleMode || inCityMode || (typeof inParleMode !== 'undefined' && inParleMode))) return;
 
     if (e.key.toLowerCase() === 't') {
         window.isRosterOpen = !window.isRosterOpen; 
-        console.log("Roster Status:", window.isRosterOpen);
     }
 });
 
 window.addEventListener('mousemove', (e) => {
-    // Dependency Check: Needs access to the main game 'canvas' and 'player' objects
-    if (typeof canvas === 'undefined' || typeof player === 'undefined' || !player) return;
+    //if (typeof canvas === 'undefined' || typeof player === 'undefined' || !player) return;
     
-    // Convert screen mouse to world coordinates based on camera zoom/offset
-    const rect = canvas.getBoundingClientRect();
-    const screenX = e.clientX - rect.left;
-    const screenY = e.clientY - rect.top;
+    //const rect = canvas.getBoundingClientRect();
+   // const screenX = e.clientX - rect.left;
+   // const screenY = e.clientY - rect.top;
 
-    // Calculate World Coordinates
-    worldMouseX = (screenX - canvas.width / 2) / zoom + player.x;
-    worldMouseY = (screenY - canvas.height / 2) / zoom + player.y;
+   // worldMouseX = (screenX - canvas.width / 2) / zoom + player.x;
+  //  worldMouseY = (screenY - canvas.height / 2) / zoom + player.y;
 
-    // Check if mouse is hovering over the player (using world coords)
-    const dist = Math.hypot(worldMouseX - player.x, worldMouseY - player.y);
-    isHoveringPlayer = dist < 25;
+  //  const dist = Math.hypot(worldMouseX - player.x, worldMouseY - player.y);
+   // isHoveringPlayer = dist < 25;
 });
 
-// 4. MAIN DRAWING FUNCTION
+// 4. DATA CLEANUP (Pruning)
+/**
+ * Removes empty troop entries from the player's data object
+ */
+function prunePlayerTroops() {
+    if (!player || !player.troopGroups) return;
+    for (let key in player.troopGroups) {
+        if (player.troopGroups[key].count <= 0) {
+            delete player.troopGroups[key];
+        }
+    }
+}
+
+// 5. SIEGE UI PERSISTENCE HEARTBEAT
+function maintainSiegeUI() {
+    if (typeof inBattleMode !== 'undefined' && inBattleMode) return;
+    if (typeof inCityMode !== 'undefined' && inCityMode) return;
+
+    siegeUiCheckTick++;
+    if (siegeUiCheckTick % 30 !== 0) return; 
+
+    const siegeGui = document.getElementById('siege-gui');
+    if (player.isSieging && siegeGui && (siegeGui.style.display === 'none' || !siegeGui.style.display)) {
+        // Look for existing siege record in global activeSieges array
+        const mySiege = (typeof activeSieges !== 'undefined') ? 
+            activeSieges.find(s => s.attacker.isPlayer || s.attacker === player) : null;
+        
+        if (mySiege && typeof showSiegeGUI === 'function') {
+            showSiegeGUI(mySiege, mySiege.defender);
+        }
+    }
+}
+
+// 6. MAIN DRAWING FUNCTION
 function drawPlayerOverlay(ctx, player, zoom) {
-    // A. Mode Safety Check
     if (typeof inBattleMode !== 'undefined' && (inBattleMode || inCityMode || (typeof inParleMode !== 'undefined' && inParleMode))) {
         isHoveringPlayer = false;
         window.isRosterOpen = false;
@@ -58,25 +84,20 @@ function drawPlayerOverlay(ctx, player, zoom) {
     
     const htmlUI = document.getElementById('ui');
     
-    // B. Visibility Logic: If not hovering and not locked open, show standard HTML UI and exit
     if (!isHoveringPlayer && !window.isRosterOpen) {
         if (htmlUI) htmlUI.style.display = "block"; 
         return;
     }
     
-    // Otherwise, we are showing the Overlay, so hide the HTML UI
     if (htmlUI) htmlUI.style.display = "none";
 
-    // C. Rendering the Canvas Overlay
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to draw in Screen Space
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
 
     const W = ctx.canvas.width;
     const H = ctx.canvas.height;
-
-    // --- COMPACT OVERLAY DIMENSIONS ---
-    const boxW = W * 0.8;  // 80% width
-    const boxH = H * 0.7;  // 70% height
+    const boxW = W * 0.8; 
+    const boxH = H * 0.7; 
     const startX = (W - boxW) / 2; 
     const startY = (H - boxH) / 2; 
 
@@ -94,10 +115,10 @@ function drawPlayerOverlay(ctx, player, zoom) {
         if (!troopGroups[key]) {
             troopGroups[key] = { type: u.type || 'Unit', lvl: l, exp: e, count: 0 };
         }
-        troopGroups[key].count += (u.count || 1);
+        troopGroups[key].count += (u.count || 0);
     });
 
-    // Background & Frame
+    // Drawing Background
     ctx.fillStyle = "rgba(10, 8, 5, 0.95)"; 
     ctx.fillRect(startX, startY, boxW, boxH);
     ctx.strokeStyle = "#d4b886";
@@ -106,13 +127,12 @@ function drawPlayerOverlay(ctx, player, zoom) {
 
     const paddingX = startX + 40;
     
-    // Player Header
+    // Player Header & Status
     ctx.textAlign = "left";
     ctx.fillStyle = "#ffca28";
     ctx.font = "bold 28px Georgia";
     ctx.fillText("PLAYER DATA", paddingX, startY + 50);
 
-    // Character Status
     const pLvl = player.experienceLevel || 1;
     const pExp = player.experience || 0;
     const expNeeded = pLvl * 10; 
@@ -137,10 +157,8 @@ function drawPlayerOverlay(ctx, player, zoom) {
     ctx.fillRect(paddingX, startY + 185, 300, 8); 
     ctx.fillStyle = "#ffca28"; 
     ctx.fillRect(paddingX, startY + 185, 300 * pExpPercent, 8);
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
-    ctx.strokeRect(paddingX, startY + 185, 300, 8);
 
-    // Army Roster
+    // Army Roster Rendering
     const rosterStartY = startY + 230; 
     ctx.font = "bold 16px Georgia"; 
     ctx.fillStyle = "#d4b886";
@@ -151,7 +169,9 @@ function drawPlayerOverlay(ctx, player, zoom) {
     const colGap = 30; 
     const rowGap = 45; 
 
-    const units = Object.values(troopGroups);
+    // SURGICAL FIX: Filter out 0-count troops so dead units don't show
+    const units = Object.values(troopGroups).filter(u => u.count > 0);
+
     units.forEach((unit) => {
         ctx.font = "bold 11px monospace"; 
         const name = unit.type.toUpperCase();
@@ -181,11 +201,14 @@ function drawPlayerOverlay(ctx, player, zoom) {
     ctx.restore();
 }
 
-// 5. INTEGRATION HELPER
+// 7. INTEGRATION HELPER (Call this in your main loop)
 function updateAndDrawPlayerSystems(ctx, player, zoom, worldW, worldH, npcs) {
-    // Fix NPC bounds
+    // 1. NPC world logic
     if (npcs) npcs.forEach(npc => enforceNPCBounds(npc, worldW, worldH));
     
-    // Draw Player UI
+    // 2. Persistent Siege Check
+    maintainSiegeUI();
+    
+    // 3. Draw Player UI
     drawPlayerOverlay(ctx, player, zoom);
 }

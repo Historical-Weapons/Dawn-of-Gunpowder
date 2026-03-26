@@ -197,6 +197,7 @@ const playBtn = createBtn("Enter World", () => {
         playBtn.style.display = "none";
 		
 		const instrBtn = createBtn("Manual", () => {
+
             // MAKE PLAY BUTTON VISIBLE ON CLICK
             playBtn.style.display = "block";
             
@@ -207,6 +208,12 @@ const playBtn = createBtn("Enter World", () => {
             // SHOW THE IN-GAME MODAL INSTEAD OF ALERT
             manualModal.style.display = "flex";
             uiContainer.style.display = "none"; // Hide main UI while reading
+			
+						// Inject Units button ONLY after manual is opened
+if (typeof window.injectUnitsGuide === "function") {
+    window.injectUnitsGuide();
+}
+
         });
 
         // --- CUSTOM SCROLLBAR CSS ---
@@ -223,10 +230,10 @@ const playBtn = createBtn("Enter World", () => {
         const manualModal = document.createElement("div");
         manualModal.style.display = "none"; // Hidden by default
         manualModal.style.flexDirection = "column";
-        manualModal.style.width = "600px";
-        manualModal.style.maxWidth = "90%";
-        manualModal.style.height = "70%";
-        manualModal.style.maxHeight = "600px";
+manualModal.style.width = "clamp(320px, 60vw, 900px)";
+manualModal.style.height = "clamp(300px, 70vh, 800px)";
+manualModal.style.maxWidth = "95vw";
+manualModal.style.maxHeight = "90vh";
         manualModal.style.background = "linear-gradient(to bottom, rgba(62, 39, 35, 0.95), rgba(74, 10, 10, 0.95))";
         manualModal.style.border = "3px solid #d4b886";
         manualModal.style.borderRadius = "8px";
@@ -303,8 +310,8 @@ const playBtn = createBtn("Enter World", () => {
             { type: "crossbow", name: "Poison Crossbowman", isCavalry: false },
             { type: "spearman", name: "Firelance", isCavalry: false },
             { type: "peasant", name: "Bomb", isCavalry: false },
-            { type: "archer", name: "Rocket", isCavalry: false },
-            { type: "horse_archer", name: "Horse Archer", isCavalry: true } // NEW CAVALRY
+            { type: "archer", name: "Rocket", isCavalry: false }
+   
         ];
 
         const headwears = ["none", "rice_hat", "mongol_helmet"];

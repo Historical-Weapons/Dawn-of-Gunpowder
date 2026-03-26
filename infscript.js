@@ -169,11 +169,17 @@ ctx.fillStyle = "#eeeeee";
             ctx.quadraticCurveTo(0, -13.5, -6, -12); ctx.fill(); ctx.stroke();
         }
     } else {
-ctx.fillStyle = "#212121"; // Dark hair
-ctx.beginPath(); 
-// Shifted center from -14.5 to -16.5
-ctx.arc(0, -16.5, 1.8, 0, Math.PI * 2); 
+// --- SIMPLE HAIR (clean + safe) ---
+ctx.fillStyle = "#212121";
+
+// top cap
+ctx.beginPath();
+ctx.arc(0, -13.5, 3.6, Math.PI, 0);
 ctx.fill();
+
+// small side hints (optional, very subtle)
+ctx.fillRect(-3.8, -12, 0.8, 2.5);
+ctx.fillRect(3.0, -12, 0.8, 2.5);
     }
     
 // 6. WEAPONS LOGIC (Preserved perfectly)

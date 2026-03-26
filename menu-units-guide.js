@@ -1,0 +1,1288 @@
+// menu-units-guide.js
+(function () {
+  if (window.__unitsGuideInstalled) return;
+  window.__unitsGuideInstalled = true;
+
+  const UNIT_DATA = [
+    {
+      name: "Archer",
+      desc: "Basic long-range support unit. Good for early damage and softening enemies.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "archer",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 20,
+        health: 20,
+        meleeAttack: 8,
+        meleeDefense: 10,
+        missileBaseDamage: 13,
+        missileAPDamage: 4,
+        accuracy: 55,
+        armor: "Leather",
+        speed: 0.85,
+        range: 700,
+        morale: 50,
+        cost: 25
+      }
+    },
+    {
+      name: "Bomb",
+      desc: "Explosive burst unit. Used for strong pressure and clustered targets.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "peasant",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 2,
+        health: 20,
+        meleeAttack: 8,
+        meleeDefense: 8,
+        missileBaseDamage: 30,
+        missileAPDamage: 100,
+        accuracy: 50,
+        armor: "Leather",
+        speed: 0.7,
+        range: 140,
+        morale: 60,
+        cost: 65
+      }
+    },
+    {
+      name: "Camel Cannon",
+      desc: "Small artillery cannon supplied by a Camel based on early 13th century findings of Wuwei. Strong ranged pressure, slow moving.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "camel_cannon",
+      stats: {
+        weightClass: "Cavalry",
+        isRanged: true,
+        ammo: 60,
+        health: 50,
+        meleeAttack: 12,
+        meleeDefense: 14,
+        missileBaseDamage: 35,
+        missileAPDamage: 80,
+        accuracy: 40,
+        armor: "Cloth",
+        speed: 0.75,
+        range: 850,
+        morale: 80,
+        cost: 100
+      }
+    },
+    {
+      name: "Crossbowman",
+      desc: "Core anti-armor ranged unit. Best at punching through armored targets.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "crossbow",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 30,
+        health: 20,
+        meleeAttack: 10,
+        meleeDefense: 5,
+        missileBaseDamage: 12,
+        missileAPDamage: 28,
+        accuracy: 65,
+        armor: "Partial Lamellar",
+        speed: 0.7,
+        range: 700,
+        morale: 50,
+        cost: 35
+      }
+    },
+    {
+      name: "Elite Lancer",
+      desc: "Top-tier cavalry. Very durable and built for decisive charges.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "lancer",
+      stats: {
+        weightClass: "Heavy Cavalry",
+        health: 100,
+        meleeAttack: 28,
+        meleeDefense: 24,
+        armor: "Super Heavy + 5",
+        speed: 1.2,
+        range: 25,
+        morale: 85,
+        cost: 150
+      }
+    },
+    {
+      name: "Firelance",
+      desc: "Short-range shock infantry. Strong burst unit that can punish close targets fast.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "spearman",
+      stats: {
+        weightClass: "Heavy Infantry",
+        isRanged: true,
+        ammo: 1,
+        health: 20,
+        meleeAttack: 16,
+        meleeDefense: 14,
+        missileBaseDamage: 14,
+        missileAPDamage: 45,
+        accuracy: 55,
+        armor: "Partial Lamellar",
+        speed: 0.8,
+        range: 30,
+        morale: 60,
+        cost: 50
+      }
+    },
+    {
+      name: "Glaiveman",
+      desc: "Solid melee fighter with balanced offense and defense.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "two_handed",
+      stats: {
+        weightClass: "Heavy Infantry",
+        health: 30,
+        meleeAttack: 18,
+        meleeDefense: 14,
+        armor: "Partial Lamellar",
+        speed: 0.75,
+        range: 20,
+        morale: 65,
+        cost: 45
+      }
+    },
+    {
+      name: "Hand Cannoneer",
+      desc: "High-damage gunner. Strong ranged burst but not built for melee.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "gun",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 30,
+        health: 20,
+        meleeAttack: 10,
+        meleeDefense: 12,
+        missileBaseDamage: 25,
+        missileAPDamage: 50,
+        accuracy: 65,
+        armor: "Cloth",
+        speed: 0.75,
+        range: 800,
+        morale: 70,
+        cost: 70
+      }
+    },
+    {
+      name: "Heavy Crossbowman",
+      desc: "Durable ranged unit with stronger shots and better staying power.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "crossbow",
+      stats: {
+        weightClass: "Heavy Infantry",
+        isRanged: true,
+        ammo: 25,
+        health: 40,
+        meleeAttack: 14,
+        meleeDefense: 14,
+        missileBaseDamage: 15,
+        missileAPDamage: 30,
+        accuracy: 70,
+        armor: "Full Lamellar",
+        speed: 0.6,
+        range: 800,
+        morale: 65,
+        cost: 50
+      }
+    },
+    {
+      name: "Heavy Firelance",
+      desc: "More durable, stronger version of Firelance with better morale and damage.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "spearman",
+      stats: {
+        weightClass: "Heavy Infantry",
+        isRanged: true,
+        ammo: 2,
+        health: 40,
+        meleeAttack: 20,
+        meleeDefense: 20,
+        missileBaseDamage: 20,
+        missileAPDamage: 60,
+        accuracy: 60,
+        armor: "Full Lamellar",
+        speed: 0.75,
+        range: 30,
+        morale: 70,
+        cost: 80
+      }
+    },
+    {
+      name: "Heavy Horse Archer",
+      desc: "Stronger armored mounted archer with better combat stats and survivability.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "horse_archer",
+      stats: {
+        weightClass: "Heavy Cavalry",
+        isRanged: true,
+        ammo: 20,
+        health: 40,
+        meleeAttack: 16,
+        meleeDefense: 18,
+        missileBaseDamage: 11,
+        missileAPDamage: 6,
+        accuracy: 65,
+        armor: "Full Lamellar",
+        speed: 1.4,
+        range: 700,
+        morale: 70,
+        cost: 75
+      }
+    },
+    {
+      name: "Heavy Lancer",
+      desc: "Stronger cavalry with better armor and melee power.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "lancer",
+      stats: {
+        weightClass: "Heavy Cavalry",
+        health: 50,
+        meleeAttack: 24,
+        meleeDefense: 20,
+        armor: "Full Lamellar",
+        speed: 1.2,
+        range: 25,
+        morale: 75,
+        cost: 90
+      }
+    },
+    {
+      name: "Javelinier",
+      desc: "Throwing skirmisher. Good for ranged pokes before closing into melee.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "throwing",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 4,
+        health: 20,
+        meleeAttack: 10,
+        meleeDefense: 10,
+        missileBaseDamage: 18,
+        missileAPDamage: 15,
+        accuracy: 50,
+        armor: "Leather",
+        speed: 0.85,
+        range: 300,
+        morale: 50,
+        cost: 25
+      }
+    },
+    {
+      name: "Lancer",
+      desc: "Fast charge cavalry unit. Good for flanks, charges, and chasing ranged troops.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "lancer",
+      stats: {
+        weightClass: "Cavalry",
+        health: 25,
+        meleeAttack: 18,
+        meleeDefense: 14,
+        armor: "Partial Lamellar",
+        speed: 1.5,
+        range: 25,
+        morale: 60,
+        cost: 60
+      }
+    },
+    {
+      name: "Light Two Handed",
+      desc: "Fast melee attacker. High damage, but less durable than shield troops.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "two_handed",
+      stats: {
+        weightClass: "Light Infantry",
+        health: 20,
+        meleeAttack: 30,
+        meleeDefense: 12,
+        armor: "Leather",
+        speed: 0.9,
+        range: 20,
+        morale: 65,
+        cost: 35
+      }
+    },
+    {
+      name: "Mangudai",
+      desc: "Elite mounted archer. Fast, deadly, and built for advanced skirmishing.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "horse_archer",
+      stats: {
+        weightClass: "Heavy Cavalry",
+        isRanged: true,
+        ammo: 35,
+        health: 45,
+        meleeAttack: 18,
+        meleeDefense: 16,
+        missileBaseDamage: 14,
+        missileAPDamage: 8,
+        accuracy: 75,
+        armor: "Super Heavy",
+        speed: 1.8,
+        range: 700,
+        morale: 80,
+        cost: 155
+      }
+    },
+    {
+      name: "Militia",
+      desc: "Cheap starter infantry. Good for holding space early, but weak in long fights.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "peasant",
+      stats: {
+        weightClass: "Light Infantry",
+        health: 20,
+        meleeAttack: 12,
+        meleeDefense: 6,
+        armor: "Cloth",
+        speed: 1.1,
+        range: 25,
+        morale: 35,
+        cost: 5
+      }
+    },
+    {
+      name: "Poison Crossbowman",
+      desc: "Accurate ranged unit focused on sustained pressure and reliable damage.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "crossbow",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 30,
+        health: 20,
+        meleeAttack: 12,
+        meleeDefense: 12,
+        missileBaseDamage: 60,
+        missileAPDamage: 1,
+        accuracy: 90,
+        armor: "Leather",
+        speed: 0.8,
+        range: 400,
+        morale: 55,
+        cost: 45
+      }
+    },
+    {
+      name: "Repeater Crossbowman",
+      desc: "Fast-firing ranged unit. Great for steady damage output.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "crossbow",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 40,
+        health: 30,
+        meleeAttack: 8,
+        meleeDefense: 10,
+        missileBaseDamage: 15,
+        missileAPDamage: 2,
+        accuracy: 45,
+        armor: "Partial Lamellar",
+        speed: 0.75,
+        range: 700,
+        morale: 55,
+        cost: 40
+      }
+    },
+    {
+      name: "Rocket",
+      desc: "Long-range pressure unit. Best for area damage and enemy disruption.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "throwing",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 50,
+        health: 30,
+        meleeAttack: 8,
+        meleeDefense: 8,
+        missileBaseDamage: 15,
+        missileAPDamage: 5,
+        accuracy: 55,
+        armor: "Leather",
+        speed: 0.5,
+        range: 520,
+        morale: 55,
+        cost: 55
+      }
+    },
+    {
+      name: "Shielded Infantry",
+      desc: "Defensive frontline unit with shield block. Good for soaking enemy pressure.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "sword_shield",
+      stats: {
+        weightClass: "Heavy Infantry",
+        health: 40,
+        meleeAttack: 10,
+        meleeDefense: 28,
+        armor: "Leather",
+        shieldBlockChance: 25,
+        speed: 0.5,
+        range: 20,
+        morale: 60,
+        cost: 30
+      }
+    },
+    {
+      name: "Slinger",
+      desc: "Cheap harassment unit. Weak individually, useful in early skirmishes.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "throwing",
+      stats: {
+        weightClass: "Light Infantry",
+        isRanged: true,
+        ammo: 30,
+        health: 20,
+        meleeAttack: 6,
+        meleeDefense: 8,
+        missileBaseDamage: 5,
+        missileAPDamage: 7,
+        accuracy: 50,
+        armor: "Cloth",
+        speed: 1.0,
+        range: 650,
+        morale: 40,
+        cost: 15
+      }
+    },
+    {
+      name: "Spearman",
+      desc: "Defensive anti-cavalry infantry. Strong when holding a line.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "spearman",
+      stats: {
+        weightClass: "Heavy Infantry",
+        health: 20,
+        meleeAttack: 14,
+        meleeDefense: 16,
+        armor: "Partial Lamellar",
+        bonusVsLarge: 20,
+        speed: 0.75,
+        range: 30,
+        morale: 55,
+        cost: 10
+      }
+    },
+    {
+      name: "War Elephant",
+      desc: "Massive shock unit. Extremely strong morale and melee presence, but expensive.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "elephant",
+      stats: {
+        weightClass: "Elephant",
+        health: 100,
+        meleeAttack: 35,
+        meleeDefense: 20,
+        armor: "Juggernaut",
+        speed: 0.9,
+        range: 25,
+        morale: 100,
+        cost: 300
+      }
+    },
+    {
+      name: "Heavy Two Handed",
+      desc: "Slow heavy bruiser. Better for breaking enemy lines and finishing fights.",
+      mounted: false,
+      renderMode: "infantry",
+      renderType: "two_handed",
+      stats: {
+        weightClass: "Heavy Infantry",
+        health: 25,
+        meleeAttack: 36,
+        meleeDefense: 16,
+        armor: "Full Lamellar",
+        speed: 0.65,
+        range: 20,
+        morale: 75,
+        cost: 60
+      }
+    },
+    {
+      name: "Horse Archer",
+      desc: "Fast mobile ranged unit. Best for skirmishing, chasing, and hit-and-run tactics.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "horse_archer",
+      stats: {
+        weightClass: "Cavalry",
+        isRanged: true,
+        ammo: 20,
+        health: 40,
+        meleeAttack: 12,
+        meleeDefense: 12,
+        missileBaseDamage: 11,
+        missileAPDamage: 4,
+        accuracy: 60,
+        armor: "Partial Lamellar",
+        speed: 1.6,
+        range: 700,
+        morale: 60,
+        cost: 50
+      }
+    },
+    {
+      name: "Heavy Horse Archer",
+      desc: "Stronger armored mounted archer with better combat stats and survivability.",
+      mounted: true,
+      renderMode: "cavalry",
+      renderType: "horse_archer",
+      stats: {
+        weightClass: "Heavy Cavalry",
+        isRanged: true,
+        ammo: 20,
+        health: 40,
+        meleeAttack: 16,
+        meleeDefense: 18,
+        missileBaseDamage: 11,
+        missileAPDamage: 6,
+        accuracy: 65,
+        armor: "Full Lamellar",
+        speed: 1.4,
+        range: 700,
+        morale: 70,
+        cost: 75
+      }
+    }
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  const STAT_ORDER = [
+    "weightClass",
+    "isRanged",
+    "ammo",
+    "health",
+    "meleeAttack",
+    "meleeDefense",
+    "missileBaseDamage",
+    "missileAPDamage",
+    "accuracy",
+    "armor",
+    "bonusVsLarge",
+    "shieldBlockChance",
+    "speed",
+    "range",
+    "morale",
+    "cost"
+  ];
+
+  const STAT_LABELS = {
+    weightClass: "Weight",
+    isRanged: "Ranged",
+    ammo: "Ammo",
+    health: "Health",
+    meleeAttack: "Melee Atk",
+    meleeDefense: "Melee Def",
+    missileBaseDamage: "Missile Dmg",
+    missileAPDamage: "AP Dmg",
+    accuracy: "Accuracy",
+    armor: "Armor",
+    bonusVsLarge: "Bonus vs Large",
+    shieldBlockChance: "Shield Block",
+    speed: "Speed",
+    range: "Range",
+    morale: "Morale",
+    cost: "Cost"
+  };
+
+  function waitForElement(selector, cb, timeout = 20000) {
+    const start = Date.now();
+    const tick = () => {
+      const el = document.querySelector(selector);
+      if (el) return cb(el);
+      if (Date.now() - start > timeout) return;
+      requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  function create(tag, style) {
+    const el = document.createElement(tag);
+    if (style) Object.assign(el.style, style);
+    return el;
+  }
+
+  function prettyValue(key, value) {
+    if (value === true) return "Yes";
+    if (value === false) return "No";
+    if (value === null || typeof value === "undefined") return "—";
+    if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.00$/, "");
+    return String(value);
+  }
+
+  function makeStatGrid(stats) {
+    const items = [];
+    for (const key of STAT_ORDER) {
+      if (!(key in stats)) continue;
+      items.push(`
+        <div style="display:flex; justify-content:space-between; gap:10px; padding:5px 8px; border:1px solid rgba(212,184,134,0.14); border-radius:6px; background:rgba(255,255,255,0.03);">
+          <span style="color:#d4b886; font-weight:700; white-space:nowrap;">${STAT_LABELS[key]}</span>
+          <span style="color:#fff; text-align:right; white-space:nowrap;">${prettyValue(key, stats[key])}</span>
+        </div>
+      `);
+    }
+    return items.join("");
+  }
+
+  function sizeCanvas(canvas, cssW, cssH) {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    canvas.width = Math.max(1, Math.floor(cssW * dpr));
+    canvas.height = Math.max(1, Math.floor(cssH * dpr));
+    return canvas.getContext("2d");
+  }
+
+  function drawGreenTerrain(ctx, w, h) {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#cbe9ff");
+    sky.addColorStop(0.45, "#9ed38f");
+    sky.addColorStop(1, "#3f7f36");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    const hill1 = ctx.createLinearGradient(0, h * 0.35, 0, h);
+    hill1.addColorStop(0, "rgba(104, 151, 71, 0.55)");
+    hill1.addColorStop(1, "rgba(56, 102, 38, 0.95)");
+    ctx.fillStyle = hill1;
+    ctx.beginPath();
+    ctx.moveTo(0, h * 0.58);
+    ctx.quadraticCurveTo(w * 0.18, h * 0.42, w * 0.34, h * 0.58);
+    ctx.quadraticCurveTo(w * 0.55, h * 0.79, w * 0.72, h * 0.58);
+    ctx.quadraticCurveTo(w * 0.88, h * 0.46, w, h * 0.62);
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    for (let i = 0; i < 22; i++) {
+      const x = (i * w) / 21;
+      const y = h * 0.62 + Math.sin(i * 0.75) * 4;
+      ctx.fillRect(x, y, 1.5, 10 + (i % 5));
+    }
+
+    ctx.strokeStyle = "rgba(28, 82, 20, 0.25)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 28; i++) {
+      const x = (i * w) / 27;
+      ctx.beginPath();
+      ctx.moveTo(x, h * 0.62);
+      ctx.quadraticCurveTo(x + 4, h * 0.58 - (i % 3), x + 6, h * 0.62 + 12);
+      ctx.stroke();
+    }
+  }
+
+function resolvePreviewSpec(unit) {
+  const name = (unit?.name || "").trim();
+  const lower = name.toLowerCase();
+  const stats = unit?.stats || {};
+  const ammo = typeof stats.ammo === "number" ? stats.ammo : (typeof unit?.ammo === "number" ? unit.ammo : 0);
+
+  // Special cases first
+  if (lower === "bomb") {
+    return { mode: "infantry", type: "bomb", ammo, zoom: 1.9, xBias: 0.48, yBias: 0.73 };
+  }
+
+  if (lower.includes("rocket") || lower.includes("hwacha")) {
+    return { mode: "infantry", type: "rocket", ammo, zoom: 1.8, xBias: 0.47, yBias: 0.74 };
+  }
+
+  if (lower.includes("firelance")) {
+    return { mode: "infantry", type: "firelance", ammo, zoom: 1.8, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower === "glaiveman" || lower.includes("glaive")) {
+    return { mode: "infantry", type: "spearman", ammo, zoom: 1.75, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("repeater crossbowman")) {
+    return { mode: "infantry", type: "crossbow", ammo, zoom: 1.75, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("heavy crossbowman")) {
+    return { mode: "infantry", type: "crossbow", ammo, zoom: 1.78, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("crossbowman") || lower.includes("poison crossbowman")) {
+    return { mode: "infantry", type: "crossbow", ammo, zoom: 1.72, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("hand cannoneer")) {
+    return { mode: "infantry", type: "gun", ammo, zoom: 1.75, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("slinger") || lower.includes("javelinier")) {
+    return { mode: "infantry", type: "throwing", ammo, zoom: 1.72, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("archer") && !lower.includes("horse")) {
+    return { mode: "infantry", type: "archer", ammo, zoom: 1.72, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("shielded infantry")) {
+    return { mode: "infantry", type: "sword_shield", ammo, zoom: 1.72, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("two handed")) {
+    return { mode: "infantry", type: "two_handed", ammo, zoom: 1.74, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower.includes("spearman")) {
+    return { mode: "infantry", type: "spearman", ammo, zoom: 1.72, xBias: 0.47, yBias: 0.72 };
+  }
+
+  if (lower === "militia") {
+    return { mode: "infantry", type: "peasant", ammo, zoom: 1.72, xBias: 0.47, yBias: 0.72 };
+  }
+
+if (lower.includes("camel cannon")) {
+  return { 
+    mode: "cavalry",
+    type: "camel",              // ✅ THIS is the mount
+    subtype: "camel_cannon",    // ✅ weapon/platform
+    ammo,
+    zoom: 1.42,
+    xBias: 0.44,
+    yBias: 0.74
+  };
+}
+
+  if (lower.includes("war elephant") || lower.includes("elephant")) {
+    return { mode: "cavalry", type: "elephant", ammo, zoom: 1.22, xBias: 0.42, yBias: 0.76 };
+  }
+
+  if (lower.includes("mangudai") || lower.includes("horse archer")) {
+    return { mode: "cavalry", type: "horse_archer", ammo, zoom: 1.45, xBias: 0.44, yBias: 0.74 };
+  }
+
+  if (lower.includes("lancer")) {
+    return { mode: "cavalry", type: "lancer", ammo, zoom: 1.45, xBias: 0.44, yBias: 0.74 };
+  }
+
+  // Fallback
+  return {
+    mode: unit?.mounted ? "cavalry" : "infantry",
+    type: unit?.renderType || (unit?.mounted ? "lancer" : "peasant"),
+    ammo,
+    zoom: unit?.mounted ? 1.45 : 1.72,
+    xBias: unit?.mounted ? 0.44 : 0.47,
+    yBias: 0.72
+  };
+}
+
+function renderPortrait(canvas, unit) {
+  if (!canvas || !unit) return;
+  const ctx = canvas.getContext("2d");
+
+  const cssW = canvas.clientWidth || 480;
+  const cssH = canvas.clientHeight || 280;
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.width = Math.max(1, Math.floor(cssW * dpr));
+  canvas.height = Math.max(1, Math.floor(cssH * dpr));
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  // Green terrain background
+  const sky = ctx.createLinearGradient(0, 0, 0, cssH);
+  sky.addColorStop(0, "#d7f0c7");
+  sky.addColorStop(0.48, "#8bc46a");
+  sky.addColorStop(1, "#3f7f36");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  for (let i = 0; i < 18; i++) {
+    const x = (i * cssW) / 17;
+    ctx.fillRect(x, cssH * 0.42 + Math.sin(i * 0.8) * 5, 2, 14 + (i % 6));
+  }
+
+  ctx.fillStyle = "rgba(55, 110, 40, 0.92)";
+  ctx.beginPath();
+  ctx.moveTo(0, cssH * 0.62);
+  ctx.quadraticCurveTo(cssW * 0.20, cssH * 0.48, cssW * 0.38, cssH * 0.62);
+  ctx.quadraticCurveTo(cssW * 0.58, cssH * 0.80, cssW * 0.78, cssH * 0.62);
+  ctx.quadraticCurveTo(cssW * 0.90, cssH * 0.54, cssW, cssH * 0.65);
+  ctx.lineTo(cssW, cssH);
+  ctx.lineTo(0, cssH);
+  ctx.closePath();
+  ctx.fill();
+
+  const spec = resolvePreviewSpec(unit);
+  const factionColor = "#1976d2";
+
+  // Bigger portrait scale, centered higher so the unit and stats feel balanced
+  const baseX = cssW * spec.xBias;
+  const baseY = cssH * spec.yBias;
+
+  ctx.save();
+  ctx.translate(baseX, baseY);
+  ctx.scale(spec.zoom, spec.zoom);
+
+  try {
+    if (spec.mode === "cavalry" && typeof drawCavalryUnit === "function") {
+      drawCavalryUnit(
+        ctx,
+        0,
+        0,
+        false,
+        0,
+        factionColor,
+        false,
+        spec.type,
+        "player",
+        unit.name,
+        false,
+        0,
+        spec.ammo,
+        { id: unit.name, lastAttackTime: 0, stats: unit.stats || {} },
+        0
+      );
+    } else if (typeof drawInfantryUnit === "function") {
+      drawInfantryUnit(
+        ctx,
+        0,
+        0,
+        false,
+        0,
+        factionColor,
+        spec.type,
+        false,
+        "player",
+        unit.name,
+        false,
+        0,
+        spec.ammo,
+        { id: unit.name, lastAttackTime: 0, stats: unit.stats || {} },
+        0
+      );
+    } else {
+      ctx.fillStyle = "#fff";
+      ctx.font = "16px Georgia, serif";
+      ctx.fillText("Render functions not loaded", 12, 20);
+    }
+  } catch (err) {
+    console.warn("Unit portrait render failed:", unit.name, err);
+    ctx.fillStyle = "#fff";
+    ctx.font = "16px Georgia, serif";
+    ctx.fillText("Render failed: " + unit.name, 12, 20);
+  }
+
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillRect(0, cssH - 34, cssW, 34);
+  ctx.fillStyle = "#f5d76e";
+  ctx.font = "700 13px Georgia, serif";
+  ctx.fillText(`Preview: ${spec.mode} / ${spec.type}`, 12, cssH - 12);
+}
+
+function createUnitsGuide() {
+  const existing = document.getElementById("units-guide-modal");
+  if (existing) return existing;
+
+  const modal = create("div", {
+    position: "fixed",
+    inset: "0",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(0,0,0,0.62)",
+    zIndex: "99999",
+    padding: "10px",
+    boxSizing: "border-box"
+  });
+  modal.id = "units-guide-modal";
+
+  const panel = create("div", {
+    width: "min(1100px, 96vw)",
+    height: "min(720px, 88vh)",
+    display: "flex",
+    flexDirection: "row",
+    background: "linear-gradient(180deg, rgba(28, 16, 16, 0.98), rgba(12, 10, 10, 0.98))",
+    border: "2px solid #d4b886",
+    borderRadius: "10px",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.85)",
+    overflow: "hidden",
+    color: "#fff",
+    fontFamily: "Georgia, serif",
+    boxSizing: "border-box"
+  });
+
+  const left = create("div", {
+    width: "38%",
+    minWidth: "300px",
+    display: "flex",
+    flexDirection: "column",
+    borderRight: "1px solid rgba(212,184,134,0.28)",
+    background: "rgba(255,255,255,0.02)"
+  });
+
+  const right = create("div", {
+    width: "62%",
+    minWidth: "0",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    padding: "12px",
+    boxSizing: "border-box"
+  });
+
+  const leftHeader = create("div", {
+    padding: "14px 14px 10px 14px",
+    borderBottom: "1px solid rgba(212,184,134,0.18)"
+  });
+  leftHeader.innerHTML = `
+    <div style="font-size:24px; line-height:1; letter-spacing:2px; color:#f5d76e; font-weight:700;">UNITS</div>
+    <div style="margin-top:6px; color:#d4b886; font-size:12px; line-height:1.35;">
+      Tap a unit name to preview its portrait and stats.
+    </div>
+  `;
+
+  const leftList = create("div", {
+    flex: "1",
+    overflowY: "auto",
+    padding: "10px"
+  });
+
+  const rightTop = create("div", {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: "10px",
+    alignItems: "start"
+  });
+
+  const titleWrap = create("div", {
+    minWidth: "0"
+  });
+  titleWrap.innerHTML = `
+    <div id="units-selected-name" style="font-size:24px; font-weight:700; color:#f5d76e; letter-spacing:1px; line-height:1.1;">Militia</div>
+    <div id="units-selected-desc" style="margin-top:4px; color:#e8d9b6; font-size:13px; line-height:1.35;">Cheap starter infantry.</div>
+  `;
+
+  const renderTag = create("div", {
+    padding: "8px 10px",
+    borderRadius: "8px",
+    border: "1px solid rgba(212,184,134,0.25)",
+    background: "rgba(255,255,255,0.03)",
+    color: "#d4b886",
+    fontSize: "12px",
+    whiteSpace: "nowrap",
+    alignSelf: "start"
+	
+  });
+  renderTag.textContent = "";
+  renderTag.style.visibility = "hidden";
+
+  const portraitWrap = create("div", {
+    height: "130px",
+    minHeight: "130px",
+    background: "linear-gradient(180deg, #b9e0a7 0%, #7ab260 50%, #3f7f36 100%)",
+    border: "1px solid rgba(212,184,134,0.34)",
+    borderRadius: "8px",
+    overflow: "hidden",
+    position: "relative"
+  });
+
+  const canvas = create("canvas", {
+    display: "block",
+    width: "100%",
+    height: "100%"
+  });
+  portraitWrap.appendChild(canvas);
+
+  const statsPanel = create("div", {
+    flex: "1",
+    minHeight: "0",
+    display: "flex",
+    flexDirection: "column",
+    border: "1px solid rgba(212,184,134,0.18)",
+    borderRadius: "8px",
+    background: "rgba(0,0,0,0.16)",
+    overflow: "hidden"
+  });
+
+  const statsHeader = create("div", {
+    padding: "8px 12px",
+    borderBottom: "1px solid rgba(212,184,134,0.16)",
+    color: "#d4b886",
+    fontWeight: "700",
+    letterSpacing: "1px",
+    fontSize: "12px"
+  });
+  statsHeader.textContent = "UNIT STATS";
+
+  const statsScroll = create("div", {
+    flex: "1",
+    overflowY: "auto",
+    padding: "10px",
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+    boxSizing: "border-box"
+  });
+const closeBtn = document.createElement("button");
+closeBtn.textContent = "Close";
+
+// IMPORTANT: set this BEFORE appending children
+right.style.position = "relative";
+rightTop.style.position = "relative";
+
+Object.assign(closeBtn.style, {
+  position: "absolute",
+  top: "6px",
+  right: "6px",        // <-- move to right
+  transform: "none",   // <-- remove centering transform
+  zIndex: "10",
+
+  padding: "4px 10px",
+  background: "#3e2723",
+  color: "#f5d76e",
+  border: "1px solid #d4b886",
+  borderRadius: "6px",
+  cursor: "pointer",
+  fontWeight: "700",
+  fontSize: "13px"
+});
+
+closeBtn.onclick = () => {
+  modal.style.display = "none";
+
+  const menu = document.getElementById("main-menu");
+  if (menu) {
+    menu.style.visibility = "visible";
+    menu.style.pointerEvents = "auto";
+  }
+};
+
+right.appendChild(rightTop);
+right.appendChild(portraitWrap);
+right.appendChild(statsPanel);
+
+  statsPanel.appendChild(statsHeader);
+  statsPanel.appendChild(statsScroll);
+rightTop.appendChild(titleWrap);
+rightTop.appendChild(renderTag);
+rightTop.appendChild(closeBtn); // ✅ HERE
+rightTop.style.position = "relative";
+  panel.appendChild(left);
+  panel.appendChild(right);
+  modal.appendChild(panel);
+
+function selectUnit(unit) {
+    const nameEl = modal.querySelector("#units-selected-name");
+    const descEl = modal.querySelector("#units-selected-desc");
+
+    if (nameEl) nameEl.textContent = unit.name;
+
+    if (descEl) {
+        descEl.textContent = unit.desc;
+        descEl.style.marginTop = "4px"; // <-- adds space below the name
+    }
+
+    const stats = unit.stats || {};
+    statsScroll.innerHTML = Object.entries(stats)
+      .filter(([k]) => STAT_ORDER.includes(k))
+      .map(([k, v]) => `
+        <div style="display:flex; justify-content:space-between; gap:8px; padding:6px 8px; border:1px solid rgba(212,184,134,0.14); border-radius:6px; background:rgba(255,255,255,0.03); font-size:12px; min-width:0;">
+          <span style="color:#d4b886; font-weight:700;">${STAT_LABELS[k]}</span>
+          <span style="color:#fff; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${prettyValue(k, v)}</span>
+        </div>
+      `).join("");
+
+    renderPortrait(canvas, unit);
+  }
+
+  const list = UNIT_DATA.map((unit) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.dataset.unit = unit.name;
+    row.textContent = unit.name;
+    Object.assign(row.style, {
+      display: "block",
+      width: "100%",
+      textAlign: "left",
+      padding: "10px 10px",
+      margin: "0 0 7px 0",
+      background: "rgba(255,255,255,0.03)",
+      color: "#fff",
+      border: "1px solid rgba(212,184,134,0.18)",
+      borderRadius: "8px",
+      cursor: "pointer",
+      fontSize: "14px",
+      fontWeight: "700",
+      boxSizing: "border-box"
+    });
+
+    const subtitle = document.createElement("div");
+    subtitle.style.marginTop = "3px";
+    subtitle.style.fontWeight = "400";
+    subtitle.style.fontSize = "11px";
+    subtitle.style.color = "#cfcfcf";
+    subtitle.textContent = unit.mounted ? "Mounted" : "Foot";
+    row.appendChild(subtitle);
+
+    row.addEventListener("click", () => selectUnit(unit));
+    return row;
+  });
+
+  leftList.append(...list);
+  left.appendChild(leftHeader);
+  left.appendChild(leftList);
+
+  modal.selectUnit = selectUnit;
+  modal.setInitial = () => selectUnit(UNIT_DATA[0]);
+
+  return modal;
+}
+
+function injectIntoMenu() {
+  const menu = document.getElementById("main-menu");
+  if (!menu || menu.__unitsGuideHooked) return;
+
+  const modal = createUnitsGuide();
+  if (!modal.isConnected) document.body.appendChild(modal);
+
+  // Find the actual UI button column instead of guessing a random div
+  const buttonsContainer =
+    Array.from(menu.children).find((el) => el.tagName === "DIV" && el.querySelector("button")) || menu;
+
+  if (buttonsContainer.__unitsGuideButtonAdded) return;
+  buttonsContainer.__unitsGuideButtonAdded = true;
+
+  const unitsBtn = document.createElement("button");
+  unitsBtn.textContent = "Units";
+  Object.assign(unitsBtn.style, {
+    display: "block",
+    width: "min(280px, 82vw)",
+    margin: "10px 0 0 0",
+    padding: "15px 40px",
+    background: "linear-gradient(to bottom, #7b1a1a, #4a0a0a)",
+    color: "#f5d76e",
+    border: "2px solid #d4b886",
+    borderRadius: "4px",
+    cursor: "pointer",
+    fontFamily: "Georgia, serif",
+    fontSize: "1.2rem",
+    fontWeight: "bold",
+    textTransform: "uppercase",
+    boxShadow: "0 4px 6px rgba(0,0,0,0.5)",
+    transition: "all 0.2s",
+    boxSizing: "border-box"
+  });
+
+  unitsBtn.onmouseenter = () => {
+    unitsBtn.style.transform = "scale(1.05)";
+    unitsBtn.style.background = "linear-gradient(to bottom, #b71c1c, #7b1a1a)";
+    unitsBtn.style.color = "#fff";
+    unitsBtn.style.boxShadow = "0 0 20px #d4b886";
+  };
+
+  unitsBtn.onmouseleave = () => {
+    unitsBtn.style.transform = "scale(1)";
+    unitsBtn.style.background = "linear-gradient(to bottom, #7b1a1a, #4a0a0a)";
+    unitsBtn.style.color = "#f5d76e";
+    unitsBtn.style.boxShadow = "0 4px 6px rgba(0,0,0,0.5)";
+  };
+
+  unitsBtn.onclick = () => {
+    modal.style.display = "flex";
+menu.style.visibility = "hidden";
+menu.style.pointerEvents = "none";
+    if (typeof modal.setInitial === "function") modal.setInitial();
+  };
+
+  buttonsContainer.appendChild(unitsBtn);
+  menu.__unitsGuideHooked = true;
+  modal.__unitsGuideReady = true;
+}
+
+function addStyles() {
+  if (document.getElementById("units-guide-styles")) return;
+  const style = document.createElement("style");
+  style.id = "units-guide-styles";
+  style.textContent = `
+    #units-guide-modal {
+      box-sizing: border-box;
+    }
+
+    #units-guide-modal ::-webkit-scrollbar { width: 10px; height: 10px; }
+    #units-guide-modal ::-webkit-scrollbar-track { background: #241614; border-radius: 8px; }
+    #units-guide-modal ::-webkit-scrollbar-thumb { background: #d4b886; border-radius: 8px; }
+    #units-guide-modal ::-webkit-scrollbar-thumb:hover { background: #f5d76e; }
+
+#units-guide-modal button:not(.close-btn):hover {
+  background: rgba(212,184,134,0.10) !important;
+}
+
+    @media (max-width: 900px) {
+      #units-guide-modal {
+        padding: 6px !important;
+      }
+
+      #units-guide-modal > div {
+        width: 98vw !important;
+        height: 94vh !important;
+        flex-direction: column !important;
+      }
+
+      #units-guide-modal > div > div:first-child {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: 34% !important;
+        border-right: 0 !important;
+        border-bottom: 1px solid rgba(212,184,134,0.28) !important;
+      }
+
+      #units-guide-modal > div > div:last-child {
+        width: 100% !important;
+        height: 66% !important;
+      }
+
+      #units-guide-modal button {
+        width: min(280px, 90vw) !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+addStyles();
+//waitForElement("#main-menu", injectIntoMenu);
+window.injectUnitsGuide = injectIntoMenu;
+
+})();

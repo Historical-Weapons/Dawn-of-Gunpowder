@@ -1,0 +1,287 @@
+  body, html { margin: 0; padding: 0; overflow: hidden; background-color: #111; font-family: 'Georgia', serif; }
+/* Update in ui.css */
+canvas { 
+    display: block; 
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    z-index: 1; /* Ensure it is below #ui (z-index 10) */
+}
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #d4b886; font-size: 24px; font-weight: bold; text-transform: uppercase; letter-spacing: 4px;
+            text-shadow: 2px 2px 5px #000; z-index: 100;
+        }
+        /* Player Stats UI */
+        #ui {
+            position: absolute; top: 20px; left: 20px;
+            background: linear-gradient(135deg, rgba(35, 25, 15, 0.9), rgba(15, 10, 5, 0.95));
+            color: #d4b886; padding: 20px; border: 2px solid #5d4037;
+            border-radius: 4px; pointer-events: none; width: 280px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.9); z-index: 10; display: none;
+        }
+        h1 { margin: 0; font-size: 1.4rem; color: #f5d76e; text-shadow: 1px 1px 2px #000; border-bottom: 1px solid #5d4037; padding-bottom: 5px; }
+        .stat { display: flex; justify-content: space-between; margin: 8px 0; font-size: 0.9rem; }
+        .val { color: #fff; font-weight: bold; }
+        .hint { font-style: italic; font-size: 0.75rem; color: #888; margin-top: 10px; border-top: 1px solid #333; padding-top: 5px; }
+
+        /* NEW: City Interaction Panel */
+        #city-panel {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(to bottom, rgba(50, 10, 10, 0.95), rgba(20, 5, 5, 0.98));
+            color: #f5d76e; padding: 20px 40px; border: 2px solid #b71c1c;
+            border-radius: 8px; 
+			
+			pointer-events: auto;
+
+			min-width: 300px; text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,1); z-index: 20; display: none;
+            transition: opacity 0.3s ease;
+        }
+        #city-panel h2 { margin: 0 0 10px 0; font-size: 2rem; color: #ffca28; letter-spacing: 2px; text-shadow: 2px 2px 4px #000;}
+        #city-panel .city-stat { font-size: 1.1rem; color: #e0e0e0; }
+        #city-panel .city-action { margin-top: 15px; font-size: 0.85rem; color: #9e9e9e; font-style: italic; }
+   
+  
+#siege-sally-prompt {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    padding: 18px 22px;
+    min-width: 320px;
+    background: linear-gradient(to bottom, rgba(35, 25, 15, 0.98), rgba(15, 10, 5, 0.99));
+    color: #d4b886;
+    border: 3px solid #ffca28;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,1);
+    z-index: 3000;
+    pointer-events: auto;
+    text-align: center;
+}
+#siege-sally-text {
+    color: #ffca28;
+    font-weight: bold;
+    font-size: 1rem;
+}
+#siege-sally-actions {
+    display: flex;
+    gap: 8px;
+}
+ 
+
+
+/* Styling for the City Interaction Buttons */
+.menu-btn {
+    background: linear-gradient(to bottom, #7b1a1a, #4a0a0a);
+    color: #f5d76e;
+    border: 1px solid #d4b886;
+    padding: 8px 12px;
+    font-family: 'Georgia', serif;
+    font-size: 0.8rem;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.menu-btn:hover {
+    background: #b71c1c;
+    color: #fff;
+    border-color: #fff;
+    transform: translateY(-1px);
+}
+
+.menu-btn:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+ 
+#parle-panel {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: linear-gradient(to bottom, rgba(35, 25, 15, 0.98), rgba(15, 10, 5, 0.99));
+    color: #d4b886; padding: 25px; border: 3px solid #5d4037; border-radius: 6px;
+    text-align: center; z-index: 2000; font-family: 'Georgia', serif; min-width: 500px;
+    box-shadow: 0 10px 40px rgba(0,0,0,1); display: none;
+    box-sizing: border-box;
+}
+
+#parle-header h2 { margin: 0 0 10px 0; font-size: 2.2rem; color: #ffca28; letter-spacing: 2px; text-shadow: 2px 2px 4px #000; }
+
+ 
+#parle-dialogue { 
+    margin: 15px 0; 
+    font-size: 1.1rem; 
+    color: #eee; 
+    font-style: italic; 
+    background: rgba(0,0,0,0.6); 
+    padding: 10px; 
+    border-radius: 4px;
+    height: 160px;       /* Set a fixed height */
+    overflow-y: auto;    /* Enable scrollbar */
+    text-align: left;    /* Better for reading long text */
+}
+
+/* NEW: Custom Scrollbar Styling */
+#parle-dialogue::-webkit-scrollbar { width: 8px; }
+#parle-dialogue::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+#parle-dialogue::-webkit-scrollbar-thumb { background: #5d4037; border-radius: 4px; border: 1px solid #d4b886; }
+
+/* NEW: Faction Standing Badge */
+.standing-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-left: 10px;
+    vertical-align: middle;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* Rest of your existing CSS remains unchanged... */
+.parle-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; border-top: 1px solid #333; padding-top: 15px; }
+.force-column { background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; border: 1px solid #444; text-align: left; }
+.force-header { font-weight: bold; color: #ffca28; margin-bottom: 8px; border-bottom: 1px solid #5d4037; padding-bottom: 3px; font-size: 0.9rem; text-transform: uppercase; }
+.unit-list { font-size: 0.8rem; color: #aaa; list-style: none; padding: 0; margin: 0; font-family: monospace;}
+.unit-list li { margin-bottom: 3px;}
+#parle-action-box { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; border-top: 1px solid #333; padding-top: 15px; margin-top: 10px; }
+
+/* ============================================================================
+   NOTIFICATION & EVENT LOG (Top Right)
+   ============================================================================ */
+#diplomacy-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 280px;
+    background: linear-gradient(135deg, rgba(20, 15, 10, 0.95), rgba(10, 5, 0, 0.98));
+    border: 2px solid #5d4037;
+    border-radius: 2px;
+    padding: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+    z-index: 5000;
+    pointer-events: none; /* Allows clicking through the container to the game */
+}
+
+/* The button inside the container needs pointer events back */
+#diplomacy-container button {
+    pointer-events: auto;
+}
+
+#event-log-container {
+    margin-top: 8px;
+    height: 140px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px inset #3e2723;
+    padding: 8px;
+    overflow-y: auto;
+    pointer-events: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #5d4037 rgba(0,0,0,0.3);
+}
+
+/* Log Typography */
+.log-entry {
+    font-size: 0.72rem;
+    font-family: 'Georgia', serif;
+    margin-bottom: 5px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    line-height: 1.2;
+    animation: logFadeIn 0.3s ease-out;
+}
+
+@keyframes logFadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+
+.log-time { color: #888; font-family: monospace; margin-right: 5px; }
+.log-war { color: #ff5252; font-weight: bold; }
+.log-peace { color: #8bc34a; }
+.log-general { color: #d4b886; }
+
+/* ============================================================================
+   GEOPOLITICAL MATRIX - Centered-Left Placement
+   ============================================================================ */
+/* Locate and replace the diplomacy panel/menu styling */
+#diplomacy-panel {
+    position: fixed;
+    left: 0;
+    top: 50%; /* Occupies bottom 50% of screen */
+    width: calc(100% - 10px);
+    height: 50%;
+    
+    /* SAFETY: Ensure this panel intercepts all mouse events */
+    pointer-events: auto; 
+    z-index: 2000; /* Much higher than city-panel (20) */
+
+    background: linear-gradient(135deg, rgba(25, 15, 10, 0.98), rgba(10, 5, 0, 1));
+    border: 2px solid #5d4037;
+    border-left: none;
+    color: #d4b886;
+    padding: 20px;
+    box-sizing: border-box;
+    box-shadow: 5px 0 20px rgba(0,0,0,0.8);
+    display: none;
+}
+/* Ensure the table container also captures scrolls/clicks */
+#diplomacy-table-container {
+    width: 100%;
+    height: calc(100% - 50px);
+    overflow: auto;
+    pointer-events: auto; 
+}
+
+/* Ensure the table itself is an "opaque" block for clicks */
+.dip-table {
+    width: 100%;
+    min-width: 800px;
+    border-collapse: separate;
+    border-spacing: 1px;
+    /* Prevents clicking "through" the gaps in the table to the canvas/city panel */
+    background-color: #1a120f; 
+}
+
+.dip-table td {
+    padding: 10px;
+    background: rgba(45, 35, 25, 0.9); /* More opaque to block visual clutter */
+    text-align: center;
+    min-width: 60px;
+}
+
+/* Row Labels (Sticky Names) */
+.dip-row-label {
+    text-align: left !important;
+    background: rgba(62, 39, 35, 1) !important; /* Fully opaque */
+    color: #ffca28;
+    font-weight: bold;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    white-space: nowrap;
+    padding: 8px 15px !important;
+}
+
+/* Scrollbars */
+#diplomacy-panel::-webkit-scrollbar,
+#event-log-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+#diplomacy-panel::-webkit-scrollbar-track,
+#event-log-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+#diplomacy-panel::-webkit-scrollbar-thumb,
+#event-log-container::-webkit-scrollbar-thumb {
+    background: #5d4037;
+    border-radius: 0;
+}

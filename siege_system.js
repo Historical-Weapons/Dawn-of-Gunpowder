@@ -4,7 +4,15 @@
 
 let activeSieges = [];
 
+let pendingSallyOut = null;
+
+ 
 function initiateSiege(attacker, city) {
+    // ---> GATEKEEPER: Only the Player or Military Armies can lay siege <---
+    if (!attacker.isPlayer && attacker.role !== "Military") {
+        return; 
+    }
+
     // Prevent duplicate sieges on the same city
     if (activeSieges.some(s => s.defender === city)) return;
 
@@ -13,6 +21,7 @@ function initiateSiege(attacker, city) {
 
     // 1. LOCK STATES & CLEAR TARGETS
     attacker.isSieging = true;
+	city.isUnderSiege = true;   
     attacker.battleTarget = null;
     attacker.battlingTimer = 0;
     
@@ -34,7 +43,7 @@ function initiateSiege(attacker, city) {
         ticks: 0
     });
 }
-
+// 1. Update Initialization to show the new GUI
 function initiatePlayerSiege(city) {
     if (player.troops <= 0) {
         alert("You have no troops to lay siege!");
@@ -44,9 +53,61 @@ function initiatePlayerSiege(city) {
     player.isPlayer = true; 
     initiateSiege(player, city);
     
+    // Hide city panel
+	
     document.getElementById('city-panel').style.display = 'none';
+
+    // Show persistent Siege GUI
+    const gui = document.getElementById('siege-gui');
+    if (gui) {
+        gui.style.display = 'block';
+        document.getElementById('gui-assault-btn').style.display = 'block';
+        document.getElementById('gui-leave-btn').style.display = 'block';
+        document.getElementById('gui-sally-btn').style.display = 'none';
+        
+        const statusText = document.getElementById('siege-status-text');
+        statusText.innerText = "STATUS: Encircling the city...";
+        statusText.style.color = "#ffca28";
+    }
 }
 
+// 2. Safely end the siege and hide the GUI
+function endSiege(success = false) {
+    player.isSieging = false;
+    
+	    // SURGERY: Reset Buttons
+    const sBtn = document.getElementById('siege-button');
+    const aBtn = document.getElementById('assault-button');
+    if(sBtn) sBtn.style.display = 'block';
+    if(aBtn) aBtn.style.display = 'none';
+	
+    // Remove player siege from active list
+    activeSieges = activeSieges.filter(s => !s.attacker.isPlayer);
+
+    if (success) {
+        console.log("City Captured!");
+    } else {
+        console.log("Siege abandoned safely.");
+    }
+    
+    if(document.getElementById('siege-gui')) document.getElementById('siege-gui').style.display = 'none';
+}
+
+// 3. Re-wire the Sally Out prompt to modify the persistent GUI
+function promptSallyOut(siege, defenderMilitary, attackerCount) {
+    pendingSallyOut = { siege, defenderMilitary, attackerCount };
+
+    // Hide standard options
+    document.getElementById('gui-assault-btn').style.display = 'none';
+    document.getElementById('gui-leave-btn').style.display = 'none';
+    
+    // Show forced Sally Out button
+    const sallyBtn = document.getElementById('gui-sally-btn');
+    sallyBtn.style.display = 'block';
+    sallyBtn.innerText = `DEFENDERS SALLY OUT! (${defenderMilitary} vs ${attackerCount})`;
+}
+	
+	
 function updateSieges() {
     for (let i = activeSieges.length - 1; i >= 0; i--) {
         let siege = activeSieges[i];
@@ -59,60 +120,82 @@ function updateSieges() {
         // Check if attacker was ambushed by a military relief force
         let isInBattle = atk.isPlayer ? (typeof inBattleMode !== 'undefined' && inBattleMode) : (atk.battlingTimer > 0);
 
-        // Break the siege if they die or are pulled into a field battle
-        if (attackerDead || isInBattle) {
-            console.log(`The siege of ${def.name} has been broken!`);
-            atk.isSieging = false;
-            activeSieges.splice(i, 1);
-            continue;
-        }
+// Locate this in updateSieges()
+if (attackerDead || isInBattle) {
+    console.log(`The siege of ${def.name} has been broken!`);
+    
+    // MOVE THIS HERE (Outside the death check)
+    if (atk.isPlayer) {
+        const sBtn = document.getElementById('siege-button');
+        const aBtn = document.getElementById('assault-button');
+        if(sBtn) sBtn.style.display = 'block';
+        if(aBtn) aBtn.style.display = 'none';
+    }
+
+    if (atk.isPlayer && player.troops <= 0) {
+        // ... status text and alert logic ...
+        const gui = document.getElementById('siege-gui');
+        if(gui) gui.style.display = 'none';
+    }
+
+    atk.isSieging = false;
+    def.isUnderSiege = false;
+    activeSieges.splice(i, 1);
+    continue;
+}
 
         siege.ticks++;
 
         // Continually enforce the movement lock
         if (!atk.isPlayer) atk.waitTimer = 50; 
         else atk.isMoving = false; 
-
-        // 2. SALLY OUT MECHANIC (Defender Military Outnumbers Attacker 3:1)
+// --- NEW SALLY OUT LOGIC ---
         let defenderMilitary = def.militaryPop || def.troops || 0;
-        if (defenderMilitary >= attackerCount * 3) {
-            console.log(`${def.name} garrison sallies out! They outnumber the besiegers 3 to 1!`);
-            atk.isSieging = false;
-            
-            if (atk.isPlayer) {
-                if (typeof enterBattlefield === 'function' && typeof generateNPCRoster === 'function') {
-                    // Generate an NPC object for the city garrison
-                    let sallyForce = {
-                        faction: def.faction,
-                        role: "Military",
-                        count: defenderMilitary,
-                        roster: generateNPCRoster("Military", defenderMilitary, def.faction)
-                    };
-                    enterBattlefield(sallyForce, player, {name: "City Gates", speed: 0.8});
-                }
-            } else {
-                // Auto-resolve Sally Out vs NPC
-                atk.count -= Math.floor(defenderMilitary * 0.4);
-                def.militaryPop -= Math.floor(attackerCount * 0.4);
-                def.troops = def.militaryPop;
-            }
-            activeSieges.splice(i, 1);
-            continue; // Skip the rest of the loop
-        }
 
+// Condition: Defenders MUST outnumber attacker to trigger this event
+        if (defenderMilitary > attackerCount && Math.random() < 0.005) {
+            console.log(`${def.name} garrison sallies out to break the siege!`);
+
+			if (atk.isPlayer) {
+                const statusText = document.getElementById('siege-status-text');
+                if(statusText) {
+                    statusText.innerText = "STATUS: DEFENDERS ATTACKING!";
+                    statusText.style.color = "#ff5252";
+                }
+                
+                promptSallyOut(siege, defenderMilitary, attackerCount);
+                // Return here prevents ticks from continuing while frozen
+                return;
+			}
+            // NPC vs NPC Logic
+            let atkLoss = Math.floor(defenderMilitary * 0.4);
+            let defLoss = Math.floor(attackerCount * 0.4);
+            atk.count = Math.max(0, (atk.count || 0) - atkLoss);
+            def.militaryPop = Math.max(0, defenderMilitary - defLoss);
+            def.isUnderSiege = false;
+            atk.isSieging = false;
+            activeSieges.splice(i, 1);
+            continue;
+        }
+		
+		
         // 3. WAR OF ATTRITION
-        if (siege.ticks % 30 === 0) {
+        if (siege.ticks % 60 === 0) {
             
-            let defConsumption = Math.floor(def.pop * 0.05); 
+            let defConsumption = Math.max(
+                1,
+                Math.floor((def.pop * 0.01) + (def.militaryPop * 0.03))
+            );
             def.food -= defConsumption;
             
-            let atkConsumption = Math.floor(attackerCount * 0.1);
+            // weaker attacker drain
+            let atkConsumption = Math.max(1, Math.floor(attackerCount * 0.03)); 
             if (atk.isPlayer) player.food -= atkConsumption;
             else atk.food -= atkConsumption;
 
             let currentAtkFood = atk.isPlayer ? player.food : atk.food;
 
-            // Resolve Attacker Starvation
+// Resolve Attacker Starvation
             if (currentAtkFood <= 0) {
                 if (atk.isPlayer) player.food = 0; else atk.food = 0;
                 
@@ -120,17 +203,37 @@ function updateSieges() {
                 if (atk.isPlayer) {
                     player.troops -= attrition;
                     if(player.roster && player.roster.length > 0) player.roster.pop();
+                    
+                    // Update GUI Status Text to reflect starvation deaths
+                    const statusText = document.getElementById('siege-status-text');
+                    if (statusText) {
+                        statusText.innerText = `STATUS: STARVING! (-${attrition} troops. ${player.troops} left)`;
+                        statusText.style.color = "#ff5252";
+                    }
                 } else {
                     atk.count -= attrition;
                 }
             }
 
+// 3. REBALANCED WAR OF ATTRITION (Targets ~3 minute total siege)
             // Resolve Defender Starvation
             if (def.food <= 0) {
                 def.food = 0;
-                let garrisonDamage = Math.max(1, Math.floor(def.militaryPop * 0.08));
+
+                // BALANCE: Lose 2% of garrison per second (assuming 1 tick per sec here)
+                // This ensures even a large garrison of 500 melts away in ~100 seconds after food is gone.
+                let garrisonDamage = Math.max(2, Math.floor(def.militaryPop * 0.02));
                 def.militaryPop -= garrisonDamage;
-                def.pop -= garrisonDamage;
+                def.pop -= Math.floor(garrisonDamage * 0.5); // Population stays slightly more resilient
+
+                // --- UI SURGERY: UPDATE STATUS TEXT ---
+                if (atk.isPlayer) {
+                    const statusText = document.getElementById('siege-status-text');
+                    if (statusText) {
+                        statusText.innerText = "STATUS: DEFENDERS STARVING";
+                        statusText.style.color = "#ffa500"; // Orange for starvation
+                    }
+                }
 
                 // Conquest Triggered
                 if (def.militaryPop <= 0) {
@@ -139,9 +242,11 @@ function updateSieges() {
                     
                     console.log(`${def.name} has fallen to ${conqueringFaction}!`);
                     
+                    // Update City Ownership
                     def.faction = conqueringFaction;
                     def.color = conqueringColor;
                     
+                    // Occupying Force: Take 30% of the attacking army to become the new garrison
                     let occupyingForce = Math.max(5, Math.floor(attackerCount * 0.3));
                     def.militaryPop = occupyingForce;
                     def.troops = occupyingForce;
@@ -149,14 +254,23 @@ function updateSieges() {
                     
                     if (atk.isPlayer) {
                         player.troops -= occupyingForce;
-                        alert(`Victory! ${def.name} has starved into submission. It is now yours. You left ${occupyingForce} troops behind to hold the city.`);
+                        
+                        // --- UI SURGERY: FINAL VICTORY STATUS ---
+                        const statusText = document.getElementById('siege-status-text');
+                        if (statusText) statusText.innerText = "STATUS: CITY CAPTURED!";
+                        
+                        alert(`Victory! ${def.name} has starved into submission. It is now yours.\n\nYou left ${occupyingForce} troops behind as a garrison.`);
+                        
+                        // Close Siege GUI
                         atk.isSieging = false;
+                        document.getElementById('siege-gui').style.display = 'none';
                     } else {
                         atk.count -= occupyingForce;
                         atk.isSieging = false;
                         atk.targetCity = null; 
                     }
-                    
+
+                    def.isUnderSiege = false;
                     activeSieges.splice(i, 1);
                 }
             }
@@ -170,6 +284,9 @@ function drawSiegeVisuals(ctx) {
         let atk = s.attacker;
         let attackerCount = atk.isPlayer ? player.troops : atk.count;
         let defenderCount = def.militaryPop || def.troops || 0;
+        
+        let attackerFood = atk.isPlayer ? player.food : atk.food;
+        let defenderFood = def.food;
 
         ctx.save();
         ctx.beginPath();
@@ -188,15 +305,111 @@ function drawSiegeVisuals(ctx) {
 
         // "UNDER SIEGE" text
         ctx.fillStyle = "#ff5252";
-        ctx.font = "bold 12px Georgia";
-        ctx.fillText("UNDER SIEGE", def.x, def.y - (def.radius || 20) - 25);
+        ctx.font = "bold 13px Georgia";
+        ctx.fillText("UNDER SIEGE", def.x, def.y - (def.radius || 20) - 40);
 
-        // ⛺ Troop Ratio (Attacker : Defender Military)
+        // ⛺ Attacker Stats (Stacked above defender)
         ctx.fillStyle = "#ffffff";
-        // Use a fallback font to ensure the emojis render properly
-        ctx.font = "11px Arial, 'Segoe UI Emoji'";
-        ctx.fillText(`⛺ ${attackerCount} : ${defenderCount} 🏰`, def.x, def.y - (def.radius || 20) - 10);
+        ctx.font = "12px Arial, 'Segoe UI Emoji'";
+        ctx.fillText(`⛺ ${attackerCount} (🍖 ${Math.floor(attackerFood)})`, def.x, def.y - (def.radius || 20) - 24);
+        
+        // 🏰 Defender Stats
+        ctx.fillText(`🏰 ${defenderCount} (🍖 ${Math.floor(defenderFood)})`, def.x, def.y - (def.radius || 20) - 8);
 
         ctx.restore();
     });
+}
+
+
+
+function resolveSallyOut(choice) {
+    if (!pendingSallyOut) return;
+
+    const { siege, defenderMilitary } = pendingSallyOut;
+    const atk = siege.attacker;
+    const def = siege.defender;
+
+    document.getElementById("siege-sally-prompt").style.display = "none";
+
+    // SURGERY: Reset Buttons because the siege state is ending
+    const sBtn = document.getElementById('siege-button');
+    const aBtn = document.getElementById('assault-button');
+    if(sBtn) sBtn.style.display = 'block';
+    if(aBtn) aBtn.style.display = 'none';
+
+    if (choice === "attack") {
+        atk.isSieging = false;
+        def.isUnderSiege = false;
+        activeSieges = activeSieges.filter(s => s.id !== siege.id);
+        // ... (rest of the existing function)
+        if (atk.isPlayer) {
+            if (typeof enterBattlefield === "function" && typeof generateNPCRoster === "function") {
+                const sallyForce = {
+                    faction: def.faction,
+                    role: "Military",
+                    count: defenderMilitary,
+                    roster: generateNPCRoster("Military", defenderMilitary, def.faction)
+                };
+                enterBattlefield(sallyForce, player, { name: "City Gates", speed: 0.8 });
+            }
+        }
+} else {
+        // Run Away / Abandon: No casualties, no penalty
+        console.log("Siege abandoned safely.");
+        atk.isSieging = false;
+        def.isUnderSiege = false;
+        activeSieges = activeSieges.filter(s => s.id !== siege.id);
+        
+        // Ensure the GUI closes
+        const gui = document.getElementById('siege-gui');
+        if(gui) gui.style.display = 'none';
+    }
+
+    pendingSallyOut = null;
+}
+ 
+function triggerSiegeAssault() {
+    const currentSiege = activeSieges.find(s => s.attacker.isPlayer);
+    if (!currentSiege) {
+        alert("You are not currently besieging a settlement!");
+        return;
+    }
+
+    // SURGERY: Reset Buttons for the world map UI
+    const sBtn = document.getElementById('siege-button');
+    const aBtn = document.getElementById('assault-button');
+    if(sBtn) sBtn.style.display = 'block';
+    if(aBtn) aBtn.style.display = 'none';
+
+    const city = currentSiege.defender;
+ 
+    const defenderCount = city.militaryPop || city.troops || 0;
+
+    // 2. Clear Siege States before entering battle
+    player.isSieging = false;
+    city.isUnderSiege = false;
+    activeSieges = activeSieges.filter(s => s.id !== currentSiege.id);
+    
+    // Hide the GUI
+    const gui = document.getElementById('siege-gui');
+    if (gui) gui.style.display = 'none';
+
+    // 3. ENTER BATTLEFIELD (Placeholder transition)
+    console.log(`Assaulting ${city.name}! Transitioning to battlefield_system.js...`);
+    
+    if (typeof enterBattlefield === "function" && typeof generateNPCRoster === "function") {
+        // Create a temporary NPC object out of the city garrison to feed into the battle engine
+        const garrisonForce = {
+            faction: city.faction,
+            role: "Garrison",
+            count: defenderCount,
+            roster: generateNPCRoster("Military", defenderCount, city.faction),
+            isCityGarrison: true // Custom flag you can use later in battlefield_system.js to spawn walls
+        };
+        
+        // Launch standard battle for now
+        enterBattlefield(garrisonForce, player, { name: "City Walls", speed: 0.8 });
+    } else {
+        alert("Battlefield system not loaded! The assault failed.");
+    }
 }

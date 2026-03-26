@@ -135,7 +135,7 @@ isDiplomacyProcessing = true; // LOCK UI
     // Civilian / commerce NPCs always allow you to leave
     if (isCivilianOrCommerce) {
         isDiplomacyProcessing = true;
-        parleDialogue.innerText = `They step aside and let you pass.`;
+        parleDialogue.innerText = `Goodbye.`;
         setTimeout(() => {
             leaveParle(player);
         }, 1200);
@@ -143,7 +143,7 @@ isDiplomacyProcessing = true; // LOCK UI
     // Hostile military / patrol / bandits only let you leave if massively outnumbering them
     } else if ((isEnemy || isBandit || isHostileCombatType) && isOverwhelmingOdds) {
         isDiplomacyProcessing = true;
-        parleDialogue.innerText = `Seeing the sheer size of your army, they step aside in fear. "We want no trouble... pass freely."`;
+        parleDialogue.innerText = `You left with confidence.`;
         setTimeout(() => {
             leaveParle(player);
         }, 2000);

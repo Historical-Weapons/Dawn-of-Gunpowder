@@ -29,7 +29,8 @@ let battleEnvironment = {
     bgCanvas: null,
     grid: [],
     units: [],
-    projectiles: [] // For arrows and fire lances
+    projectiles: [], // For arrows and fire lances
+	groundEffects: [] // ---> NEW: For stuck ground projectiles and bomb craters
 };
 
  
@@ -628,16 +629,16 @@ const now = Date.now();
     }
 
     // --- REVISED SURGERY: Keep dead units for 10 seconds ---
-    battleEnvironment.units = battleEnvironment.units.filter(u => {
-        if (u.hp <= 0) {
-            // If we haven't marked the death time yet, do it now
-            if (!u.deathTime) handleUnitDeath(u);
-            
-            // Keep the unit if it died less than 10,000ms (10s) ago
-            return (now - u.deathTime) < 10000;
-        }
-        return true; // Always keep living units
-    });
+   battleEnvironment.units = battleEnvironment.units.filter(u => {
+    if (u.removeFromBattle) return false;
+
+    if (u.hp <= 0) {
+        if (!u.deathTime) handleUnitDeath(u);
+        return (now - u.deathTime) < 10000;
+    }
+
+    return true;
+});
 
     let units = battleEnvironment.units;
     
@@ -710,6 +711,7 @@ units.forEach(unit => {
 						unit.state = "FLEEING";
 						
 						if (!unit.escapePoint || unit.escapeType !== "OUTER") {
+					 
 							let distToLeft = unit.x;
 							let distToRight = BATTLE_WORLD_WIDTH - unit.x;
 							let distToTop = unit.y;
@@ -744,12 +746,17 @@ units.forEach(unit => {
 						if (isOutsideBorder) {
 							unit.fleeTimer = (unit.fleeTimer || 0) + 1;
 							
-							 if (unit.fleeTimer >= 300) { 
-								unit.hp = 0; 
-								let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
-								let scale = sideTotal > 300 ? 5 : 1;
-								currentBattleData.fledCounts[unit.side] += scale; 
-							}
+if (unit.fleeTimer >= 300) { 
+    unit.state = "retreated";
+    unit.removeFromBattle = true;
+    unit.target = null;
+    unit.cooldown = 0;
+
+    let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
+    let scale = sideTotal > 300 ? 5 : 1;
+    currentBattleData.fledCounts[unit.side] += scale;
+    return;
+}
 						}
 						return; 
 					}
@@ -1014,6 +1021,20 @@ units.forEach(unit => {
 // ---> collison<---
 applyUnitCollisions(units);
 
+// ---> 30 SECOND CLEANUP LOGIC <---
+    const THIRTY_SECONDS = 30000;
+    const nowTime = Date.now();
+    
+    if (battleEnvironment.groundEffects) {
+        battleEnvironment.groundEffects = battleEnvironment.groundEffects.filter(g => (nowTime - g.timestamp) < THIRTY_SECONDS);
+    }
+    
+    battleEnvironment.units.forEach(u => {
+        if (u.stuckProjectiles) {
+            u.stuckProjectiles = u.stuckProjectiles.filter(sp => (nowTime - sp.timestamp) < THIRTY_SECONDS);
+        }
+    });
+
 /* 4. UPDATE PROJECTILES (PHYSICS BASED COLLISION) */
     for (let i = battleEnvironment.projectiles.length - 1; i >= 0; i--) {
         let p = battleEnvironment.projectiles[i];
@@ -1022,14 +1043,56 @@ applyUnitCollisions(units);
         p.x += p.vx;
         p.y += p.vy;
         
-        // 2. Range & Bounds Check (Despawn if it misses everything)
-        let distFlown = Math.hypot(p.x - p.startX, p.y - p.startY);
-        if (distFlown > p.maxRange || 
-            p.x < -200 || p.x > BATTLE_WORLD_WIDTH + 200 || 
-            p.y < -200 || p.y > BATTLE_WORLD_HEIGHT + 200) {
-            battleEnvironment.projectiles.splice(i, 1);
-            continue;
+        let role = p.attackerStats ? p.attackerStats.role : "";
+        let name = p.attackerStats ? p.attackerStats.name : "";
+        
+        let isJavelin = name === "Javelinier";
+        let isBolt = role === "crossbow" || role === "crossbowman";
+        let isArrow = role === "archer" || role === "horse_archer";
+        let isSlinger = name === "Slinger";
+        let isRocket = (p.projectileType === "rocket") || (p.attackerStats && p.attackerStats.name.includes("Rocket"));
+        let isBomb = role === "bomb" || name === "Bomb";
+        
+// 2. Range & Bounds Check (Hit the Ground)
+let distFlown = Math.hypot(p.x - p.startX, p.y - p.startY);
+if (distFlown > p.maxRange || 
+    p.x < -200 || p.x > BATTLE_WORLD_WIDTH + 200 || 
+    p.y < -200 || p.y > BATTLE_WORLD_HEIGHT + 200) {
+
+    if (isJavelin || isBolt || isArrow || isSlinger || isRocket || isBomb) {
+        if (!battleEnvironment.groundEffects) battleEnvironment.groundEffects = [];
+        if (battleEnvironment.groundEffects.length < 400) {
+
+            let effectType = isJavelin ? "javelin"
+                : (isBolt ? "bolt"
+                : (isSlinger ? "stone"
+                : (isRocket ? "rocket"
+                : (isBomb ? "bomb_crater" : "arrow"))));
+
+            const bounceChance = 0.30;
+            const landedX = p.x + (Math.random() - 0.5) * 18;
+            const landedY = p.y + (Math.random() - 0.5) * 18;
+
+            let landedAngle = Math.atan2(p.vy, p.vx) + (Math.random() - 0.5) * 0.9;
+
+            // 30% of the time, add a stronger "bounce" style angle shift
+            if (Math.random() < bounceChance) {
+                landedAngle += (Math.random() > 0.5 ? 1 : -1) * (0.6 + Math.random() * 0.7);
+            }
+
+            battleEnvironment.groundEffects.push({
+                type: effectType,
+                x: landedX,
+                y: landedY,
+                angle: landedAngle,
+                timestamp: Date.now()
+            });
         }
+    }
+
+    battleEnvironment.projectiles.splice(i, 1);
+    continue;
+}
 
         // 3. Physical Hitbox Collision
         let hitMade = false;
@@ -1037,56 +1100,63 @@ applyUnitCollisions(units);
         for (let j = 0; j < units.length; j++) {
             let u = units[j];
             
-            // Only check living enemies (Prevents friendly fire and hitting corpses)
+            // Only check living enemies
             if (u.hp > 0 && u.side !== p.side) {
-                
-                // Dynamic hitbox: Large units (elephants/horses) are easier to hit
                 let hitbox = u.stats.isLarge ? 16 : 8; 
                 let distToUnit = Math.hypot(p.x - u.x, p.y - u.y);
                 
                 if (distToUnit < hitbox) {
-                    // TRUE IMPACT!
                     hitMade = true;
                     let dmg = calculateDamageReceived(p.attackerStats, u.stats, "ranged_attack");
                     u.hp -= dmg;
+
+                    // Stick to Unit Bodies
+                    if (isJavelin || isBolt || isArrow || isSlinger || isRocket) {
+                        if (!u.stuckProjectiles) u.stuckProjectiles = [];
+                        if (u.stuckProjectiles.length < 4) {
+                            let effectType = isJavelin ? "javelin" : (isBolt ? "bolt" : (isSlinger ? "stone" : (isRocket ? "rocket" : "arrow")));
+                            u.stuckProjectiles.push({
+                                type: effectType,
+                                offsetX: p.x - u.x, 
+                                offsetY: p.y - u.y,
+                                angle: Math.atan2(p.vy, p.vx),
+                                timestamp: Date.now()
+                            });
+                        }
+                    }
                     
-                    // --- EXP GAIN SURGERY (RANGED) ---
+                    // Bomb direct hits create craters directly under the unit
+                    if (isBomb) {
+                        if (!battleEnvironment.groundEffects) battleEnvironment.groundEffects = [];
+                        battleEnvironment.groundEffects.push({
+                            type: "bomb_crater",
+                            x: p.x, y: p.y, angle: 0, timestamp: Date.now()
+                        });
+                    }
+                    
+                    // EXP and Audio Logic
                     let attackerUnit = battleEnvironment.units.find(a => a.stats === p.attackerStats);
                     if (attackerUnit && attackerUnit.side === "player" && p.attackerStats.gainExperience) {
                         let baseExp = attackerUnit.isCommander ? 0.05 : 0.35; 
                         if (u.hp <= 0) baseExp *= 3; 
                         p.attackerStats.gainExperience(baseExp);
-						
-						
-						// 2. SURGERY: Bridge to Global Player
-								if (attackerUnit.isCommander) {
-									gainPlayerExperience(baseExp);
-								}
-													
-                    }
-                    // ---------------------------------
-                    
-                    if (dmg > 0) {
-                        AudioManager.playSound('hit');
-                    } else {
-                        AudioManager.playSound('shield_block');
+                        if (attackerUnit.isCommander) gainPlayerExperience(baseExp);
                     }
                     
-                    break; // Projectile stops after hitting one person
+                    if (dmg > 0) AudioManager.playSound('hit');
+                    else AudioManager.playSound('shield_block');
+                    
+                    break; 
                 }
             }
         }
         
-        // Destroy the arrow if it impacted someone
-        if (hitMade) {
-            battleEnvironment.projectiles.splice(i, 1);
-        }
+        if (hitMade) battleEnvironment.projectiles.splice(i, 1);
+    }
     }
 	
 	
 	
-	
-}
 
 // --- DYNAMIC TIERED COLLISION ENGINE ---
 function applyUnitCollisions(units) {
@@ -1156,6 +1226,37 @@ function isBattleCollision(x, y) {
 
     return false;
 }
+
+// Shared function to draw stuck projectiles and bomb marks
+function drawStuckProjectileOrEffect(ctx, type) {
+    if (type === "javelin") {
+        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(8, 0); ctx.stroke();
+        ctx.fillStyle = "#bdbdbd"; ctx.beginPath();
+        ctx.moveTo(8, 0); ctx.lineTo(6, -2.5); ctx.lineTo(16, 0); ctx.lineTo(6, 2.5); ctx.fill();
+    } else if (type === "bolt") {
+        ctx.fillStyle = "#5d4037"; ctx.fillRect(-4, -1, 8, 2);
+        ctx.fillStyle = "#757575"; ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(9, 0); ctx.lineTo(4, 2); ctx.fill();
+        ctx.fillStyle = "#8d6e63"; ctx.fillRect(-5, -1.5, 3, 3);
+    } else if (type === "stone") {
+        ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+    } else if (type === "rocket") {
+        ctx.scale(0.5, 0.5); // Scaled down for sticking
+        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(12, 0); ctx.stroke();
+         ctx.fillStyle = "#4e342e"; ctx.fillRect(-6, 0.5, 14, 2.2);
+        ctx.fillStyle = "#424242"; ctx.beginPath(); ctx.moveTo(12, -1.2); ctx.lineTo(20, 0); ctx.lineTo(12, 1.2); ctx.fill();
+        ctx.scale(2, 2); // Reset scale
+    } else if (type === "bomb_crater") {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.6)"; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#424242"; // Shrapnel fragments
+        ctx.fillRect(3, -5, 2, 2); ctx.fillRect(-6, 4, 1.5, 1.5); ctx.fillRect(5, 6, 2.5, 2.5); ctx.fillRect(-7, -3, 2, 2);
+    } else { // arrow
+        ctx.fillStyle = "#8d6e63"; ctx.fillRect(-6, -0.5, 12, 1);
+        ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.moveTo(6, -1.5); ctx.lineTo(11, 0); ctx.lineTo(6, 1.5); ctx.fill();
+        ctx.fillStyle = "#4caf50"; ctx.fillRect(-7, -1.5, 4, 1); ctx.fillRect(-7, 0.5, 4, 1);
+    }
+}
+
 function leaveBattlefield(playerObj) {
     console.log("Leaving battlefield. Restoring overworld state...");
 
@@ -1446,17 +1547,46 @@ function handleUnitDeath(unit) {
     unit.target = null;
     unit.hasOrders = false;
     
-    // Set rotation to 90 degrees clockwise (in radians)
-    unit.deathRotation = Math.PI / 2; 
+    // 1. Randomize body position & rotation
+    unit.deathRotation = Math.random() * Math.PI * 2; 
+    unit.deathFlip = Math.random() > 0.5 ? 1 : -1;
+
+    // Add a slight "tumble" offset so they don't land perfectly on the grid
+    unit.deathXOffset = (Math.random() - 0.5) * 8; 
+    unit.deathYOffset = (Math.random() - 0.5) * 8;
+
+    // 2. Pre-calculate unique blood pool stats
+    // This prevents the blood from "flickering" or changing shape every frame
+    unit.bloodStats = {
+        radiusX: 8 + Math.random() * 8,   // Random width
+        radiusY: 4 + Math.random() * 4,   // Random "flatness"
+        rotation: Math.random() * Math.PI, // Random splatter angle
+        opacity: 0.4 + Math.random() * 0.3 // Random thickness of blood
+    };
 }
 
 function drawBloodPool(ctx, unit) {
+    if (!unit.bloodStats) return;
+
+    const stats = unit.bloodStats;
     ctx.save();
-    // Darker red for a "period-authentic" blood look
-    ctx.fillStyle = "rgba(100, 0, 0, 0.5)"; 
+    
+    // Position blood under the slightly offset body
+    ctx.translate(unit.x + unit.deathXOffset, unit.y + unit.deathYOffset);
+    
+    // Use the unique pre-calculated stats for this specific death
+    ctx.fillStyle = `rgba(100, 0, 0, ${stats.opacity})`; 
     ctx.beginPath();
-    // Draw a flattened circle under the unit
-    ctx.ellipse(unit.x, unit.y, 12, 6, 0, 0, Math.PI * 2);
+    
+    // Draw the randomized ellipse
+    ctx.ellipse(
+        0, 0, 
+        stats.radiusX, 
+        stats.radiusY, 
+        stats.rotation, 
+        0, Math.PI * 2
+    );
+    
     ctx.fill();
     ctx.restore();
 }

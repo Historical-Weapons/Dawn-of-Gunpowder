@@ -46,7 +46,7 @@ let tSize = 8;
 let maxCols = 0, maxRows = 0;
 let lastBattleTime = 0;
 const BATTLE_COOLDOWN = 2000;  
-const MAX_GLOBAL_NPCS = 450; // NEW: Hard cap to save CPU
+const MAX_GLOBAL_NPCS = 1000; // NEW: Hard cap to save CPU
 // ============================================================================
 // CORE HELPER FUNCTIONS
 // ============================================================================
@@ -172,13 +172,9 @@ function getRandomTargetCity(cities, excludeCity, faction = null) {
     return valid[Math.floor(Math.random() * valid.length)];
 }
 
-// ============================================================================
-// CITY INITIALIZATION & ECONOMY
-// ============================================================================
-
 function initializeCityData(city, worldWidth, worldHeight) {
     let controllingFaction = getFactionByGeography(city.x, city.y, worldWidth, worldHeight);
-    
+    city.recoveryTimer = 0;
     city.faction = controllingFaction;
     city.color = FACTIONS[controllingFaction].color;
     city.name = generateFactionCityName(controllingFaction); 
@@ -194,61 +190,109 @@ function initializeCityData(city, worldWidth, worldHeight) {
 }
 
 function updateCityEconomies(cities) {
-	
-	// ---> ADD THIS HOOK <---
-    let factionCityCounts = typeof getFactionCityCounts === 'function' ? getFactionCityCounts(cities) : {};
-	
+    let factionCityCounts = typeof getFactionCityCounts === 'function'
+        ? getFactionCityCounts(cities)
+        : {};
+
     cities.forEach(city => {
-		
-		// ---> ADD THIS HOOK <---
-        let mods = typeof applyFactionModifiers === 'function' ? applyFactionModifiers(city, factionCityCounts) : { draftMultiplier: 1, upkeepMultiplier: 1 };
+        if (city.recoveryTimer === undefined) city.recoveryTimer = 0;
+        if (city.conscriptionRate === undefined) city.conscriptionRate = 0.03;
+        if (city.civilianPop === undefined) city.civilianPop = Math.max(0, city.pop || 0);
+        if (city.militaryPop === undefined) city.militaryPop = 0;
+        if (city.troops === undefined) city.troops = city.militaryPop;
 
+        let mods = typeof applyFactionModifiers === 'function'
+            ? applyFactionModifiers(city, factionCityCounts)
+            : { draftMultiplier: 1, upkeepMultiplier: 1 };
 
-let foodProduced = city.pop * 0.08; // example value
-let foodConsumed = city.pop * 0.05;
+        // Base food flow
+        let foodProduced = city.isUnderSiege ? 0 : (city.pop * 0.07);
+        let foodConsumed = city.pop * 0.058;
         city.food += Math.floor(foodProduced - foodConsumed);
 
-        if (city.food < 0) {
-            let starved = Math.floor(Math.abs(city.food) * 0.5); 
-            city.pop = Math.max(100, city.pop - starved);
-            city.civilianPop = Math.max(0, city.civilianPop - starved); 
-            city.food = 0;
-        } else if (city.food > city.pop * 5) {
-            let growth = Math.floor(city.pop * 0.005); 
-            city.pop += growth;
-            city.civilianPop += growth; 
-            city.food -= Math.floor(growth * 2); 
+        // Food spoilage
+        let spoilRate = 0.01;
+        let spoilAmount = Math.floor(city.food * spoilRate);
+
+        // Extra spoil if overstocked
+        if (city.food > 500) {
+            spoilAmount += Math.floor((city.food - 500) * 0.05);
         }
 
-        let taxRevenue = city.civilianPop * 0.01;
-        let militaryUpkeep = (city.militaryPop * 0.02) * mods.upkeepMultiplier; 
-        city.gold += Math.floor(taxRevenue - militaryUpkeep);
- 
+        city.food -= spoilAmount;
 
-        let maxFood = city.pop * 10;
+        // Starvation / collapse
+        if (city.food < 0) {
+            let starved = Math.floor(Math.abs(city.food) * 0.4);
+
+            // Trigger recovery after major losses
+            if (starved > city.pop * 0.05) {
+                city.recoveryTimer = 300;
+            }
+
+            let civilianLoss = Math.min(city.civilianPop, starved);
+            let militaryLoss = Math.max(0, starved - civilianLoss);
+
+            city.civilianPop -= civilianLoss;
+            city.militaryPop = Math.max(0, city.militaryPop - militaryLoss);
+            city.pop = Math.max(100, city.civilianPop + city.militaryPop);
+            city.food = 0;
+        } else {
+            // Population growth / recovery
+            let baseGrowth = city.pop * 0.003;
+
+            // Recovery boost after siege/famine
+            if (city.recoveryTimer > 0) {
+                baseGrowth *= 3;
+                city.recoveryTimer--;
+            }
+
+            // Extra recovery bonus when food stores are healthy
+            if (!city.isUnderSiege && city.food > city.pop * 0.5 && city.recoveryTimer > 0) {
+                baseGrowth += city.pop * 0.002;
+            }
+
+            let growth = Math.floor(baseGrowth);
+
+            if (!city.isUnderSiege && city.food > city.pop * 7) {
+                city.pop += growth;
+                city.civilianPop += growth;
+                city.food -= Math.floor(growth * 2);
+            }
+        }
+
+        // Tax revenue and military upkeep
+        let taxRevenue = city.civilianPop * 0.01;
+        let militaryUpkeep = (city.militaryPop * 0.02) * mods.upkeepMultiplier;
+        city.gold += Math.floor(taxRevenue - militaryUpkeep);
+
+        // Caps
+        let maxFood = 1000;
         let maxGold = city.pop * 5;
+
         if (city.food > maxFood) city.food = maxFood;
         if (city.gold > maxGold) city.gold = maxGold;
-		
-      // ---> MODIFY THIS LINE (Apply Underdog draft buff) <---
-        let targetGarrison = Math.floor(city.pop * city.conscriptionRate) * mods.draftMultiplier;
-		
+        if (city.food < 0) city.food = 0;
+        if (city.gold < 0) city.gold = 0;
+
+        // Underdog garrison logic
+        let targetGarrison = Math.floor(city.pop * city.conscriptionRate * 0.9 * mods.draftMultiplier);
+
         if (city.militaryPop < targetGarrison) {
-            let draft = Math.min(5, targetGarrison - city.militaryPop); 
-            if (city.civilianPop > draft) { 
+            let draft = Math.min(3, targetGarrison - city.militaryPop);
+            if (city.civilianPop >= draft) {
                 city.militaryPop += draft;
                 city.civilianPop -= draft;
             }
-        } 
-        else if (city.militaryPop > city.pop * 0.5) {
-            let retire = 5;
+        } else if (city.militaryPop > city.pop * 0.45) {
+            let retire = 3;
             city.militaryPop -= retire;
             city.civilianPop += retire;
         }
 
         city.militaryPop = Math.max(0, city.militaryPop);
         city.civilianPop = Math.max(0, city.civilianPop);
-        city.troops = city.militaryPop; 
+        city.troops = city.militaryPop;
     });
 }
 
@@ -285,9 +329,9 @@ if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
 
 
     if (role === "Civilian") {
-        count = Math.min(Math.floor(Math.random() * 12) + 5, city.civilianPop);
+        count = Math.min(Math.floor(Math.random() * 8) + 5, city.civilianPop);
         if (count < 5) return;
-        speed = 0.3;
+        speed = 0.5;
         target = getWealthyCity(citiesArr, city); 
         carriedGold = Math.floor((count / (city.civilianPop || 1)) * city.gold * 0.5);
         carriedFood = count * 2;
@@ -295,42 +339,44 @@ if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
         city.gold -= carriedGold; city.food -= carriedFood;
     } 
 else if (role === "Commerce") {
-        count = Math.floor(Math.random() * 20) + 10; 
-        if (city.civilianPop < count * 1 || city.food < 100) return;
+    count = Math.floor(Math.random() * 12) + 8; 
+    if (city.civilianPop < count || city.food < 100) return;
 
-        speed = 0.5;
-        target = getRandomTargetCity(citiesArr, city);
-        travelDist = Math.hypot(target.x - city.x, target.y - city.y);
+    speed = 0.5;
+    target = getRandomTargetCity(citiesArr, city);
+    travelDist = Math.hypot(target.x - city.x, target.y - city.y);
 
-        // Define how much each unit can carry
-        const capacityPerUnit = 25; 
-        const maxCapacity = count * capacityPerUnit;
+    const capacityPerUnit = 25; 
+    const maxCapacity = count * capacityPerUnit;
 
-        // Calculate potential loads
-        let potentialFood = Math.floor(city.food * 0.03);
-        let potentialGold = Math.floor(city.gold * 0.05);
+    let potentialFood = Math.floor(city.food * 0.03);
+    let potentialGold = Math.floor(city.gold * 0.05);
 
-        // Apply carrying capacity (Prioritize food, then fill remaining space with gold)
-        carriedFood = Math.min(maxCapacity * 0.6, potentialFood, 200); 
-        carriedGold = Math.min(maxCapacity - carriedFood, potentialGold, 150);
+    carriedFood = Math.min(maxCapacity * 0.6, potentialFood, 200); 
+    carriedGold = Math.min(maxCapacity - carriedFood, potentialGold, 150);
 
-        city.food -= carriedFood;
-        city.gold -= carriedGold;
-    }
-    else if (role === "Patrol") {
-        count = Math.min(Math.floor(Math.random() * 20) + 10, city.militaryPop);
-        if (count < 10) return;
-        speed = 0.7;
-        targetX = city.x + (Math.random() - 0.5) * 800;
-        targetY = city.y + (Math.random() - 0.5) * 800;
-        carriedFood = count * 5;
-        city.food -= carriedFood;
-    } 
+    city.civilianPop -= count;
+    city.pop -= count;
+    city.food -= carriedFood;
+    city.gold -= carriedGold;
+}
+else if (role === "Patrol") {
+    count = Math.min(Math.floor(Math.random() * 20) + 10, city.militaryPop);
+    if (count < 10) return;
+    speed = 0.5;
+    targetX = city.x + (Math.random() - 0.5) * 800;
+    targetY = city.y + (Math.random() - 0.5) * 800;
+    carriedFood = count * 5;
+
+    city.militaryPop -= count;
+    city.pop -= count;
+    city.food -= carriedFood;
+} 
     else if (role === "Military") {
 // Generates <150 ish troops, capped by the city's actual military population
-    count = Math.min(Math.floor(Math.random() * 50) + 100, city.militaryPop);
+    count = Math.min(Math.floor(Math.random() * 80) + 60, city.militaryPop);
     if (count < 50) return;
-    speed = 0.6;
+    speed = 0.5;
         target = getEnemyCity(city, citiesArr);
         if (!target) target = getRandomTargetCity(citiesArr, city, city.faction);
         
@@ -339,26 +385,33 @@ else if (role === "Commerce") {
         city.food -= carriedFood;
     }
 
-    if (target) { targetX = target.x; targetY = target.y; }
-    city.troops = city.militaryPop; 
+if (target) { targetX = target.x; targetY = target.y; }
+        city.troops = city.militaryPop; 
 
-if (role === "Commerce" || role === "Civilian") {
-        targetCity = getRandomTargetCity(cities, city);
-if (!targetCity) return;}
+		// Inside spawnNPCFromCity for Civilian/Commerce
+		if (role === "Commerce" || role === "Civilian") {
+			target = target || getRandomTargetCity(citiesArr, city);
+			if (!target) return;
+			// CRITICAL: Sync these immediately
+			targetX = target.x;
+			targetY = target.y;
+		}
 
     globalNPCs.push({
         id: Math.random().toString(36).substr(2, 9), 
         role: role, 
         count: count,
-		roster: generateNPCRoster(role, count, city.faction), // <--- ADD THIS LINE
+        roster: generateNPCRoster(role, count, city.faction), // <--- ADD THIS LINE
         faction: city.faction, 
+		
         color: city.color, 
         originCity: city, 
         targetCity: target,
-        travelDist: travelDist, 
+        travelDist: travelDist,
+		
   // Scatter them slightly around the city center
-        x: city.x + (Math.random() - 0.5) * 300, 
-        y: city.y + (Math.random() - 0.5) * 300,
+        x: city.x + (Math.random() - 0.5) * 30, 
+        y: city.y + (Math.random() - 0.5) * 30,
         targetX: targetX, 
         targetY: targetY, 
         speed: speed,
@@ -378,8 +431,9 @@ decisionTimer: 0
 function spawnBandit(padX, padY) {
 	if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
     let coords = getRandomLandCoordinate(padX, padY);
-    let banditCount = Math.floor(Math.random() * 16) + 3; // Define locally first
     
+    // TRIPLE QUANTITY: Min 9, Max 54.
+    let banditCount = (Math.floor(Math.random() * 16) + 3) * 3;
     globalNPCs.push({
         id: Math.random().toString(36).substr(2, 9),
         role: "Bandit",
@@ -392,7 +446,7 @@ function spawnBandit(padX, padY) {
         x: coords.x, y: coords.y,
         targetX: coords.x + (Math.random() - 0.5) * 1000,
         targetY: coords.y + (Math.random() - 0.5) * 1000,
-        speed: 0.6, 
+        speed: 0.4, 
         anim: Math.floor(Math.random() * 100), 
         isMoving: true, 
         waitTimer: 0,
@@ -433,574 +487,524 @@ function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
     console.log(`Successfully deployed ${globalNPCs.length} dynamic NPCs across the map.`);
 }
 
-function updateNPCs(cities) {
-	
-    globalNPCs = globalNPCs.filter(npc => npc.count > 0);
 
-for (let i = 0; i < globalNPCs.length; i++) {
-			
-			
-	let npc = globalNPCs[i];
-	
-	// FAIL-SAFE: If for some reason it's undefined, initialize it now
-    if (npc.decisionTimer === undefined) npc.decisionTimer = 0;
+function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
+    console.log("Drafting Dynamic Populations & Armies...");
+    
+    worldMapRef = mapData;
+    tSize = tileSize;
+    maxCols = cols;
+    maxRows = rows;
+    globalNPCs = []; 
 
-// --- SURGERY: DECISION LOCK ---
-        // Stop the "vibrating" hesitation by forcing NPCs to commit to a path
-// --- SURGERY: DECISION LOCK ---
-// Stop the "vibrating" hesitation by forcing NPCs to commit to a path
-if (npc.decisionTimer > 0) {
-    npc.decisionTimer--;
-} 
-// REMOVED THE 'else {' AND THE RESET FROM HERE!
-
-// --- 3. AGGRO & EVASION RADAR ---
-            // --- 3. AGGRO & EVASION RADAR ---
-            let bestTarget = null;
-            let bestTargetScore = -Infinity;   
-            let closestScaryEnemy = null;      
-            let minScaryDist = 300;
-			
-// --- FIXED: PROPER NORMALIZED SEPARATION (REVISED) ---
-for (let j = i + 1; j < globalNPCs.length; j++) {
-    let other = globalNPCs[j];
-    let dx = npc.x - other.x;
-    let dy = npc.y - other.y;
-    let distSq = dx * dx + dy * dy;
-
-    // Radius of 15px (distSq < 225)
-    if (distSq < 225) { 
-        let dist = Math.sqrt(distSq);
+    cities.forEach(city => {
+      
+        let activityLevel = Math.floor(city.pop / 1500) + 1; 
         
-        // SAFETY: If they are EXACTLY on top of each other, dist is 0. 
-        // We must give them a random nudge to prevent 'NaN' errors.
-        if (dist === 0) {
-            npc.x += Math.random() - 0.5;
-            npc.y += Math.random() - 0.5;
-            continue;
+        for(let i=0; i < activityLevel; i++) {
+            // OPTIMIZED: Lowered spawn chance from 0.3 to 0.15
+            if (Math.random() < 0.15) spawnNPCFromCity(city, "Commerce", cities);
+            if (Math.random() < 0.15) spawnNPCFromCity(city, "Civilian", cities);
+            if (Math.random() < 0.15) spawnNPCFromCity(city, "Patrol", cities);
         }
+    });
 
-        let nx = dx / dist; 
-        let ny = dy / dist; 
-        let overlap = 15 - dist;
-        let forceMod = 0.03; // Default push force
+    let banditCount = cities.length * 2; 
+    for(let i=0; i<banditCount; i++) {
+        spawnBandit(padX, padY);
+    }
+    console.log(`Successfully deployed ${globalNPCs.length} dynamic NPCs across the map.`);
+}
 
-        if (npc.isSieging || other.isSieging) {
-            forceMod = 0.0; // Sieging units stay anchored
-        } else if (npc.faction === other.faction) {
-            // Check for non-combatants
-            if (npc.role === "Commerce" || npc.role === "Civilian" || other.role === "Commerce" || other.role === "Civilian") {
-                // CHANGE: Use 0.01 instead of 0.0. 
-                // This allows them to slowly "ooze" apart rather than getting stuck.
-                forceMod = 0.01; 
-            } else {
-                forceMod = 0.005; 
+
+function updateNPCs(cities) {
+    // Clean up dead units first
+// --- FIX: CLEAN UP DEAD UNITS & UNSTUCK SURVIVORS ---
+    globalNPCs = globalNPCs.filter(npc => {
+        if (npc.count <= 0) {
+            // If this unit is dying, make sure anyone targeting it gets released
+            globalNPCs.forEach(other => {
+                if (other.battleTarget === npc) {
+                    other.battleTarget = null;
+                    other.battlingTimer = 0;
+                    other.waitTimer = 30; // Brief pause before resuming patrol
+                }
+            });
+            return false;
+        }
+        return true;
+    });
+
+    for (let i = 0; i < globalNPCs.length; i++) {
+        let npc = globalNPCs[i];
+        if (npc.decisionTimer === undefined) npc.decisionTimer = 0;
+        if (npc.decisionTimer > 0) npc.decisionTimer--;
+
+        // --- BUG FIX 1: GHOST TARGET & ANTI-FREEZE FAILSAFE ---
+        // Applies universally to Military, Patrol, Bandits, etc.
+        if (npc.battleTarget) {
+            if (!globalNPCs.includes(npc.battleTarget) || npc.battleTarget.count <= 0) {
+                npc.battleTarget = null;
+                npc.battlingTimer = 0;
+                npc.waitTimer = 30; 
+                npc.isMoving = true; 
+                // Kickstart a new waypoint so they don't sit idle forever
+                npc.targetX = npc.x + (Math.random() - 0.5) * 300;
+                npc.targetY = npc.y + (Math.random() - 0.5) * 300;
+                npc.decisionTimer = 0; // Force immediate brain update
             }
-        } else if (npc.waitTimer > 0 || other.waitTimer > 0) {
-            forceMod = 0.01; 
+        }
+        // --- END FIX 1 ---
+
+        let bestTarget = null;
+        let bestTargetScore = -Infinity;   
+        let closestScaryEnemy = null;      
+        let minScaryDistSq = 90000; // 300 squared
+        
+        // ==========================================================
+        // SINGLE PASS OPTIMIZED LOOP (Collision & Radar in one)
+        // ==========================================================
+        for (let j = 0; j < globalNPCs.length; j++) {
+            if (i === j) continue;
+            let other = globalNPCs[j];
+            if (other.count <= 0) continue;
+
+            let dx = npc.x - other.x;
+            let dy = npc.y - other.y;
+            
+            // Fast 1D Culling: Skip expensive math entirely if they are further than 400px
+            if (Math.abs(dx) > 400 || Math.abs(dy) > 400) continue;
+
+            let distSq = dx * dx + dy * dy;
+
+            // --- 1. COLLISION CHECK (Only run once per pair: i < j) ---
+            if (i < j && distSq < 225) { 
+                let dist = Math.sqrt(distSq);
+                if (dist === 0) {
+                    npc.x += Math.random() - 0.5; npc.y += Math.random() - 0.5;
+                    continue;
+                }
+
+                let nx = dx / dist, ny = dy / dist; 
+                let overlap = 15 - dist;
+                
+                let forceMod = (npc.isSieging || other.isSieging) ? 0.0 :
+                               (npc.role === "Commerce" || npc.role === "Civilian" || other.role === "Commerce" || other.role === "Civilian") ? 0.01 : 0.005;
+                if (npc.waitTimer > 0 || other.waitTimer > 0) forceMod = 0.01;
+
+                let push = overlap * forceMod;
+                npc.x += nx * push; npc.y += ny * push;
+                other.x -= nx * push; other.y -= ny * push;
+            }
+
+            // --- 2. RADAR CHECK ---
+            if (distSq > 160000) continue; // Skip if > 400px away
+            
+            // Cache the hostility check (Massive CPU saver)
+            let areEnemies = typeof isHostile === 'function' && isHostile(npc.faction, other.faction);
+
+            if (areEnemies) {
+                // --- REVISED A. INITIATE COMBAT (FIXED) ---
+                 if (distSq < 625 && !npc.battleTarget && !other.battleTarget && 
+                    npc.battlingTimer === 0 && other.battlingTimer === 0 && 
+                    npc.waitTimer === 0 && other.waitTimer === 0) {
+
+                    // 1. DETERMINE AGGRESSION
+                    let isOutnumbered = npc.count < other.count * 0.6;
+                    let roll = Math.random();
+
+                    // 2. FLEE OR IGNORE LOGIC
+                    if (roll > 0.4 || isOutnumbered) {
+                        if (isOutnumbered) {
+                            // Run away from the enemy coordinate
+                            let repelAngle = Math.atan2(npc.y - other.y, npc.x - other.x);
+                            npc.targetX = npc.x + Math.cos(repelAngle) * 200; // Increased distance
+                            npc.targetY = npc.y + Math.sin(repelAngle) * 200;
+                            npc.targetCity = null; // Forget current destination to prioritize survival
+                            npc.isMoving = true;
+                            npc.waitTimer = 0; 
+                            npc.decisionTimer = 100; // Lock this flee-path for 100 frames
+                        }
+                        // If they are just "ignoring" each other, they need a small push to stop the collision
+                        else {
+                             npc.waitTimer = 5; // Tiny pause to desync movement
+                        }
+                        continue; // Skip combat for this pair this frame
+                    }
+                    
+                    // 3. ENGAGE IN COMBAT
+                    npc.battlingTimer = 90; 
+                    other.battlingTimer = 90;
+                    npc.battleTarget = other; 
+                    other.battleTarget = npc;
+                    
+                    // Stop both units dead in their tracks to fight
+                    npc.waitTimer = 0; 
+                    other.waitTimer = 0;
+                    npc.isMoving = false;
+                    other.isMoving = false;
+                    
+                    break; 
+                }
+
+                // B. CHASE / FLEE TRACKING
+                if (npc.decisionTimer <= 0 && !npc.isSieging) {
+                    let isScary = (other.role === "Military" || other.role === "Patrol");
+                    let isTargetableEnemy = !(other.isSieging && npc.role !== "Military");
+
+                    if (npc.role === "Bandit" && isTargetableEnemy) {
+                        if (other.role === "Commerce") {
+                            let score = -distSq + 55000000; 
+                            if (score > bestTargetScore) { bestTargetScore = score; bestTarget = other; }
+                        } else if (distSq < minScaryDistSq) {
+                            minScaryDistSq = distSq; closestScaryEnemy = other;
+                        }
+                    } 
+                    else if ((npc.role === "Military" || npc.role === "Patrol") && isTargetableEnemy) {
+                        let score = -distSq;
+                        if (npc.role === "Military") score += isScary ? 1000000 : -5000000;
+                        else if (npc.role === "Patrol") {
+                            if (isScary) score += 800000;
+                            if (other.role === "Bandit") score += 150000;
+                            if (other.role === "Civilian" || other.role === "Commerce") score -= 1000000;
+                        }
+                        if (score > bestTargetScore) { bestTargetScore = score; bestTarget = other; }
+                    } 
+                    else if ((npc.role === "Civilian" || npc.role === "Commerce") && isScary) {
+                        if (distSq < minScaryDistSq) { minScaryDistSq = distSq; closestScaryEnemy = other; }
+                    }
+                }
+            }
+        } // End Inner j-loop
+
+        // ==========================================================
+        // POST-RADAR LOGIC & COMBAT EXECUTION
+        // ==========================================================
+        
+        // Player Diplomacy Interception
+        if (typeof player !== 'undefined') {
+            let dxPlayer = npc.x - player.x, dyPlayer = npc.y - player.y;
+            let distSqToPlayer = dxPlayer * dxPlayer + dyPlayer * dyPlayer;
+            const now = Date.now();
+
+            if (distSqToPlayer < 400 && // 20px radius
+                (typeof inParleMode === 'undefined' || !inParleMode) && 
+                (typeof inCityMode === 'undefined' || !inCityMode) && 
+                (typeof inBattleMode === 'undefined' || !inBattleMode) &&
+                (typeof BATTLE_COOLDOWN !== 'undefined' && now - (typeof lastBattleTime !== 'undefined' ? lastBattleTime : 0) > BATTLE_COOLDOWN)) 
+            {
+                let tx = Math.floor(npc.x / tSize), ty = Math.floor(npc.y / tSize);
+                let currentTile = (worldMapRef && worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : {name: "Plains"}; 
+                if (typeof initiateParleWithNPC === 'function') initiateParleWithNPC(npc, currentTile);
+                else if (typeof enterBattlefield === 'function') enterBattlefield(npc, player, currentTile);
+            }
+
+            // Player Tracking for AI
+            if (!npc.isSieging && npc.role !== "Civilian" && npc.role !== "Commerce") {
+                let isPlayerEnemy = (npc.faction === "Bandits") || (player.enemies && player.enemies.includes(npc.faction));
+                if (isPlayerEnemy && npc.role === "Patrol" && (player.troops || 0) >= npc.count) isPlayerEnemy = false;
+                
+                if (isPlayerEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 10000) {
+                    let playerScore = -distSqToPlayer + 90000000;
+                    if (playerScore > bestTargetScore) {
+                        bestTargetScore = playerScore;
+                        bestTarget = { x: player.x, y: player.y, role: "Player", isPlayer: true };
+                    }
+                }
+            }
         }
 
-        let push = overlap * forceMod;
-        npc.x += nx * push;
-        npc.y += ny * push;
-        other.x -= nx * push;
-        other.y -= ny * push;
+        // --- 1. COMBAT SEQUENCE ---
+        if (npc.battlingTimer > 0) {
+            npc.battlingTimer--;
+            npc.isMoving = false;
+
+            if (npc.battleTarget && npc.battleTarget.count > 0) {
+                if (npc.battlingTimer % 10 === 0) {
+                    let other = npc.battleTarget;
+                    let dmgToOther = Math.max(1, Math.floor(npc.count * (Math.random() * 0.05 + 0.01)));
+                    let dmgToNpc = Math.max(1, Math.floor(other.count * (Math.random() * 0.05 + 0.01)));
+
+                    npc.count -= dmgToNpc; other.count -= dmgToOther;
+                    
+                    // Roster Pops
+                    for (let k = 0; k < dmgToNpc && npc.roster && npc.roster.length > 0; k++) {
+                        let idx = Math.floor(Math.random() * npc.roster.length);
+                        npc.roster[idx] = npc.roster[npc.roster.length - 1]; npc.roster.pop();
+                    }
+                    for (let k = 0; k < dmgToOther && other.roster && other.roster.length > 0; k++) {
+                        let idx = Math.floor(Math.random() * other.roster.length);
+                        other.roster[idx] = other.roster[other.roster.length - 1]; other.roster.pop();
+                    }
+
+                    // --- BATTLE RESOLUTION & ANTI-FREEZE REBOUND ---
+                    // NEW: Triggers resolution if someone dies, OR if the battle timer expires
+                    if (npc.count <= 0 || other.count <= 0 || npc.battlingTimer === 0) {
+                        let bothSurvived = (npc.count > 0 && other.count > 0);
+                        
+                        // NEW FIX: If BOTH units survive the skirmish timer (mutual retreat)
+                        if (bothSurvived) {
+                            let angle1 = Math.random() * Math.PI * 2;
+                            npc.x += Math.cos(angle1) * 30; npc.y += Math.sin(angle1) * 30;
+                            npc.waitTimer = 0; npc.isMoving = true; npc.speed = 0.8;
+                            npc.targetX = npc.x + Math.cos(angle1) * 100; npc.targetY = npc.y + Math.sin(angle1) * 100;
+                            npc.decisionTimer = 60; // Lock brain so they walk away
+                            
+                            let angle2 = angle1 + Math.PI; // Flee in opposite direction
+                            other.x += Math.cos(angle2) * 30; other.y += Math.sin(angle2) * 30;
+                            other.waitTimer = 0; other.isMoving = true; other.speed = 0.8;
+                            other.targetX = other.x + Math.cos(angle2) * 100; other.targetY = other.y + Math.sin(angle2) * 100;
+                            other.decisionTimer = 60;
+                        } 
+                        // Existing logic: If only one side survived (or one died)
+                        else {
+                            let actualSurvivor = (npc.count > 0) ? npc : ((other.count > 0) ? other : null);
+                            let loser = (npc.count <= 0) ? npc : other;
+
+                            if (actualSurvivor) {
+                                let maxCapacity = actualSurvivor.count * (typeof NPC_CARRY_CAPACITY_PER_UNIT !== 'undefined' ? NPC_CARRY_CAPACITY_PER_UNIT : 10);
+                                let roomLeft = Math.max(0, maxCapacity - (actualSurvivor.gold + actualSurvivor.food));
+                                if (roomLeft > 0) {
+                                    let totalLoot = loser.gold + loser.food;
+                                    let ratio = Math.min(1, roomLeft / Math.max(1, totalLoot));
+                                    actualSurvivor.gold += Math.floor(loser.gold * ratio);
+                                    actualSurvivor.food += Math.floor(loser.food * ratio);
+                                }
+
+                                let angle = Math.random() * Math.PI * 2;
+                                actualSurvivor.x += Math.cos(angle) * 30; 
+                                actualSurvivor.y += Math.sin(angle) * 30;
+                                
+                                // Force Movement State Unlocking
+                                actualSurvivor.waitTimer = 0; 
+                                actualSurvivor.isMoving = true;
+                                actualSurvivor.speed = 0.8; 
+                                actualSurvivor.targetX = actualSurvivor.x + Math.cos(angle) * 100; 
+                                actualSurvivor.targetY = actualSurvivor.y + Math.sin(angle) * 100;
+                                actualSurvivor.decisionTimer = 60; 
+
+                                // Give survivor a nudge to prevent "stacking"
+                                actualSurvivor.x += (Math.random() - 0.5) * 15;
+                                actualSurvivor.y += (Math.random() - 0.5) * 15;
+                            }
+                        }
+                        
+                        // FIX: Clear BOTH units so nobody gets stuck
+                        npc.battleTarget = null;
+                        npc.battlingTimer = 0;
+                        other.battleTarget = null;
+                        other.battlingTimer = 0;
+                    }
+                }
+            } else {
+                // --- BUG FIX 2: INVALID TARGET CATCH ---
+                // Triggers if a target was deleted or vanished mid-fight
+                npc.battleTarget = null; 
+                npc.battlingTimer = 0; 
+                npc.waitTimer = 10;
+                npc.isMoving = true;
+                // Give them a destination so they walk away instead of freezing forever
+                npc.targetX = npc.x + (Math.random() - 0.5) * 300;
+                npc.targetY = npc.y + (Math.random() - 0.5) * 300;
+                npc.decisionTimer = 0; // Force immediate brain update
+            }
+            
+            continue; 
+        }
+
+        if (npc.isMoving && Math.random() < 0.002) npc.waitTimer = Math.floor(Math.random() * 100) + 50; 
+
+        // --- 4. FLIGHT OR FIGHT LOGIC ---
+        if (!npc.battleTarget && npc.decisionTimer <= 0) {
+            npc.decisionTimer = 60; 
+
+            if (npc.food < 20 && npc.role !== "Commerce" && npc.role !== "Civilian") {
+                bestTarget = null; 
+                if (!npc.targetCity || (npc.faction !== "Bandits" && npc.targetCity.faction !== npc.faction)) {
+                    let potentialCities = npc.faction === "Bandits" ? cities : cities.filter(c => c.faction === npc.faction);
+                    if (potentialCities.length > 0) {
+                        potentialCities.sort((a,b) => (Math.pow(npc.x-a.x, 2)+Math.pow(npc.y-a.y, 2)) - (Math.pow(npc.x-b.x, 2)+Math.pow(npc.y-b.y, 2)));
+                        npc.targetCity = potentialCities[0]; 
+                    }
+                }
+            }
+
+            if (closestScaryEnemy && (npc.role === "Civilian" || npc.role === "Commerce" || npc.role === "Bandit")) {
+                let dxE = npc.x - closestScaryEnemy.x, dyE = npc.y - closestScaryEnemy.y;
+                if (dxE === 0 && dyE === 0) { dxE = Math.random() - 0.5; dyE = Math.random() - 0.5; }
+                let distToScary = Math.hypot(dxE, dyE);
+                npc.targetX = npc.x + (dxE / distToScary) * 150; 
+                npc.targetY = npc.y + (dyE / distToScary) * 150;
+                npc.waitTimer = 0; npc.speed = 0.8; npc.decisionTimer = 40; 
+            } 
+            else if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && bestTarget) {
+                let isWorthDiverting = (bestTarget.role === "Military" || bestTarget.role === "Patrol" || bestTarget.isPlayer);
+                if (npc.role === "Patrol" && bestTarget.role === "Bandit") isWorthDiverting = true; 
+                if (npc.role === "Bandit" && bestTarget.role === "Commerce") isWorthDiverting = true; 
+                
+                let targetDistSq = Math.pow(npc.x - bestTarget.x, 2) + Math.pow(npc.y - bestTarget.y, 2);
+                if (isWorthDiverting || targetDistSq < 1500) { 
+                    npc.targetX = bestTarget.x; npc.targetY = bestTarget.y;
+                    npc.waitTimer = 0; npc.speed = 0.85; 
+					
+					
+				   // 🔧 CHANGE 1: commit longer (reduces flip-flopping)
+        npc.decisionTimer = (npc.role === "Bandit") ? 35 : 20;
+                }
+            } 
+            else {
+                if (npc.targetCity && npc.targetCity.x != null && npc.targetCity.y != null) {
+                    npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y;
+                } else if (!npc.isMoving) {
+                    npc.targetX = npc.x + (Math.random() - 0.5) * 200;
+                    npc.targetY = npc.y + (Math.random() - 0.5) * 200;
+                }
+                if (npc.role === "Civilian") npc.speed = 0.45;
+                else if (npc.role === "Commerce") npc.speed = 0.55;
+                else if (npc.role === "Military") npc.speed = 0.4;
+                else if (npc.role === "Bandit") npc.speed = 0.95;
+                else if (npc.role === "Patrol") npc.speed = 0.55;
+            }
+        }
+
+        // --- 5. ARMY SUPPLY DRAIN ---
+        if (npc.isMoving) {
+            if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && Math.random() < 0.002) { 
+                npc.food -= (1 + Math.floor(npc.count / 25));
+                if (npc.food <= 0) {
+                    npc.food = 0; npc.count -= Math.max(1, Math.floor(npc.count * 0.02)); 
+                }
+            }
+            if (npc.food < 20 && Math.random() < 0.005) {
+                let forageAmount = Math.max(2, Math.floor(npc.count * 0.01));
+                if (npc.role === "Bandit") forageAmount *= 2; 
+                npc.food += forageAmount;
+            }
+        }
+
+        // --- 6. MOVEMENT LOGIC ---
+        if (npc.waitTimer > 0) {
+            npc.waitTimer--; npc.isMoving = false;
+        } else if (!npc.battleTarget) {
+            let dx = npc.targetX - npc.x, dy = npc.targetY - npc.y;
+            let dist = Math.hypot(dx, dy);
+            let tc = npc.targetCity;
+            
+            // ANTI-FREEZE FIX: Ensure they are actually AT the target city, not just hitting a fleeing waypoint
+            let isAtTargetCity = tc && Math.abs(npc.targetX - tc.x) < 5 && Math.abs(npc.targetY - tc.y) < 5;
+
+            if (dist < 10) { 
+                npc.isMoving = false;
+                
+                if (isAtTargetCity) {
+                    npc.x = tc.x + (Math.random() - 0.5) * 40; npc.y = tc.y + (Math.random() - 0.5) * 40;
+                    
+                    if (npc.role === "Military" && npc.faction !== tc.faction) {
+                        if (typeof initiateSiege === 'function') {
+                            if (!npc.isSieging) initiateSiege(npc, tc);
+                            npc.waitTimer = 100; 
+                        } else {
+                            npc.waitTimer = 100;
+                            tc.pop -= (typeof siegeDamage !== 'undefined') ? siegeDamage : Math.floor(npc.count * 0.1) + 10;
+                        }
+                        if (tc.militaryPop <= 0) {
+                            tc.faction = npc.faction; tc.color = npc.color;
+                            tc.militaryPop = Math.max(10, Math.floor(npc.count * 0.5)); 
+                            tc.troops = tc.militaryPop; tc.pop += tc.militaryPop;
+                            npc.count -= tc.militaryPop; npc.targetCity = null; 
+                        }
+                    }
+                    else if ((npc.role === "Bandit" || npc.role === "Patrol") && npc.faction !== tc.faction) {
+                        npc.targetX = npc.x + (Math.random() - 0.5) * 600;
+                        npc.targetY = npc.y + (Math.random() - 0.5) * 600;
+                        npc.waitTimer = Math.floor(Math.random() * 60) + 30;
+                        npc.targetCity = null; 
+                    }
+                    else if ((npc.role === "Military" || npc.role === "Patrol" || npc.role === "Bandit") && npc.faction === tc.faction) {
+                        let foodToTake = Math.min((npc.count * 10) - npc.food, tc.food);
+                        if (foodToTake > 0) {
+                            tc.food -= foodToTake; npc.food += foodToTake;
+                            let cost = Math.floor(foodToTake * 0.05);
+                            if (npc.gold >= cost) { npc.gold -= cost; tc.gold += cost; }
+                        }
+                         let targetGarrison = Math.floor(tc.pop * tc.conscriptionRate * 0.9);
+                        if (tc.militaryPop < targetGarrison) {
+                          let absorb = Math.min(3, npc.count, targetGarrison - tc.militaryPop);
+                            tc.militaryPop += absorb; tc.pop += absorb; tc.troops = tc.militaryPop;
+                            npc.count -= absorb;
+                        }
+                        if (npc.count > 0) {
+                            npc.targetCity = (typeof getEnemyCity === 'function' ? getEnemyCity(tc, cities) : null) || (typeof getRandomTargetCity === 'function' ? getRandomTargetCity(cities, tc) : null);
+                            if (npc.targetCity) { npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y; }
+                            npc.waitTimer = Math.floor(Math.random() * 100) + 50; 
+                        }
+                    }
+                    else if (npc.role === "Commerce") {
+                        if (npc.targetCity === npc.originCity) {
+                            tc.civilianPop += npc.count; tc.pop += npc.count; npc.count = 0; 
+                        } else {
+                            tc.gold += Math.floor(npc.travelDist * 0.02) + npc.gold; 
+                            tc.food += npc.food; npc.gold = 0; npc.food = 0; 
+                            npc.targetCity = npc.originCity; 
+                            if (npc.targetCity) { npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y; }
+                            npc.waitTimer = Math.floor(Math.random() * 100) + 50;
+                        }
+                    }
+                    else if (npc.role === "Civilian") {
+                        tc.civilianPop += npc.count; tc.pop += npc.count;
+                        tc.gold += npc.gold; tc.food += npc.food; npc.count = 0; 
+                    }
+                } 
+                else {
+                    // Wandering / reached random waypoint. Pick a new one so they don't freeze!
+                    if (npc.targetCity) {
+                        npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y;
+                    } else {
+                        npc.targetX = npc.x + (Math.random() - 0.5) * 600;
+                        npc.targetY = npc.y + (Math.random() - 0.5) * 600;
+                    }
+                    npc.waitTimer = Math.floor(Math.random() * 60) + 30;
+                }
+            } 
+            else {
+                let tx = Math.floor(npc.x / (typeof tSize !== 'undefined' ? tSize : 8)), ty = Math.floor(npc.y / (typeof tSize !== 'undefined' ? tSize : 8));
+                let currentTile = (typeof worldMapRef !== 'undefined' && worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : { speed: 1.0 };
+                let terrainMod = currentTile.speed !== undefined ? currentTile.speed : 1.6;
+                let currentSpeed = npc.speed;
+
+if (npc.role === "Bandit") {
+    // Start penalties later (after 30 instead of 21)
+    let penaltySteps = Math.max(0, Math.floor((npc.count - 30) / 10) + 1);
+
+    // Much softer penalty (4% per step instead of 10%)
+    let speedMultiplier = 1 - (penaltySteps * 0.04);
+
+    // Higher floor so it never feels too punishing
+    speedMultiplier = Math.max(0.6, speedMultiplier);
+
+    currentSpeed *= speedMultiplier;
+}
+
+                let moveStep = Math.min(currentSpeed * terrainMod, 1); 
+                if (dist > 0) { npc.x += (dx / dist) * moveStep; npc.y += (dy / dist) * moveStep; }
+                npc.isMoving = true; npc.anim += moveStep * 1.5; 
+            }
+        }
+    } // End main NPC loop
+
+
+ //global spawn
+    if (Math.random() < 0.03 && cities.length > 0) {
+        let rc = cities[Math.floor(Math.random() * cities.length)];
+        if (Math.random() < 0.3 && rc.civilianPop > 20) spawnNPCFromCity(rc, "Commerce", cities);
+        else if (Math.random() < 0.2 && rc.civilianPop > 50) spawnNPCFromCity(rc, "Civilian", cities);
+   else if (Math.random() < 0.3 && rc.militaryPop > 30) spawnNPCFromCity(rc, "Patrol", cities);
+else if (rc.pop > 6000 && rc.militaryPop > 80 && Math.random() < 0.10) spawnNPCFromCity(rc, "Military", cities);
+    }
+    if (Math.random() < 0.02 && globalNPCs.filter(n => n.role === "Bandit").length < cities.length * 1.5) {
+        if (typeof spawnBandit === 'function') spawnBandit(0, 0); 
     }
 }
-
-	// Check Player Collision
-	let distToPlayer = Math.hypot(npc.x - player.x, npc.y - player.y);
-	const now = Date.now();
-
-	// ---> SURGERY: DIPLOMACY INTERCEPTION (Allow all NPCs) <---
-
-	if (
-				distToPlayer < 20 &&
-				(typeof inParleMode === 'undefined' || !inParleMode) && // <--- FAIL-SAFE CHECK
-				(typeof inCityMode === 'undefined' || !inCityMode) &&
-				(typeof inBattleMode === 'undefined' || !inBattleMode) &&
-				(now - lastBattleTime > BATTLE_COOLDOWN) 
-			) {
-				// ... initiates diplomacy ...
-		// Grab the tile the player is standing on so we can pass it to the diplomacy screen
-		let tx = Math.floor(npc.x / tSize);
-		let ty = Math.floor(npc.y / tSize);
-		let currentTile = (worldMapRef && worldMapRef[tx] && worldMapRef[tx][ty]) ? worldMapRef[tx][ty] : {name: "Plains"}; 
-
-		// NEW DIPLOMACY INITIATION
-		if (typeof initiateParleWithNPC === 'function') {
-			initiateParleWithNPC(npc, currentTile); // Pass the captured tile for battlefield texturing
-		} else {
-			console.warn("initiateParleWithNPC function from diplomacy_system.js not found! Jumping directly to battlefield.");
-			enterBattlefield(npc, player, currentTile); // Fallback logic
-		}
-	}
-
-
-			// --- 1. COMBAT SEQUENCE (SURGERY: Trickling Troops & Faster Battles) ---
-			if (npc.battlingTimer > 0) {
-				npc.battlingTimer--;
-				npc.isMoving = false;
-
-				if (npc.battleTarget && npc.battleTarget.count > 0) {
-					// Trickle down troops periodically during the battle (every 10 ticks)
-				// --- SURGERY: Keep Roster in sync with Count during Auto-Combat ---
-				if (npc.battlingTimer % 10 === 0) {
-					let other = npc.battleTarget;
-					let dmgToOther = Math.max(1, Math.floor(npc.count * (Math.random() * 0.05 + 0.01)));
-					let dmgToNpc = Math.max(1, Math.floor(other.count * (Math.random() * 0.05 + 0.01)));
-
-					npc.count -= dmgToNpc;
-					other.count -= dmgToOther;
-					
-	// OPTIMIZED O(1) ARRAY REMOVAL: Swap-and-pop avoids re-indexing massive arrays
-					if (npc.roster) {
-						for (let k = 0; k < dmgToNpc && npc.roster.length > 0; k++) {
-							let idx = Math.floor(Math.random() * npc.roster.length);
-							npc.roster[idx] = npc.roster[npc.roster.length - 1];
-							npc.roster.pop();
-						}
-					}
-					if (other.roster) {
-						for (let k = 0; k < dmgToOther && other.roster.length > 0; k++) {
-							let idx = Math.floor(Math.random() * other.roster.length);
-							other.roster[idx] = other.roster[other.roster.length - 1];
-							other.roster.pop();
-						}
-					}
-
-	// --- SURGERY: POST-BATTLE REBOUND ---
-	if (npc.count <= 0 || other.count <= 0) {
-		let survivor = npc.count > 0 ? npc : other;
-		let loser = npc.count <= 0 ? npc : other;
-
-		// --- SURGERY: CAPPED LOOTING ---
-		let maxCapacity = survivor.count * NPC_CARRY_CAPACITY_PER_UNIT;
-		let currentWeight = survivor.gold + survivor.food;
-		let roomLeft = Math.max(0, maxCapacity - currentWeight);
-
-		if (roomLeft > 0) {
-			// Simple proportional looting if they can't take everything
-			let totalLoot = loser.gold + loser.food;
-			if (totalLoot <= roomLeft) {
-				survivor.gold += loser.gold;
-				survivor.food += loser.food;
-			} else {
-				let ratio = roomLeft / totalLoot;
-				survivor.gold += Math.floor(loser.gold * ratio);
-				survivor.food += Math.floor(loser.food * ratio);
-			}
-		}
-
-		// REBOUND: "Kick" the survivor away so they don't stay on the corpse
-		let angle = Math.random() * Math.PI * 2;
-		survivor.x += Math.cos(angle) * 20; 
-		survivor.y += Math.sin(angle) * 20;
-		
-		survivor.waitTimer = 0; // Set to 0 so they move IMMEDIATELY
-		survivor.isMoving = true;
-		survivor.speed = 0.8; // Brief burst of speed away from the site
-		survivor.targetX = survivor.x + Math.cos(angle) * 50;
-		survivor.targetY = survivor.y + Math.sin(angle) * 50;
-		
-		npc.battleTarget = null;
-		other.battleTarget = null;
-		npc.battlingTimer = 0;
-		other.battlingTimer = 0;
-	}
-					}
-				} else {
-					// Foe is dead or missing, clear lock
-					npc.battleTarget = null;
-					npc.battlingTimer = 0;
-					npc.waitTimer = 30;
-				}
-				continue; 
-			}
-
-			// --- 2. HUMAN MECHANIC (Random Rest) ---
-			if (npc.isMoving && Math.random() < 0.002) {
-				npc.waitTimer = Math.floor(Math.random() * 100) + 50; 
-			}
-
- 
-		for (let j = 0; j < globalNPCs.length; j++) {
-				if (i === j) continue;
-				let other = globalNPCs[j];
-
-				// ULTRA-FAST CULLING: 1D checks first, then Math.abs, then squared distance.
-				let dx = npc.x - other.x;
-				if (Math.abs(dx) > 400) continue; 
-				
-				let dy = npc.y - other.y;
-				if (Math.abs(dy) > 400) continue;
-
-				let distSq = dx * dx + dy * dy;
-				if (distSq > 160000) continue; // 400 squared. True circular boundary.
-
-				// Only call the external function if they are confirmed close
-	if (other.count > 0 && isHostile(npc.faction, other.faction)) 
-	{
-			let dist = Math.sqrt(distSq); // Cheaper than hypot
-
-			// A. INITIATE COMBAT
-			if (dist < 25 && !npc.battleTarget && !other.battleTarget && npc.battlingTimer === 0 && other.battlingTimer === 0) {
-				if (Math.random() > 0.1) {
-					if (npc.count < other.count * 0.6) {
-						let repelAngle = Math.atan2(npc.y - other.y, npc.x - other.x);
-						npc.targetX = npc.x + Math.cos(repelAngle) * 60;
-						npc.targetY = npc.y + Math.sin(repelAngle) * 60;
-						npc.waitTimer = 0;
-					}
-					continue;
-				}
-
-				npc.battlingTimer = 90;
-				other.battlingTimer = 90;
-				npc.battleTarget = other;
-				other.battleTarget = npc;
-				npc.waitTimer = 0;
-				other.waitTimer = 0;
-				break;
-			}
-	// B. TRACK FOR CHASE / FLEE 
-		let isWeak = (other.role === "Civilian" || other.role === "Commerce");
-		let isBandit = (other.role === "Bandit");
-	 
-		if (npc.isSieging) {
-			if (dist > 25) continue;
-		}
-
-		let isScary = (other.role === "Military" || other.role === "Patrol");
-		
-		// FIX: Define isEnemy clearly so the logic doesn't break
-		let isTargetableEnemy = isHostile(npc.faction, other.faction);
-
-		// If the target is sieging, only Military units are "brave" enough to be the aggressor
-		if (other.isSieging && npc.role !== "Military") {
-			isTargetableEnemy = false; 
-		}
-
-		if (npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") {
-			if (dist < 400 && isTargetableEnemy) { // Only score if they are actually targetable
-				let score = -dist;
-				if (npc.role === "Bandit") {
-					if (isWeak) score += 500;
-					if (isScary) score -= 1000;
-				} else if (npc.role === "Military") {
-					if (isScary) score += 1000;
-					else score -= 5000;
-				} else if (npc.role === "Patrol") {
-					if (isScary) score += 800;
-					if (isBandit) score += 150;
-					if (isWeak) score -= 1000;
-				}
-
-				if (score > bestTargetScore) {
-					bestTargetScore = score;
-					bestTarget = other;
-				}
-			}
-		} else if (npc.role === "Civilian" || npc.role === "Commerce") {
-			// Civilians only care about Scary units that are actually Hostile
-			let isEnemyScary = isScary && isHostile(npc.faction, other.faction); 
-			
-			if (isEnemyScary && dist < minScaryDist) {
-				minScaryDist = dist;
-				closestScaryEnemy = other;
-			}
-		}
-	}
-
-	// Don't let sieging armies break off to chase the player
-	if (typeof player !== 'undefined' && (npc.role === "Military" || npc.role === "Patrol" || npc.role === "Bandit") && !npc.isSieging) {
-		let isPlayerEnemy = (npc.faction === "Bandits") || (player.enemies && player.enemies.includes(npc.faction));
-
-				if (isPlayerEnemy && npc.role === "Patrol") {
-					let playerTroopCount = player.troops || 0;
-					// If the player has equal or more troops, the patrol turns a blind eye
-					if (playerTroopCount >= npc.count) {
-						isPlayerEnemy = false; 
-					}
-				}
-
-					 if (isPlayerEnemy) 
-					 {
-					// NEW: If player is sieging, only Military units care. Bandits and Patrols walk right past.
-					if (player.isSieging && npc.role !== "Military") {
-						// Do nothing. They ignore you.
-					} else {
-						let distToPlayer = Math.hypot(npc.x - player.x, npc.y - player.y);
-					
-					if (distToPlayer < 100) { // Armies can spot you from a short distance
-						let playerScore = -distToPlayer + 3000; // MASSIVE priority
-						
-						if (playerScore > bestTargetScore) {
-							bestTargetScore = playerScore;
-							// Mock up a target object so the movement logic can read its coordinates and role
-							bestTarget = { x: player.x, y: player.y, role: "Player", isPlayer: true };
-								}
-							}
-						}
-					}
-
-// --- 4. FLIGHT OR FIGHT LOGIC ---
-			if (!npc.battleTarget) {
-				
-				// Keep your Hunger/Survival check exactly as it was
-				if (npc.food < 20 && npc.role !== "Commerce" && npc.role !== "Civilian") {
-					bestTarget = null; 
-					
-					if (!npc.targetCity || (npc.faction !== "Bandits" && npc.targetCity.faction !== npc.faction)) {
-						let potentialCities = npc.faction === "Bandits" ? cities : cities.filter(c => c.faction === npc.faction);
-						if (potentialCities.length > 0) {
-							potentialCities.sort((a,b) => Math.hypot(npc.x-a.x, npc.y-a.y) - Math.hypot(npc.x-b.x, npc.y-b.y));
-							npc.targetCity = potentialCities[0]; 
-						}
-					}
-				}
-
-				// Only recalculate Chase/Flee if the decision timer has cooled down
-	// Only recalculate Chase/Flee if the decision timer has cooled down
-if (npc.decisionTimer <= 0) {
-    npc.decisionTimer = 100; // <--- ADDED THE RESET HERE INSTEAD
-    
-    // A. REVISED AGGRO LOGIC (Military/Bandit/Patrol)
-					// A. REVISED AGGRO LOGIC (Military/Bandit/Patrol)
-					if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && bestTarget) {
-						let isWorthDiverting = (bestTarget.role === "Military" || bestTarget.role === "Patrol" || bestTarget.isPlayer);
-						
-						if (npc.role === "Patrol" && bestTarget.role === "Bandit") isWorthDiverting = true; 
-						if (npc.role === "Bandit") isWorthDiverting = true; 
-						
-						let targetDist = Math.hypot(npc.x - bestTarget.x, npc.y - bestTarget.y);
-						
-						if (isWorthDiverting || targetDist < 50) { 
-							npc.targetX = bestTarget.x;
-							npc.targetY = bestTarget.y;
-							npc.waitTimer = 0; 
-							npc.speed = 1.2; 
-							npc.decisionTimer = 20; // Commit to this chase for 20 frames
-						}
-					} 
-					// B. FLEEING LOGIC (Civilian/Commerce)
-					else if ((npc.role === "Civilian" || npc.role === "Commerce") && closestScaryEnemy) {
-						let dx = npc.x - closestScaryEnemy.x;
-						let dy = npc.y - closestScaryEnemy.y;
-						let distToScary = Math.hypot(dx, dy) || 1;
-						
-						// Run away decisively
-						npc.targetX = npc.x + (dx / distToScary) * 150; 
-						npc.targetY = npc.y + (dy / distToScary) * 150;
-						npc.waitTimer = 0;
-						npc.speed = 1.2; 
-						npc.decisionTimer = 40; // Commit to fleeing for 40 frames (stops the jitter)
-					} 
-					// C. NORMAL PATHING (Return to target)
-					else {
-						if (npc.targetCity) {
-							npc.targetX = npc.targetCity.x;
-							npc.targetY = npc.targetCity.y;
-						}
-						// Restore your baseline speeds
-	if (npc.role === "Civilian") npc.speed = 0.49;
-    else if (npc.role === "Commerce") npc.speed = 0.5;
-    else if (npc.role === "Military") npc.speed = 0.3;
-    else if (npc.role === "Bandit") npc.speed = 0.5;
-    else if (npc.role === "Patrol") npc.speed = 0.5;
-					}
-				}
-			}
-
-	// SURGICAL REPLACEMENT:
-			// --- 5. ARMY SUPPLY DRAIN & FORAGING ---
-			if (npc.isMoving) {
-				if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && Math.random() < 0.002) { 
-					let consumption = 1 + Math.floor(npc.count / 25);
-					npc.food -= consumption;
-					
-					if (npc.food <= 0) {
-						npc.food = 0;
-						npc.count -= Math.max(1, Math.floor(npc.count * 0.02)); 
-					}
-				}
-				
-				// NEW: Wilderness Foraging (Slower rate, triggers if food is critically low)
-				if (npc.food < 20 && Math.random() < 0.005) {
-					// Find a small amount of food. Bandits are better at living off the land.
-					let forageAmount = Math.max(2, Math.floor(npc.count * 0.01));
-					if (npc.role === "Bandit") forageAmount *= 2; 
-					npc.food += forageAmount;
-				}
-			}
-
-	// --- 6. MOVEMENT LOGIC ---
-			if (npc.waitTimer > 0) {
-				npc.waitTimer--;
-				npc.isMoving = false;
-			} else if (!npc.battleTarget) {
-				let dx = npc.targetX - npc.x;
-				let dy = npc.targetY - npc.y;
-				let dist = Math.hypot(dx, dy);
-				let tc = npc.targetCity;
-				
-				if (dist < 10) { 
-					npc.isMoving = false;
-					
-					// ONLY run city interactions if there actually is a target city
-					if (tc) {
-						npc.x = tc.x + (Math.random() - 0.5) * 40;
-						npc.y = tc.y + (Math.random() - 0.5) * 40;
-						
-					   // --- SCENARIO A: HOSTILE ARMY (SIEGE) ---
-						if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && npc.faction !== tc.faction) {
-							if (typeof initiateSiege === 'function') {
-								if (!npc.isSieging) initiateSiege(npc, tc);
-								npc.waitTimer = 100; // Anchor both attackers and late reinforcements
-							} else {
-								// Only apply instant damage if the siege_system.js fails to load
-								npc.waitTimer = 100;
-								let currentSiegeDamage = (typeof siegeDamage !== 'undefined') ? siegeDamage : Math.floor(npc.count * 0.1) + 10;
-								tc.pop -= currentSiegeDamage;
-							}//////////////////
-
-							if (tc.militaryPop <= 0) {
-								tc.faction = npc.faction; 
-								tc.color = npc.color;
-								tc.militaryPop = Math.max(10, Math.floor(npc.count * 0.5)); 
-								tc.troops = tc.militaryPop; 
-								tc.pop += tc.militaryPop;
-								npc.count -= tc.militaryPop; 
-								npc.targetCity = null; 
-							}
-							// Notice: The premature `continue;` was removed so the logic above actually runs!
-						}
-						// --- SCENARIO B: FRIENDLY ARMY (RESUPPLY & REINFORCE) ---
-						else if ((npc.role === "Military" || npc.role === "Patrol" || npc.role === "Bandit") && npc.faction === tc.faction) {
-							
-							// Resupply & Trade Mechanic
-							let foodNeeded = (npc.count * 10) - npc.food;
-							let foodToTake = Math.min(foodNeeded, tc.food);
-							
-							if (foodToTake > 0) {
-								tc.food -= foodToTake;
-								npc.food += foodToTake;
-								
-								// Pay for the food if they have gold
-								let cost = Math.floor(foodToTake * 0.05);
-								if (npc.gold >= cost) {
-									npc.gold -= cost;
-									tc.gold += cost;
-								}
-							}
-
-							// Only dissolve troops if the city is critically undefended
-							let targetGarrison = Math.floor(tc.pop * tc.conscriptionRate);
-							if (tc.militaryPop < targetGarrison) {
-								let absorb = Math.min(npc.count, targetGarrison - tc.militaryPop);
-								tc.militaryPop += absorb; 
-								tc.pop += absorb; 
-								tc.troops = tc.militaryPop;
-								npc.count -= absorb;
-							}
-
-							// If the army is still standing, give them a new mission so they don't get stuck
-							if (npc.count > 0) {
-								npc.targetCity = getEnemyCity(tc, cities) || getRandomTargetCity(cities, tc);
-								if (npc.targetCity) {
-									npc.targetX = npc.targetCity.x; 
-									npc.targetY = npc.targetCity.y;
-								}
-								npc.waitTimer = Math.floor(Math.random() * 100) + 50; 
-							}
-						}
-						// --- SCENARIO C: COMMERCE ---
-						else if (npc.role === "Commerce") {
-							let profit = Math.floor(npc.travelDist * 0.02) + npc.gold;
-							tc.gold += profit; 
-							tc.food += npc.food; 
-							npc.gold = 0; 
-							npc.food = 0; 
-							
-							npc.targetCity = npc.originCity; 
-							if (npc.targetCity) { // Ensure originCity actually exists
-								npc.targetX = npc.targetCity.x; 
-								npc.targetY = npc.targetCity.y;
-							}
-							npc.waitTimer = Math.floor(Math.random() * 100) + 50;
-						}
-						// --- SCENARIO D: CIVILIAN ---
-						else if (npc.role === "Civilian") {
-							tc.civilianPop += npc.count; 
-							tc.pop += npc.count;
-							tc.gold += npc.gold; 
-							tc.food += npc.food;
-							npc.count = 0; 
-						}
-					} 
-					// IF NO TARGET CITY (e.g. wanderers reaching a random wilderness waypoint)
-					else {
-						npc.targetX = npc.x + (Math.random() - 0.5) * 600;
-						npc.targetY = npc.y + (Math.random() - 0.5) * 600;
-						npc.waitTimer = Math.floor(Math.random() * 60) + 30;
-					}
-				} 
-				 else {
-					// --- TILE SPEED SURGERY ---
-					// 1. Identify current tile coordinates
-					let tx = Math.floor(npc.x / tSize);
-					let ty = Math.floor(npc.y / tSize);
-					
-	/* --- REVISE THIS SECTION IN updateNPCs --- */
-	// 2. Fetch tile data (falling back to a neutral 1.0 multiplier if off-map)
-	let currentTile = (worldMapRef && worldMapRef[tx] && worldMapRef[tx][ty])
-		? worldMapRef[tx][ty]
-		: { speed: 1.0 };
-
-	// 3. Calculate move step: (Role Base Speed) * (Terrain Modifier)
-	let terrainMod = currentTile.speed !== undefined ? currentTile.speed : 1.6;
-
-	// FIX: Added a Math.min hard cap. No matter what, an NPC can NEVER move 
-	// more than 1 pixels per frame, completely eliminating teleportation.
-	let moveStep = Math.min(npc.speed * terrainMod, 1); 
-
-	// 4. Apply movement (CRITICAL FIX: Prevent division by zero if overlapping exactly)
-	if (dist > 0) {
-		npc.x += (dx / dist) * moveStep;
-		npc.y += (dy / dist) * moveStep;
-	}
-					npc.isMoving = true;
-					
-					// 5. Sync animation speed to the terrain (slows legs/sails in mud/snow)
-					npc.anim += moveStep * 1.5; 
-				}
-			}
-		}
-
-	// --- 7. LONG-TERM RESPONSIVENESS (Lowered for 1k-10k Pop) ---
-		if (Math.random() < 0.04 && cities.length > 0) {
-			let rc = cities[Math.floor(Math.random() * cities.length)];
-			
-			// Ratios dropped to ensure smaller towns still trade/patrol
-			if (Math.random() < 0.3 && rc.civilianPop > 20) spawnNPCFromCity(rc, "Commerce", cities);
-			else if (Math.random() < 0.2 && rc.civilianPop > 50) spawnNPCFromCity(rc, "Civilian", cities);
-			else if (Math.random() < 0.4 && rc.militaryPop > 30) spawnNPCFromCity(rc, "Patrol", cities);
-			
-			// SURGERY: Military respawn threshold dropped from 20k/200 to 5k/80
-			else if (rc.pop > 5000 && rc.militaryPop > 80 && Math.random() < 0.15) {
-				spawnNPCFromCity(rc, "Military", cities);
-			}
-		}
-		
-		// Ensure the wilderness is never totally safe by slowly respawning destroyed bandit camps
-		if (Math.random() < 0.02 && globalNPCs.filter(n => n.role === "Bandit").length < cities.length * 1.5) {
-			spawnBandit(0, 0); 
-		}
-	}
-	}
-
-}
-
 
 
 

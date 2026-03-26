@@ -354,7 +354,19 @@ function drawBattleUnits(ctx) {
 
 
 
- 
+ // ---> RENDER GROUND EFFECTS <---
+    if (battleEnvironment.groundEffects) {
+        battleEnvironment.groundEffects.forEach(ge => {
+            if (typeof camera !== 'undefined' && camera && typeof isOnScreen === 'function') {
+                if (!isOnScreen(ge, camera)) return;
+            }
+            ctx.save();
+            ctx.translate(ge.x, ge.y);
+            ctx.rotate(ge.angle);
+            drawStuckProjectileOrEffect(ctx, ge.type);
+            ctx.restore();
+        });
+    }
 
     sortedUnitsCache.forEach(unit => {
 		
@@ -482,6 +494,23 @@ if (["cavalry", "elephant", "camel", "horse_archer"].includes(visType)) {
         isFleeing, unit.cooldown, unit.ammo, unit, reloadProgress
     );
 }
+
+// ---> DRAW STUCK PROJECTILES <---
+if (unit.stuckProjectiles && unit.stuckProjectiles.length > 0) {
+    ctx.save();
+    ctx.translate(unit.x, unit.y);
+
+    unit.stuckProjectiles.forEach(sp => {
+        ctx.save();
+        ctx.translate(sp.offsetX, sp.offsetY);
+        ctx.rotate(sp.angle);
+        drawStuckProjectileOrEffect(ctx, sp.type);
+        ctx.restore();
+    });
+    ctx.restore();
+}
+// ---> END STUCK PROJECTILES <---
+
 
 if (isDead) {
     ctx.restore();
@@ -615,7 +644,7 @@ if (isBomb) {
 		else if (isRocket) {
     // 1. High-Velocity Angle & Physics
     ctx.rotate(angle);
-    
+    ctx.scale(0.3, 0.3); // ---> NEW: Shrinks the mid-air rocket rendering by 50%
     // Subtle high-frequency jitter for powder burning instability
     let jitterY = (Math.sin(Date.now() * 0.1) * 0.8);
 
