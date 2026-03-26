@@ -61,8 +61,15 @@ function city_system_renderTroops(ctx, factionName) {
     let troops = city_system_troop_storage[factionName];
     if (!troops) return;
     
-    let fColor = (typeof ARCHITECTURE !== 'undefined' && ARCHITECTURE[factionName]) 
-                 ? ARCHITECTURE[factionName].roofs[0] : "#4a4a4a";
+    // ---> SURGERY: Dynamically color the guards based on the CURRENT occupying ruler <---
+    let currentRuler = (typeof activeCity !== 'undefined' && activeCity) ? activeCity.faction : factionName;
+    
+    let fColor = "#4a4a4a"; // Fallback
+    if (typeof ARCHITECTURE !== 'undefined' && ARCHITECTURE[currentRuler]) {
+        fColor = ARCHITECTURE[currentRuler].roofs[0];
+    } else if (typeof activeCity !== 'undefined' && activeCity && activeCity.color) {
+        fColor = activeCity.color; // Allows Player's white troops to appear when occupied!
+    }
 
     for (let t of troops) {
         if (isCityCollision(t.x + t.vx, t.y + t.vy, factionName)) {

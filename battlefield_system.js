@@ -208,6 +208,7 @@ currentBattleData = {
 
     generateBattlefield(currentWorldMapTile.name || "Plains");
 
+
     playerObj.x = BATTLE_WORLD_WIDTH / 2;
     playerObj.y = BATTLE_WORLD_HEIGHT - 100;
 
@@ -216,9 +217,7 @@ currentBattleData = {
     let playerUniqueType = playerObj.uniqueUnit || null; // Get the unique unit name (e.g., "Mangudai")
     deployArmy(currentBattleData.playerFaction, playerTroopCount, "player"); 
     deployArmy(enemyNPC.faction, enemyNPC.count, "enemy");
-	
-	
-	// ---> PASTE HERE <---
+ 
     let totalCombatants = playerTroopCount + enemyNPC.count;
     
     if (enemyNPC.faction === "Bandits") {
@@ -236,6 +235,50 @@ currentBattleData = {
     if (typeof triggerEpicZoom === 'function') {
         triggerEpicZoom(0.1, 1.5, 3500);
     }
+	
+	
+	// --- RENDER TOTAL WAR DRAG LINE ---
+    if (typeof isRightDragging !== 'undefined' && isRightDragging) {
+        ctx.save();
+        
+        // 1. Draw the main dragged line
+        ctx.strokeStyle = "rgba(0, 150, 255, 0.6)"; // Tactical Blue
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(dragStartPos.x, dragStartPos.y);
+        ctx.lineTo(dragCurrentPos.x, dragCurrentPos.y);
+        ctx.stroke();
+
+        // 2. Draw ghost markers showing exactly where units will stand
+        const dx = dragCurrentPos.x - dragStartPos.x;
+        const dy = dragCurrentPos.y - dragStartPos.y;
+        const dragDist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        
+        const playerUnits = battleEnvironment.units.filter(u => u.selected && u.hp > 0);
+        const MIN_SPACING = 12; // Must match the value in battlefield_commands.js
+        let spacing = dragDist / Math.max(1, playerUnits.length - 1);
+        if (spacing < MIN_SPACING) spacing = MIN_SPACING;
+
+        const centerX = dragStartPos.x + dx / 2;
+        const centerY = dragStartPos.y + dy / 2;
+
+        ctx.fillStyle = "rgba(0, 150, 255, 0.7)";
+        playerUnits.forEach((u, index) => {
+            const offsetDist = (index - (playerUnits.length - 1) / 2) * spacing;
+            const markerX = centerX + Math.cos(angle) * offsetDist;
+            const markerY = centerY + Math.sin(angle) * offsetDist;
+            
+            // Draw a ghost circle for each unit
+            ctx.beginPath();
+            ctx.arc(markerX, markerY, 4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        ctx.restore();
+    }
+	
 }
  
 // --- ARMY DEPLOYMENT BASED ON FACTION RACE & ACTUAL ROSTER ---
@@ -1260,8 +1303,11 @@ function drawStuckProjectileOrEffect(ctx, type) {
 function leaveBattlefield(playerObj) {
     console.log("Leaving battlefield. Restoring overworld state...");
 
-    // --- 1. EMERGENCY COORDINATE RESTORATION (The "Teleport" Fix) ---
-    // We do this first so the player is never left at 0,0 if the function crashes
+    // --- 1. THE MODE SWITCH (CRITICAL FIX) ---
+    // We flip this to FALSE immediately so the next frame draws the map, not the grass.
+    inBattleMode = false; 
+
+    // --- 2. EMERGENCY COORDINATE & CAMERA RESTORATION ---
     if (playerObj && savedWorldPlayerState_Battle) {
         if (savedWorldPlayerState_Battle.x !== 0 && savedWorldPlayerState_Battle.y !== 0) {
             playerObj.x = savedWorldPlayerState_Battle.x;
@@ -1269,64 +1315,66 @@ function leaveBattlefield(playerObj) {
         }
     }
 
-    // --- 2. CALCULATE BATTLE RESULTS ---
+    // Update camera immediately so the map isn't showing 0,0 for one frame
+    if (typeof camera !== 'undefined') {
+        camera.x = playerObj.x - canvas.width / 2;
+        camera.y = playerObj.y - canvas.height / 2;
+    }
+
+    // --- 3. CALCULATE BATTLE RESULTS (Keep your existing logic) ---
     let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0).length;
     let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander && u.hp > 0).length; 
 
-    // Get the scale and initial counts
     let scale = (currentBattleData && currentBattleData.initialCounts.player > 300) ? 5 : 1; 
     let playerLost = currentBattleData.initialCounts.player - (pUnitsAlive * scale);
     let enemyLost = currentBattleData.initialCounts.enemy - (eUnitsAlive * scale);
 
     let isFleeing = eUnitsAlive > 0;
+    let didPlayerWin = !isFleeing;
 
-    // --- 3. APPLY OVERWORLD CONSEQUENCES ---
+    // Apply Overworld Consequences
     playerObj.troops = Math.max(0, (playerObj.troops || 0) - playerLost);
 
     if (currentBattleData.enemyRef) {
         let overworldNPC = currentBattleData.enemyRef;
         overworldNPC.count -= enemyLost;
-
-       if (overworldNPC.count <= 0 || !isFleeing) {
+        if (overworldNPC.count <= 0 || !isFleeing) {
             overworldNPC.count = 0; 
-            overworldNPC.isDead = true; // Mark for removal in npc_system
+            overworldNPC.isDead = true; 
         } else {
-            // NPC Survived: Force them to walk away so they don't re-trigger dialogue
             let escapeAngle = Math.random() * Math.PI * 2;
-            
-            // ---> THE FIX: Physically separate the NPC from the player instantly <---
             overworldNPC.x += Math.cos(escapeAngle) * 50; 
             overworldNPC.y += Math.sin(escapeAngle) * 50;
-            
-            overworldNPC.waitTimer = 0; // Make them move IMMEDIATELY instead of waiting
+            overworldNPC.waitTimer = 0;
             overworldNPC.isMoving = true;
             overworldNPC.targetX = overworldNPC.x + Math.cos(escapeAngle) * 200;
             overworldNPC.targetY = overworldNPC.y + Math.sin(escapeAngle) * 200;
         }
     }
 
-    // --- 4. HEAL PLAYER IF DEFEATED ---
     if (playerObj.hp <= 0) {
         playerObj.hp = playerObj.maxHealth; 
-        console.log("Commander survived their wounds and recovered.");
     }
 
-    // --- 5. UI & CLEANUP ---
-    if (typeof createBattleSummaryUI === 'function') {
+    // --- 4. CONDITIONAL UI BRANCH (THE SIEGE FIX) ---
+    // Instead of always showing the summary, we check if you were in a siege
+    if (playerObj.isSieging && typeof restoreSiegeAfterBattle === 'function') {
+        // This triggers the specific Siege Pause GUI we built
+        restoreSiegeAfterBattle(didPlayerWin);
+    } else if (typeof createBattleSummaryUI === 'function') {
+        // Standard battle summary for non-siege fights
         createBattleSummaryUI(isFleeing ? "Retreat!" : "Victory!", playerLost, enemyLost);
     }
 
-    // Reset Global States
-    inBattleMode = false;
+    // --- 5. CLEANUP ---
     currentBattleData = null; 
     battleEnvironment.units = []; 
     battleEnvironment.projectiles = [];
-    
-    // Set the cooldown timer to prevent instant re-entry into diplomacy/battle
     lastBattleTime = Date.now();
     
     console.log("World Map Resumed at: ", playerObj.x, playerObj.y);
 }
+
 function createBattleSummaryUI(title, pLost, eLost) {
     const summaryDiv = document.createElement('div');
 	

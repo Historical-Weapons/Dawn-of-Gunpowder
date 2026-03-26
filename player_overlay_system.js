@@ -115,7 +115,10 @@ function drawPlayerOverlay(ctx, player, zoom) {
         if (!troopGroups[key]) {
             troopGroups[key] = { type: u.type || 'Unit', lvl: l, exp: e, count: 0 };
         }
-        troopGroups[key].count += (u.count || 0);
+        
+        // FIX: If u.count doesn't exist, treat this entry as a single unit (1)
+        const amount = (u.count !== undefined) ? u.count : 1;
+        troopGroups[key].count += amount;
     });
 
     // Drawing Background

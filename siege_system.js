@@ -57,6 +57,7 @@ function initiatePlayerSiege(city) {
 	
     document.getElementById('city-panel').style.display = 'none';
 
+
     // Show persistent Siege GUI
     const gui = document.getElementById('siege-gui');
     if (gui) {
@@ -69,7 +70,27 @@ function initiatePlayerSiege(city) {
         statusText.innerText = "STATUS: Encircling the city...";
         statusText.style.color = "#ffca28";
     }
+	
+	const contBtn = document.getElementById('gui-continue-btn');
+    if (contBtn) contBtn.style.display = 'none';
+	
 }
+
+
+function resumeSiege() {
+    const siege = activeSieges.find(s => s.attacker === player || s.attacker.isPlayer);
+    if (siege) siege.isPaused = false;
+    
+    document.getElementById('gui-continue-btn').style.display = 'none';
+    document.getElementById('gui-assault-btn').style.display = 'block';
+    
+    const statusText = document.getElementById('siege-status-text');
+    if (statusText) {
+        statusText.innerText = "STATUS: Encircling the city...";
+        statusText.style.color = "#ffca28";
+    }
+}
+
 
 // 2. Safely end the siege and hide the GUI
 function endSiege(success = false) {
@@ -93,18 +114,24 @@ function endSiege(success = false) {
     if(document.getElementById('siege-gui')) document.getElementById('siege-gui').style.display = 'none';
 }
 
-// 3. Re-wire the Sally Out prompt to modify the persistent GUI
 function promptSallyOut(siege, defenderMilitary, attackerCount) {
     pendingSallyOut = { siege, defenderMilitary, attackerCount };
-
-    // Hide standard options
-    document.getElementById('gui-assault-btn').style.display = 'none';
-    document.getElementById('gui-leave-btn').style.display = 'none';
     
-    // Show forced Sally Out button
     const sallyBtn = document.getElementById('gui-sally-btn');
-    sallyBtn.style.display = 'block';
-    sallyBtn.innerText = `DEFENDERS SALLY OUT! (${defenderMilitary} vs ${attackerCount})`;
+    const leaveBtn = document.getElementById('gui-leave-btn');
+    const assaultBtn = document.getElementById('gui-assault-btn');
+    const statusText = document.getElementById('siege-status-text');
+
+    if (sallyBtn) {
+        sallyBtn.style.display = 'block';
+        if (leaveBtn) leaveBtn.style.display = 'none'; // HIDE LEAVE
+        if (assaultBtn) assaultBtn.style.display = 'none'; // HIDE ASSAULT
+        
+        statusText.innerText = "CRITICAL: The garrison is sallying out!";
+        statusText.style.color = "#ff5252";
+        
+        if (typeof AudioManager !== 'undefined') AudioManager.playSound('battle_shout');
+    }
 }
 	
 	
@@ -115,11 +142,9 @@ function updateSieges() {
         let def = siege.defender;
 
         let attackerCount = atk.isPlayer ? player.troops : atk.count;
-        let attackerDead = atk.isPlayer ? (player.hp <= 0 || player.troops <= 0) : atk.count <= 0;
+		let attackerDead = atk.isPlayer ? (player.troops <= 0) : atk.count <= 0;
         
-        // Check if attacker was ambushed by a military relief force
         let isInBattle = atk.isPlayer ? (typeof inBattleMode !== 'undefined' && inBattleMode) : (atk.battlingTimer > 0);
-
 // Locate this in updateSieges()
 if (attackerDead || isInBattle) {
     console.log(`The siege of ${def.name} has been broken!`);
@@ -142,8 +167,11 @@ if (attackerDead || isInBattle) {
     def.isUnderSiege = false;
     activeSieges.splice(i, 1);
     continue;
-}
+	}
 
+// 2. ADD THIS LINE RIGHT HERE: Block attrition if paused
+        if (siege.isPaused) continue;
+		
         siege.ticks++;
 
         // Continually enforce the movement lock
@@ -163,9 +191,9 @@ if (attackerDead || isInBattle) {
                     statusText.style.color = "#ff5252";
                 }
                 
-                promptSallyOut(siege, defenderMilitary, attackerCount);
+			promptSallyOut(siege, defenderMilitary, attackerCount);
                 // Return here prevents ticks from continuing while frozen
-                return;
+                continue; // SURGERY: Changed return to continue
 			}
             // NPC vs NPC Logic
             let atkLoss = Math.floor(defenderMilitary * 0.4);
@@ -320,54 +348,46 @@ function drawSiegeVisuals(ctx) {
     });
 }
 
-
-
 function resolveSallyOut(choice) {
     if (!pendingSallyOut) return;
-
-    const { siege, defenderMilitary } = pendingSallyOut;
-    const atk = siege.attacker;
+    const siege = pendingSallyOut.siege;
     const def = siege.defender;
 
-    document.getElementById("siege-sally-prompt").style.display = "none";
+    // 1. IMMEDIATELY HIDE AND DISABLE GUI TO PREVENT DOUBLE-CLICKING
+    const siegeGui = document.getElementById('siege-gui');
+    const leaveBtn = document.getElementById('gui-leave-btn');
+    const sallyBtn = document.getElementById('gui-sally-btn');
+    const assaultBtn = document.getElementById('gui-assault-btn');
 
-    // SURGERY: Reset Buttons because the siege state is ending
-    const sBtn = document.getElementById('siege-button');
-    const aBtn = document.getElementById('assault-button');
-    if(sBtn) sBtn.style.display = 'block';
-    if(aBtn) aBtn.style.display = 'none';
-
-    if (choice === "attack") {
-        atk.isSieging = false;
-        def.isUnderSiege = false;
-        activeSieges = activeSieges.filter(s => s.id !== siege.id);
-        // ... (rest of the existing function)
-        if (atk.isPlayer) {
-            if (typeof enterBattlefield === "function" && typeof generateNPCRoster === "function") {
-                const sallyForce = {
-                    faction: def.faction,
-                    role: "Military",
-                    count: defenderMilitary,
-                    roster: generateNPCRoster("Military", defenderMilitary, def.faction)
-                };
-                enterBattlefield(sallyForce, player, { name: "City Gates", speed: 0.8 });
-            }
-        }
-} else {
-        // Run Away / Abandon: No casualties, no penalty
-        console.log("Siege abandoned safely.");
-        atk.isSieging = false;
-        def.isUnderSiege = false;
-        activeSieges = activeSieges.filter(s => s.id !== siege.id);
+    if (choice === 'attack') {
+		if (sallyBtn) sallyBtn.style.display = 'none';
+        // HIDE EVERYTHING so it doesn't show up during the battle
+        siegeGui.style.display = "none";
         
-        // Ensure the GUI closes
-        const gui = document.getElementById('siege-gui');
-        if(gui) gui.style.display = 'none';
+        // Prepare the transition
+        console.log(`Sally out triggered! Defenders of ${def.name} are attacking!`);
+        
+        if (typeof enterBattlefield === "function" && typeof generateNPCRoster === "function") {
+            const garrisonForce = {
+                faction: def.faction,
+                role: "Garrison (Sally Out)",
+                count: def.militaryPop || 50,
+                roster: generateNPCRoster("Military", def.militaryPop || 50, def.faction),
+                isSallyOut: true 
+            };
+            
+            // Trigger battle
+            // FIXED: Swapped arguments to (Enemy, Player) and added terrain object to fix the .name error
+            enterBattlefield(garrisonForce, player, { name: "Plains", speed: 1.0 });
+            
+            // We do NOT delete the siege yet because the player might survive and continue it
+        }
     }
-
+    
     pendingSallyOut = null;
 }
- 
+
+
 function triggerSiegeAssault() {
     const currentSiege = activeSieges.find(s => s.attacker.isPlayer);
     if (!currentSiege) {
@@ -411,5 +431,35 @@ function triggerSiegeAssault() {
         enterBattlefield(garrisonForce, player, { name: "City Walls", speed: 0.8 });
     } else {
         alert("Battlefield system not loaded! The assault failed.");
+    }
+}
+
+function restoreSiegeAfterBattle(didPlayerWin) {
+ 
+    const siege = activeSieges.find(s => s.attacker === player || s.attacker.isPlayer);
+    if (!siege) return;
+
+    siege.isPaused = true; 
+
+    // Now that the map is visible in the background, show the UI
+    const siegeGui = document.getElementById('siege-gui');
+    const statusText = document.getElementById('siege-status-text');
+    const leaveBtn = document.getElementById('gui-leave-btn');
+    const sallyBtn = document.getElementById('gui-sally-btn');
+    const assaultBtn = document.getElementById('gui-assault-btn');
+    const continueBtn = document.getElementById('gui-continue-btn');
+
+    if (siegeGui) siegeGui.style.display = 'block';
+    if (leaveBtn) leaveBtn.style.display = 'block'; 
+    if (sallyBtn) sallyBtn.style.display = 'none'; 
+    if (assaultBtn) assaultBtn.style.display = 'none'; 
+    if (continueBtn) continueBtn.style.display = 'block';
+
+    if (didPlayerWin) {
+        statusText.innerText = "VICTORY: The sally was repelled. What now?";
+        statusText.style.color = "#8bc34a";
+    } else {
+        statusText.innerText = "DEFEAT: You retreated, but the blockade holds. What now?";
+        statusText.style.color = "#ffca28";
     }
 }

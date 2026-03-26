@@ -9,7 +9,6 @@
     <title>Dawn of Gunpowder - Asia</title>
     <link rel="stylesheet" href="mainStyle.css">
 </head>
-
 <body>
     <div id="loading">Initializing... (0%)</div>
 
@@ -64,9 +63,12 @@
                 }
             ">Recruit 5 Militia (20 Gold)</button>
 
-            <button class="menu-btn" onclick="if(activeCity) { 
+<button class="menu-btn" onclick="if(activeCity) { 
                 if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
-                enterCity(activeCity.faction, player); 
+                
+                /* SURGERY: Enter the native architecture dimension */
+                enterCity(activeCity.originalFaction || activeCity.faction, player); 
+                
                 document.getElementById('city-panel').style.display = 'none'; 
             }">Visit Settlement</button>
             
@@ -79,34 +81,34 @@
                 }
             ">Upgrade Troops</button>
 
-			<button class="menu-btn" onclick="
-				if(activeCity && player.gold >= 10) { 
-					if(activeCity.food >= 10) {
-						if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
-						
-						// Player Transaction
-						player.food += 10; 
-						player.gold -= 10; 
-						refreshCityUI();
-						// City Transaction
-						activeCity.food -= 10;
-						activeCity.gold = (activeCity.gold || 0) + 10;
+            <button class="menu-btn" onclick="
+                if(activeCity && player.gold >= 10) { 
+                    if(activeCity.food >= 10) {
+                        if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
+                        
+                        // Player Transaction
+                        player.food += 10; 
+                        player.gold -= 10; 
+                        refreshCityUI();
+                        // City Transaction
+                        activeCity.food -= 10;
+                        activeCity.gold = (activeCity.gold || 0) + 10;
 
-						// Refresh City UI Labels
-						document.getElementById('city-gold').innerText = Math.floor(activeCity.gold);
-						document.getElementById('city-food').innerText = Math.floor(activeCity.food);
-						
-						console.log(`${activeCity.name} supply updated: ${activeCity.food} food left.`);
-					} else {
-						if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
-						alert('The city has no food left to sell!'); 
-					}
-				} else {
-					if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
-					alert('Not enough gold for rations!'); 
-				}
-			">Buy Food (10 Gold)</button>
-			
+                        // Refresh City UI Labels
+                        document.getElementById('city-gold').innerText = Math.floor(activeCity.gold);
+                        document.getElementById('city-food').innerText = Math.floor(activeCity.food);
+                        
+                        console.log(`${activeCity.name} supply updated: ${activeCity.food} food left.`);
+                    } else {
+                        if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
+                        alert('The city has no food left to sell!'); 
+                    }
+                } else {
+                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
+                    alert('Not enough gold for rations!'); 
+                }
+            ">Buy Food (10 Gold)</button>
+            
         </div>
         <div id="hostile-box" style="display: none; flex-direction: column; gap: 8px; align-items: center; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
             <span style="color: #ff5252; font-weight: bold; font-style: italic; font-size: 0.95rem;">"We are at war. You will find no quarter here."</span>
@@ -155,24 +157,26 @@
                 }
             ">Seek Peace</button>
         </div>
-
-    <div id="siege-gui" style="display: none; position: absolute; top: 10%; left: 50%; transform: translateX(-50%); background: rgba(35, 25, 15, 0.95); border: 3px solid #5d4037; padding: 20px; color: #fff; z-index: 6000; text-align: center; width: 320px; box-shadow: 0 0 20px rgba(0,0,0,0.8);">
+    </div> 
+	
+<div id="siege-gui" style="display: none; position: absolute; top: 80px; left: 50%; transform: translateX(-50%); background: rgba(35, 25, 15, 0.95); border: 3px solid #5d4037; padding: 20px; color: #fff; z-index: 6000; text-align: center; width: 320px; box-shadow: 0 0 20px rgba(0,0,0,0.8);">
         <h2 style="margin-top: 0; color: #ff5252; font-family: 'Georgia', serif;">Under Siege</h2>
         
         <div id="siege-status-text" style="margin-bottom: 20px; font-weight: bold; font-size: 1.1rem; color: #ffca28;">
             STATUS: Encircling the city...
         </div>
 
+        <button id="gui-continue-btn" class="menu-btn" style="display: none; width: 100%; margin-bottom: 10px; background: linear-gradient(to bottom, #2e7d32, #1b5e20);" onclick="if(typeof resumeSiege === 'function') resumeSiege();">Continue Siege</button>
         <button id="gui-assault-btn" class="menu-btn" style="width: 100%; margin-bottom: 10px; background: linear-gradient(to bottom, #d32f2f, #b71c1c);" onclick="if(typeof triggerSiegeAssault === 'function') triggerSiegeAssault();">Siege (Assault)</button>
         <button id="gui-leave-btn" class="menu-btn" style="width: 100%; margin-bottom: 10px;" onclick="if(typeof endSiege === 'function') endSiege(false);">Leave</button>
-
-        <button id="gui-sally-btn" class="menu-btn" style="display: none; width: 100%; background: #b71c1c; color: white; border: 2px solid #ffca28; font-weight: bold; animation: pulse 1s infinite;" onclick="if(typeof resolveSallyOut === 'function') resolveSallyOut('attack');">
-            DEFENDERS SALLYING OUT!
-        </button>
     </div>
-		
-    </div> <div id="parle-panel" style="display: none;">
-        <div id="parle-header">
+
+    <button id="gui-sally-btn" class="menu-btn" style="display: none; position: fixed; top: 400px; left: 50%; transform: translateX(-50%); width: 320px; background: #b71c1c; color: white; border: 2px solid #ffca28; font-weight: bold; animation: pulse 1s infinite; z-index: 6001;" onclick="if(typeof resolveSallyOut === 'function') resolveSallyOut('attack');">
+        DEFENDERS SALLYING OUT!
+    </button>
+	
+	
+    <div id="parle-panel" style="display: none;"> <div id="parle-header">
             <h2 id="parle-npc-name">NPC Force</h2>
             <span id="parle-npc-faction">Faction Name</span>
             <span id="parle-faction-standing" class="standing-badge">NEUTRAL</span>
@@ -195,9 +199,6 @@
         <div id="parle-action-box"></div> 
     </div>  
 
-
-
-    
     <canvas id="gameCanvas"></canvas>
 	
 	   <div id="diplomacy-panel" style="
@@ -245,6 +246,6 @@
     <script src="parler_system.js"></script>
     <script src="siege_system.js"></script>
     <script src="faction_dynamics.js"></script>
-    <script src="engine.js"></script>
+    <script src="overworld.js"></script>
 </body>
 </html>

@@ -521,29 +521,29 @@ if (isDead) {
 
 
 // 2. SURGICAL NAME OVERRIDE: Show "PLAYER" if it's the commander
-ctx.fillStyle = "#ffffff";
-ctx.font = unit.isCommander ? "bold 6px Georgia" : "4px Georgia"; // Bolder for player
-ctx.textAlign = "center";
-let displayName = unit.isCommander ? "PLAYER" : unit.unitType;
-ctx.fillText(displayName, unit.x, unit.y - 21);
+//ctx.fillStyle = "#ffffff";
+//ctx.font = unit.isCommander ? "bold 6px Georgia" : "4px Georgia"; // Bolder for player
+//ctx.textAlign = "center";
+//let displayName = unit.isCommander ? "PLAYER" : unit.unitType;
+//ctx.fillText(displayName, unit.x, unit.y - 21);
 
 // 3. HEALTH BAR CONFIG
-const barWidth = 24;
-const barHeight = 4;
-const barY = unit.y - 30; 
+//const barWidth = 24;
+//const barHeight = 4;
+//const barY = unit.y - 30; 
 
 // --- SURGICAL DEBUG UI OVERRIDE --- 
 // Changed from 'unit.isCommander' so ALL player troops show stats
-if (unit.side === "player") {
-    ctx.save();
+//if (unit.side === "player") {
+   // ctx.save();
     
     // 1. Configure Debug Font (Slightly smaller for troops so it doesn't clutter)
-   ctx.textAlign = "center";
-  ctx.font = unit.isCommander ? "bold 8px monospace" : "6px monospace"; 
+ //  ctx.textAlign = "center";
+ // ctx.font = unit.isCommander ? "bold 8px monospace" : "6px monospace"; 
     
     // Change color based on Level (Gold for Level 3+, White for recruits)
-    let lvl = unit.stats.experienceLevel || 1;
-   ctx.fillStyle = lvl >= 3 ? "#ffca28" : "#ffffff"; 
+ //   let lvl = unit.stats.experienceLevel || 1;
+ //  ctx.fillStyle = lvl >= 3 ? "#ffca28" : "#ffffff"; 
 
     // 2. Build the Debug String
   //  let ma = unit.stats.meleeAttack;
@@ -556,31 +556,31 @@ if (unit.side === "player") {
   //  ctx.fillText(debugText, unit.x, barY - 10);
 
     // 4. SATISFACTION / EXP BAR
-    const expProgress = lvl % 1; 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-   ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth, 2); // EXP Background
+  //  const expProgress = lvl % 1; 
+   // ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  // ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth, 2); // EXP Background
     
     // Blue for Commander, Green for regular troops
-   ctx.fillStyle = unit.isCommander ? "#4fc3f7" : "#81c784"; 
-   ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth * expProgress, 2); // EXP Fill
+  // ctx.fillStyle = unit.isCommander ? "#4fc3f7" : "#81c784"; 
+  // ctx.fillRect(unit.x - barWidth / 2, barY - 6, barWidth * expProgress, 2); // EXP Fill
 
-    ctx.restore();
-}
+   // ctx.restore();
+//}
 
 // 5. HEALTH BAR RENDERING
 // Draw Background (Red/Empty)
-ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
-ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+//ctx.fillStyle = "rgba(200, 0, 0, 0.5)";
+//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 
 // Draw Health Fill (Green for Allies, Orange/Red for Enemies)
-const healthPercent = Math.max(0, unit.hp / unit.stats.health);
-ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
-ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
+//const healthPercent = Math.max(0, unit.hp / unit.stats.health);
+//ctx.fillStyle = unit.side === "COMMANDER" ? "#4caf50" : "#ff5722"; 
+//ctx.fillRect(unit.x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
 
 // Draw Border
-ctx.strokeStyle = "#000";
-ctx.lineWidth = 1;
-ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
+//ctx.strokeStyle = "#000";
+//ctx.lineWidth = 1;
+//ctx.strokeRect(unit.x - barWidth / 2, barY, barWidth, barHeight);
 }); 
 
 battleEnvironment.projectiles.forEach(p => {

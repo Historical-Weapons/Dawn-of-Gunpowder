@@ -3,18 +3,17 @@
 // ============================================================================
 
 const FACTIONS = {
-    "Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.3, south: 0.7, west: 0.4, east: 0.6 } }, // Red
-    "Shahdom of Iransar":    { color: "#00838f", geoWeight: { north: 0.4, south: 0.6, west: 0.9, east: 0.1 } }, // Teal
-    "Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.9, south: 0.1, west: 0.5, east: 0.5 } }, // Blue
-    "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.8, south: 0.2, west: 0.5, east: 0.5 } }, // Slate Grey
-    "Vietan Realm":          { color: "#388e3c", geoWeight: { north: 0.1, south: 0.9, west: 0.3, east: 0.7 } }, // Green
-    "Goryun Kingdom":        { color: "#7b1fa2", geoWeight: { north: 0.7, south: 0.3, west: 0.4, east: 0.8 } }, // Purple
-    "Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.5, south: 0.5, west: 0.7, east: 0.3 } }, // Gold
-    "High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.6, south: 0.4, west: 0.3, east: 0.7 } }, // Earth Brown
-    "Yamato Clans":          { color: "#c2185b", geoWeight: { north: 0.6, south: 0.4, west: 0.2, east: 0.8 } }, // Crimson
-    "Bandits":               { color: "#222222", geoWeight: { north: 0.5, south: 0.5, west: 0.5, east: 0.5 } },  // Black 
-"Player's Kingdom": { color: "#FFFFFF", geoWeight: { north: 0.5, south: 0.5, west: 0.5, east: 0.5 }} // Add this line
-
+"Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.35, south: 0.65, west: 0.45, east: 0.55 } }, // Song-style China
+"Shahdom of Iransar":    { color: "#00838f", geoWeight: { north: 0.45, south: 0.55, west: 0.98, east: 0.02 } }, // Persia, far west
+"Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.95, south: 0.05, west: 0.65, east: 0.35 } }, // Steppe north
+"Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.88, south: 0.12, west: 0.32, east: 0.68 } }, // North / northeast China
+"Vietan Realm":          { color: "#388e3c", geoWeight: { north: 0.10, south: 0.90, west: 0.35, east: 0.65 } }, // Southeast Asia
+"Goryun Kingdom":        { color: "#7b1fa2", geoWeight: { north: 0.72, south: 0.28, west: 0.15, east: 0.85 } }, // Korea, northeast
+"Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.72, south: 0.28, west: 0.72, east: 0.28 } }, // Xia / Tangut, northwest
+"High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.62, south: 0.38, west: 0.86, east: 0.14 } }, // Tibet, far west / plateau
+"Yamato Clans":          { color: "#c2185b", geoWeight: { north: 0.45, south: 0.55, west: 0.02, east: 0.98 } }, // Japan, extreme east
+"Bandits":               { color: "#222222", geoWeight: { north: 0.50, south: 0.50, west: 0.50, east: 0.50 } }, // Neutral
+"Player's Kingdom":      { color: "#FFFFFF", geoWeight: { north: 0.30, south: 0.70, west: 0.58, east: 0.42 } }  // Rebel / Dali-style
 };
 
 const SYLLABLE_POOLS = {
@@ -176,6 +175,10 @@ function initializeCityData(city, worldWidth, worldHeight) {
     let controllingFaction = getFactionByGeography(city.x, city.y, worldWidth, worldHeight);
     city.recoveryTimer = 0;
     city.faction = controllingFaction;
+    
+    // ---> SURGERY: Permanently lock in the native culture <---
+    city.originalFaction = controllingFaction; 
+     
     city.color = FACTIONS[controllingFaction].color;
     city.name = generateFactionCityName(controllingFaction); 
     city.pop = Math.floor(city.pop * 0.15);//population factor

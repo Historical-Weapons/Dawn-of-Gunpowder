@@ -4,7 +4,7 @@
 
 window.isZoomAnimating = false;
 
-window.triggerEpicZoom = function(startZoom = 0.2, endZoom = 1.2, durationMs = 1500) {
+window.triggerEpicZoom = function(startZoom = 0.2, endZoom = 4.0, durationMs = 1500) {
     window.isZoomAnimating = true;
     window.zoom = startZoom; // Set the global zoom to the "clouds" level
 

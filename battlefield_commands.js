@@ -5,6 +5,10 @@
 let currentSelectionGroup = null; 
 let currentFormationStyle = "line"; 
 
+let isRightDragging = false;
+let dragStartPos = { x: 0, y: 0 };
+let dragCurrentPos = { x: 0, y: 0 };
+
 const COMMAND_GROUPS = {
     1: [ROLES.SHIELD, ROLES.PIKE, ROLES.INFANTRY, ROLES.TWO_HANDED, ROLES.THROWING], // Infantry & Skirmishers
     2: [ROLES.ARCHER, ROLES.CROSSBOW], // Ranged

@@ -124,11 +124,6 @@ function applyFactionModifiers(city, factionCityCounts) {
     return { draftMultiplier, upkeepMultiplier };
 }
 
-
-// ============================================================================
-// UI: DIPLOMACY TABLE GENERATOR (EMOJI EDITION)
-// ============================================================================
-
 const FACTION_EMOJIS = {
     "Hong Dynasty": "🏯",
     "Shahdom of Iransar": "🦁",
@@ -195,8 +190,24 @@ function renderDiplomacyMatrix() {
             if (rel === "War") color = "#ff5252";
             if (rel === "Ally") color = "#8bc34a";
             
-            tableHTML += `<td style="color: ${color}; font-weight: bold;">${(rel === "-") ? "-" : rel.toUpperCase()}</td>`;
-        });
+          // SURGERY: Make the Player's row interactive
+            let cellContent = (rel === "-") ? "-" : rel.toUpperCase();
+            let clickableStyle = "";
+
+            // If this is the Player's row and not themselves/bandits, make it a button
+            if (f1 === "Player's Kingdom" && f2 !== f1 && f2 !== "Bandits") {
+                clickableStyle = "cursor: pointer; text-decoration: underline;";
+                tableHTML += `<td style="color: ${color}; font-weight: bold; ${clickableStyle}" 
+                                  onclick="togglePlayerWar('${f2}')" 
+                                  title="Click to toggle War/Peace">
+                                  ${cellContent}
+                              </td>`;
+            } else {
+                // Normal non-interactive cell for NPC rows
+                tableHTML += `<td style="color: ${color}; font-weight: bold;">${cellContent}</td>`;
+            }
+
+	   });
         tableHTML += `</tr>`;
     });
 
@@ -208,4 +219,32 @@ const dipContainer = document.getElementById('diplomacy-table-container');
 if (dipContainer) {
     dipContainer.innerHTML = tableHTML;
 }
+}
+
+// NEW: Function to handle Player-specific diplomatic changes
+function togglePlayerWar(targetFaction) {
+    if (targetFaction === "Player's Kingdom" || targetFaction === "Bandits") return;
+
+    if (!player.enemies) player.enemies = []; // Safety check
+
+    const isCurrentlyWar = player.enemies.includes(targetFaction);
+    
+    if (isCurrentlyWar) {
+        // --- MAKE PEACE ---
+        player.enemies = player.enemies.filter(e => e !== targetFaction);
+        
+        if (typeof logGameEvent === 'function') {
+            logGameEvent(`PEACE: You have signed a peace treaty with ${targetFaction}.`, "peace");
+        }
+    } else {
+        // --- DECLARE WAR ---
+        player.enemies.push(targetFaction);
+        
+        if (typeof logGameEvent === 'function') {
+            logGameEvent(`WAR: You have formally declared war on ${targetFaction}!`, "war");
+        }
+    }
+
+    // Refresh the UI so the table colors update immediately
+    renderDiplomacyMatrix();
 }

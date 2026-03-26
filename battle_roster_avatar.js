@@ -354,11 +354,20 @@ createBattleSummaryUI = function(...args) {
 
     let summaryDiv = document.getElementById('battle-summary');
     if (summaryDiv) {
-        // 2. Save the close button (crucial for returning to the map)
-        let closeBtn = summaryDiv.querySelector('button');
-        
+		let closeBtn = summaryDiv.querySelector('button');
+
+        // ---> SURGERY: Teleport to overworld immediately <---
+        if (player.isSieging || (currentBattleData && currentBattleData.playerDefeatedText)) {
+            if (closeBtn) {
+                closeBtn.click(); // This calls leaveBattlefield() automatically
+            }
+            // Hide this summary box so it doesn't overlap the Siege GUI
+            summaryDiv.style.display = 'none'; 
+            return;
+        }
+
         // 3. WIPE the div completely to remove the original base-game text
-        summaryDiv.innerHTML = ''; 
+        summaryDiv.innerHTML = '';
 
         // 4. Apply your layout styling
         summaryDiv.style.textAlign = "center";
