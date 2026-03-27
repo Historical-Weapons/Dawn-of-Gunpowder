@@ -118,7 +118,7 @@ case "RANDOM":
 
         case "DECLARE_WAR":
 isDiplomacyProcessing = true; // LOCK UI
-            parleDialogue.innerText = `So be it! The ${npc.faction} will see you crushed!`;
+            parleDialogue.innerText = `Quick, send a messenger! The ${npc.faction} must declare war!`;
             if (!player.enemies) player.enemies = [];
             if (!player.enemies.includes(npc.faction)) {
                 player.enemies.push(npc.faction);

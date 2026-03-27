@@ -1,21 +1,43 @@
-// ============================================================================
-// EMPIRE OF THE 13TH CENTURY - DYNAMIC POPULATION & NPC SYSTEM
-// ============================================================================
-
 const FACTIONS = {
-"Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.35, south: 0.65, west: 0.45, east: 0.55 } }, // Song-style China
-"Shahdom of Iransar":    { color: "#00838f", geoWeight: { north: 0.45, south: 0.55, west: 0.98, east: 0.02 } }, // Persia, far west
-"Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.95, south: 0.05, west: 0.65, east: 0.35 } }, // Steppe north
-"Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.88, south: 0.12, west: 0.32, east: 0.68 } }, // North / northeast China
-"Vietan Realm":          { color: "#388e3c", geoWeight: { north: 0.10, south: 0.90, west: 0.35, east: 0.65 } }, // Southeast Asia
-"Goryun Kingdom":        { color: "#7b1fa2", geoWeight: { north: 0.72, south: 0.28, west: 0.15, east: 0.85 } }, // Korea, northeast
-"Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.72, south: 0.28, west: 0.72, east: 0.28 } }, // Xia / Tangut, northwest
-"High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.62, south: 0.38, west: 0.86, east: 0.14 } }, // Tibet, far west / plateau
-"Yamato Clans":          { color: "#c2185b", geoWeight: { north: 0.45, south: 0.55, west: 0.02, east: 0.98 } }, // Japan, extreme east
-"Bandits":               { color: "#222222", geoWeight: { north: 0.50, south: 0.50, west: 0.50, east: 0.50 } }, // Neutral
-"Player's Kingdom":      { color: "#FFFFFF", geoWeight: { north: 0.30, south: 0.70, west: 0.58, east: 0.42 } }  // Rebel / Dali-style
-};
+    // 1. THE HEARTLAND: Central China
+    "Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.30, south: 0.70, west: 0.30, east: 0.60 } }, 
 
+    // 2. INDIA/SW: Shoved to the absolute bottom-left (West 0.0, South 1.0)
+    "Ghurvansh Dominion":    { color: "#00838f", geoWeight: { north: 0.03, south: 0.97, west: 0.97, east: 0.03 } }, 
+
+    // 3. MONGOL STEPPE: Far North
+    "Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.95, south: 0.05, west: 0.60, east: 0.40 } }, 
+
+    // 4. JURCHEN FORESTS: Top-Right
+    "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.95, south: 0.05, west: 0.05, east: 0.95 } }, 
+
+    // 5. YUNNAN / SW BORDER: Pinned near the bottom void, far from Japan
+    "Mong Realm":           { color: "#388e3c", geoWeight: { north: 0.02, south: 0.98, west: 0.65, east: 0.35 } }, 
+
+// KOREA: Pulled further South and West to yield the Northeast to Jurchen
+    "Goryun Kingdom": { 
+        color: "#7b1fa2", 
+        geoWeight: { north: 0.40, south: 0.65, west: 0.02, east: 0.80 } // Adjusted south to 0.65, east to 0.78
+    },
+
+    // 7. XIARAN: Desert/Silk Road
+    "Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.80, south: 0.20, west: 0.90, east: 0.10 } }, 
+
+    // 8. TIBET: High Plateau
+    "High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.45, south: 0.55, west: 0.95, east: 0.05 } }, 
+
+// JAPAN: Pushed to the far east
+    "Yamato Clans": { 
+        color: "#c2185b", 
+        geoWeight: { north: 0.15, south: 0.65, west: 0.05, east: 0.98 } // Changed east to 0.98
+    },
+	
+    // 10. BANDITS: Spread thin
+    "Bandits":               { color: "#222222", geoWeight: { north: 0.50, south: 0.50, west: 0.50, east: 0.50 } }, 
+
+    // 11. PLAYER: Yellow Sea Anchor
+    "Player's Kingdom":      { color: "#FFFFFF", geoWeight: { north: 0.48, south: 0.42, west: 0.25, east: 0.75 } } 
+};
 const SYLLABLE_POOLS = {
     "Hong Dynasty": ["Han","Zhuo","Mei","Ling","Xian","Yue","Lu","Feng","Bai","Shan","Qiao","He","Jin","Dao","Tong","An","Wu","Lin","Wan","Bao","Zi","Rong","Dong","Cheng","Hua","Shou","Yi","Tao","Yan","Gui"],
 "Jinlord Confederacy": [
@@ -25,10 +47,27 @@ const SYLLABLE_POOLS = {
     "Sege", "Ula",  "Baya", "Kiye", "Ye"
 ],
  "Xiaran Dominion": ["Xi","Ran","Bao","Ling","Tao","Yun","Hai","Shuo","Gu","Lan","Zhi","Min","Qiao","Fen","Jiao","Lei","Yan","Yao","Jun","Qiu"],
-    "Shahdom of Iransar": ["Sham","Dar","Far","Mehr","Var","Sar","Shir","Zar","Rud","Bar","Gan","Tus","Ray","Shap","Horm","Nish","Asp","Pas","Kar","Rash","Yaz","Beh","Fir","Gol","Sam","Vah"],
+    "Ghurvansh Dominion": [
+  "Raj", "Vik", "Dev", "Sur", "Pak", "Har", "Ind", "Chand", "Prab", "Var", 
+  "Bal", "Gur", "Deep", "Ragh", "Anu", "Bhav", "Arj", "Kum", "Tar", 
+  "Yad", "Shiv", "Bhup", "Pad", "Singh", "Jai"],
     "Great Khaganate": ["Or","Kar","Batu","Sar","Tem","Alt","Bor","Khan","Ur","Tol","Dar","Mur","Nog","Tog","Bal","Kher","Ulan","Tark","Sog","Yar"],
-    "Vietan Realm": ["An","Bao","Suk","Dao","Gia","Hoa","Lam","Pho","Minh","Nam","Ninh","Phu","Quang","Son","Dik","Thanh","Thu","Tien","Van","Vinh"],
-    "Goryun Kingdom": ["Gyeong","Han","Nam","Seong","Hae","Pak","Cheon","Il","Sung","Jeon","Gwang","Dong","Seo","Baek","Won","Dae","Hwa","Mun","Kim"],
+"Hmong Realm": [
+  "Pao",
+  "Vang",
+  "Tou",
+  "Mee",
+  "Nao",
+  "Chue",
+  "Kou",
+  "Leng",
+
+  "Ntxa",
+  "Ntsh",
+  "Plig",
+  "Xyoo"
+],
+ "Goryun Kingdom": ["Gyeong","Han","Nam","Seong","Hae","Pak","Cheon","Il","Sung","Jeon","Gwang","Dong","Seo","Baek","Won","Dae","Hwa","Mun","Kim"],
     "High Plateau Kingdoms": ["Lha","Tse","Nor","Gar","Ri","Do","Shar","Lang","Zang","Yul","Cham","Phu","Sum","Rin","Tag","Yak","Tso","Ling","Par"],
     "Yamato Clans": ["Aki","Naga","Hara","Kawa","Matsu","Yama","Saka","Taka","Kiri","Shima","Oka","Tomo","Hoshi","Sora","Kuma","Nori","Fuku","Hida","Ishi"],
 "Player's Kingdom": [
@@ -73,14 +112,23 @@ function getRandomLandCoordinate(padX = 0, padY = 0) {
 function getFactionByGeography(x, y, worldWidth, worldHeight) {
     let xNorm = x / worldWidth;
     let yNorm = y / worldHeight;
-    let bestFaction = "Player's Kingdom";
+    let bestFaction = "Hong Dynasty"; // Default fallback
     let bestScore = Infinity;
-    
+
     for (const [factionName, data] of Object.entries(FACTIONS)) {
-        if(factionName === "Bandits") continue; 
-        let dist = Math.hypot(xNorm - data.geoWeight.east, yNorm - data.geoWeight.south);
-        let noise = Math.random() * 0.15; 
+        // Skip non-political factions
+        if (factionName === "Bandits" || factionName === "Player's Kingdom") continue;
+
+        // Calculate Euclidean distance to the faction's "Magnetic Pole"
+        let dx = xNorm - data.geoWeight.east;
+        let dy = yNorm - data.geoWeight.south;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+
+        // PRECISION SURGERY: Lower noise (0.02) means factions stay 
+        // strictly where they belong. 
+        let noise = Math.random() * 0.02; 
         let finalScore = dist + noise;
+
         if (finalScore < bestScore) {
             bestScore = finalScore;
             bestFaction = factionName;
@@ -223,6 +271,20 @@ function updateCityEconomies(cities) {
         }
 
         city.food -= spoilAmount;
+		
+		// --- AUTO FOOD PURCHASE LOGIC ---
+		if (city.food <= 50 && city.gold > 0) {
+			// Determine how much food to buy to reach 500
+			let neededFood = 500 - city.food;
+			// Cost per unit of food
+			let foodCost = 10; // 10 gold per 1 food, emergency
+			// Max we can afford
+			let affordableFood = Math.min(neededFood, city.gold / foodCost);
+			
+			// Spend gold to buy food
+			city.food += affordableFood;
+			city.gold -= Math.floor(affordableFood * foodCost);
+		}
 
         // Starvation / collapse
         if (city.food < 0) {
@@ -471,18 +533,24 @@ function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
     maxRows = rows;
     globalNPCs = []; 
 
+// 1. First, set up initial data for all cities
     cities.forEach(city => {
-      
+        initializeCityData(city, maxCols * tSize, maxRows * tSize);
+    });
+
+    // 2. RUN THE GUARANTEE LOOP HERE
+    // This fixes any "empty" factions before NPCs are created
+    ensureAllFactionsSpawned(cities);
+
+    // 3. Now spawn NPCs (they will now use the corrected faction data)
+    cities.forEach(city => {
         let activityLevel = Math.floor(city.pop / 1500) + 1; 
-        
         for(let i=0; i < activityLevel; i++) {
-            // OPTIMIZED: Lowered spawn chance from 0.3 to 0.15
             if (Math.random() < 0.15) spawnNPCFromCity(city, "Commerce", cities);
             if (Math.random() < 0.15) spawnNPCFromCity(city, "Civilian", cities);
             if (Math.random() < 0.15) spawnNPCFromCity(city, "Patrol", cities);
         }
     });
-
     let banditCount = cities.length * 2; 
     for(let i=0; i<banditCount; i++) {
         spawnBandit(padX, padY);
@@ -490,35 +558,7 @@ function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
     console.log(`Successfully deployed ${globalNPCs.length} dynamic NPCs across the map.`);
 }
 
-
-function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
-    console.log("Drafting Dynamic Populations & Armies...");
-    
-    worldMapRef = mapData;
-    tSize = tileSize;
-    maxCols = cols;
-    maxRows = rows;
-    globalNPCs = []; 
-
-    cities.forEach(city => {
-      
-        let activityLevel = Math.floor(city.pop / 1500) + 1; 
-        
-        for(let i=0; i < activityLevel; i++) {
-            // OPTIMIZED: Lowered spawn chance from 0.3 to 0.15
-            if (Math.random() < 0.15) spawnNPCFromCity(city, "Commerce", cities);
-            if (Math.random() < 0.15) spawnNPCFromCity(city, "Civilian", cities);
-            if (Math.random() < 0.15) spawnNPCFromCity(city, "Patrol", cities);
-        }
-    });
-
-    let banditCount = cities.length * 2; 
-    for(let i=0; i<banditCount; i++) {
-        spawnBandit(padX, padY);
-    }
-    console.log(`Successfully deployed ${globalNPCs.length} dynamic NPCs across the map.`);
-}
-
+ 
 
 function updateNPCs(cities) {
     // Clean up dead units first
@@ -1013,7 +1053,43 @@ else if (rc.pop > 6000 && rc.militaryPop > 80 && Math.random() < 0.10) spawnNPCF
 
 
 
+function ensureAllFactionsSpawned(cities) {
+    let spawnedFactions = new Set();
+    cities.forEach(c => spawnedFactions.add(c.faction));
 
+    // Get list of factions that are NOT Bandits or Players
+    const required = Object.keys(FACTIONS).filter(f => f !== "Bandits" && f !== "Player's Kingdom");
+
+    required.forEach(factionName => {
+        if (!spawnedFactions.has(factionName)) {
+            console.log(`Force-spawning missing faction: ${factionName}`);
+            
+            let bestCity = null;
+            let minDist = Infinity;
+            let target = FACTIONS[factionName].geoWeight;
+
+            // Find the city closest to where this faction SHOULD be
+            cities.forEach(city => {
+                let dx = (city.x / (maxCols * tSize)) - target.east;
+                let dy = (city.y / (maxRows * tSize)) - target.south;
+                let d = dx * dx + dy * dy;
+                if (d < minDist) {
+                    minDist = d;
+                    bestCity = city;
+                }
+            });
+
+            if (bestCity) {
+                // Force overwrite this city
+                bestCity.faction = factionName;
+                bestCity.originalFaction = factionName;
+                bestCity.color = FACTIONS[factionName].color;
+                bestCity.name = generateFactionCityName(factionName);
+                spawnedFactions.add(factionName);
+            }
+        }
+    });
+}
 
 function drawAllNPCs(ctx, drawCaravanFunc, drawShipFunc, zoom, camLeft, camRight, camTop, camBottom) {
     // 1. SAFETY: Check for necessary globals

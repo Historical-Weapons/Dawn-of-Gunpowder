@@ -48,20 +48,34 @@
         </div>
             
         <div id="recruit-box" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
-            <button class="menu-btn" onclick="
-                if(player.gold >= 20) { 
-                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
-                    player.troops += 5; 
-                    if(!player.roster) player.roster = [];
-                    for(let i=0; i<5; i++) {
-                        player.roster.push({ type: 'Militia', name: 'Militia', experienceLevel: 1 });
-                    }
-                    player.gold -= 20; 
-                } else {
-                    if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
-                    alert('Not enough gold!'); 
-                }
-            ">Recruit 5 Militia (20 Gold)</button>
+<button class="menu-btn" onclick="
+if(player.gold >= 20) { 
+    if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
+
+    // Give player 5 Militia
+    player.troops += 5; 
+    if(!player.roster) player.roster = [];
+    for(let i=0; i<5; i++) {
+        player.roster.push({ type: 'Militia', name: 'Militia', experienceLevel: 1 });
+    }
+
+    // Deduct gold from player
+    player.gold -= 20; 
+
+    // Add gold to active city
+    if(activeCity) {
+        activeCity.gold = (activeCity.gold || 0) + 20;
+
+        // Refresh city UI labels
+        document.getElementById('city-gold').innerText = Math.floor(activeCity.gold);
+        document.getElementById('city-food').innerText = Math.floor(activeCity.food || 0);
+    }
+
+} else {
+    if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
+    alert('Not enough gold!'); 
+}
+">Recruit 5 Militia (20 Gold)</button>
 
 <button class="menu-btn" onclick="if(activeCity) { 
                 if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
@@ -247,5 +261,6 @@
     <script src="siege_system.js"></script>
     <script src="faction_dynamics.js"></script>
     <script src="overworld.js"></script>
+	<script src="update.js"></script>
 </body>
 </html>

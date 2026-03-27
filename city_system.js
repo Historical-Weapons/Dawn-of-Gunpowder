@@ -165,7 +165,7 @@ const ARCHITECTURE = {
         ground: "#556b2f", road: "#7a7a7a", plaza: "#8c8c8c", water: "#4b8da6", 
         trees: ["#2e4a1f", "#3a5f27", "#1f3315"] 
     },
-    "Shahdom of Iransar": { 
+    "Ghurvansh Dominion": { 
         roofs: ["#00838f", "#006064", "#d2b48c", "#c2a37c", "#a88c69", "#eebd86"], 
         // Fixed: Replaced #cfae7e with #f4e4c1 (Light cream adobe) for contrast
         walls: ["#f4e4c1", "#bfa373", "#d6bc94", "#a68a5c", "#e3cca6"],            
@@ -185,7 +185,7 @@ const ARCHITECTURE = {
         ground: "#607d8b", road: "#708090", plaza: "#596a75", water: "#345c73", 
         trees: ["#1f3b2f", "#152b22", "#2a5241"] 
     },
-    "Vietan Realm": { 
+    "Mong Realm": { 
         roofs: ["#5d4037", "#4e342e", "#3e2723", "#795548", "#8d6e63"],            
         walls: ["#3e2723", "#2c1c19", "#4e342e", "#5c4033", "#735141"],            
         ground: "#2e7d32", road: "#795548", plaza: "#63453a", water: "#2c8a7b", 
@@ -543,7 +543,7 @@ const CIVILIAN_STYLES = {
         hats: ["conical", "conical", "skullcap", "topknot", "bamboo_hat", "scholar"], 
         clothes: ["#4e6b5d", "#3a4f41", "#7a5c53", "#5c5c5c", "#8b6914", "#2e2e2e"] 
     },
-    "Shahdom of Iransar": { 
+    "Ghurvansh Dominion": { 
         hats: ["turban", "turban", "wrapped", "skullcap", "hood", "flat_cap"], 
         clothes: ["#8b5a2b", "#cd853f", "#556b2f", "#8b7500", "#a0522d", "#d2b48c"] 
     },
@@ -555,7 +555,7 @@ const CIVILIAN_STYLES = {
         hats: ["fur_cap", "conical", "skullcap", "hood", "bamboo_hat"], 
         clothes: ["#4f6a78", "#3f5461", "#2e404a", "#546e7a", "#1c262b", "#607d8b"] 
     },
-    "Vietan Realm": { 
+    "Mong Realm": { 
         hats: ["conical", "bamboo_hat", "bamboo_hat", "bandana", "topknot"], 
         clothes: ["#4e342e", "#3e2723", "#5d4037", "#2e4a1f", "#1f3315", "#8d6e63"] 
     },
