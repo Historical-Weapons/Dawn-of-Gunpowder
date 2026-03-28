@@ -165,7 +165,7 @@ const ARCHITECTURE = {
         ground: "#556b2f", road: "#7a7a7a", plaza: "#8c8c8c", water: "#4b8da6", 
         trees: ["#2e4a1f", "#3a5f27", "#1f3315"] 
     },
-    "Ghurvansh Dominion": { 
+    "Dab Tribes": { 
         roofs: ["#00838f", "#006064", "#d2b48c", "#c2a37c", "#a88c69", "#eebd86"], 
         // Fixed: Replaced #cfae7e with #f4e4c1 (Light cream adobe) for contrast
         walls: ["#f4e4c1", "#bfa373", "#d6bc94", "#a68a5c", "#e3cca6"],            
@@ -185,7 +185,7 @@ const ARCHITECTURE = {
         ground: "#607d8b", road: "#708090", plaza: "#596a75", water: "#345c73", 
         trees: ["#1f3b2f", "#152b22", "#2a5241"] 
     },
-    "Mong Realm": { 
+    "Tran Realm": { 
         roofs: ["#5d4037", "#4e342e", "#3e2723", "#795548", "#8d6e63"],            
         walls: ["#3e2723", "#2c1c19", "#4e342e", "#5c4033", "#735141"],            
         ground: "#2e7d32", road: "#795548", plaza: "#63453a", water: "#2c8a7b", 

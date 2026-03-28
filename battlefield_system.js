@@ -336,14 +336,14 @@ if (faction === "Great Khaganate") {
         {type: "Lancer", pct: 0.15}, 
         {type: "Heavy Lancer", pct: 0.05}
     ];
-} else if (faction === "Shahdom of Iransar") {
-    // Replaced Firelance with Shielded Infantry for a more traditional Persian-style front line
+} else if (faction === "Dab Tribes") {
+    // Dali Kingdom
     composition = [
         {type: "War Elephant", pct: 0.05}, 
-        {type: "Heavy Lancer", pct: 0.25}, 
-        {type: "Horse Archer", pct: 0.25},
+        {type: "Poison Crossbowman", pct: 0.25}, 
+        {type: "Javelinier", pct: 0.15},
         {type: "Spearman", pct: 0.25}, 
-        {type: "Shielded Infantry", pct: 0.20} 
+        {type: "Shielded Infantry", pct: 0.30} 
     ];
 } else if (faction === "Hong Dynasty") {
     composition = [
@@ -356,13 +356,13 @@ if (faction === "Great Khaganate") {
         {type: "Bomb", pct: 0.05},
         {type: "Archer", pct: 0.05}
     ];
-} else if (faction === "Vietan Realm") {
+} else if (faction === "Tran Realm") {
     composition = [
-        {type: "Glaiveman", pct: 0.30}, 
+        {type: "Firelance", pct: 0.10}, 
         {type: "Poison Crossbowman", pct: 0.25}, 
         {type: "Javelinier", pct: 0.20},
         {type: "Archer", pct: 0.15}, 
-        {type: "Spearman", pct: 0.10}
+        {type: "Spearman", pct: 0.30}
     ];
 } else if (faction === "Jinlord Confederacy") {
     composition = [

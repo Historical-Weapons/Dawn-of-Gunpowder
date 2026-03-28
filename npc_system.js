@@ -1,42 +1,36 @@
 const FACTIONS = {
-    // 1. THE HEARTLAND: Central China
-    "Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.30, south: 0.70, west: 0.30, east: 0.60 } }, 
+    // 1. THE HEARTLAND: Central China (Nudged North to clear the South)
+    "Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.50, south: 0.50, west: 0.40, east: 0.60 } }, 
 
-    // 2. INDIA/SW: Shoved to the absolute bottom-left (West 0.0, South 1.0)
-    "Ghurvansh Dominion":    { color: "#00838f", geoWeight: { north: 0.03, south: 0.97, west: 0.97, east: 0.03 } }, 
+    // 2. YUNAN: Center-Left, Extreme South
+    "Dab Tribes":            { color: "#00838f", geoWeight: { north: 0.01, south: 0.99, west: 0.70, east: 0.30 } }, 
 
     // 3. MONGOL STEPPE: Far North
-    "Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.95, south: 0.05, west: 0.60, east: 0.40 } }, 
+    "Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.85, south: 0.15, west: 0.60, east: 0.40 } }, 
 
     // 4. JURCHEN FORESTS: Top-Right
-    "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.95, south: 0.05, west: 0.05, east: 0.95 } }, 
+    "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.98, south: 0.02, west: 0.05, east: 0.95 } }, 
 
-    // 5. YUNNAN / SW BORDER: Pinned near the bottom void, far from Japan
-    "Mong Realm":           { color: "#388e3c", geoWeight: { north: 0.02, south: 0.98, west: 0.65, east: 0.35 } }, 
+    // 5. VIET REALM: Center-Right, Extreme South
+    "Tran Realm":            { color: "#388e3c", geoWeight: { north: 0.02, south: 0.98, west: 0.30, east: 0.70 } }, 
 
-// KOREA: Pulled further South and West to yield the Northeast to Jurchen
-    "Goryun Kingdom": { 
-        color: "#7b1fa2", 
-        geoWeight: { north: 0.40, south: 0.65, west: 0.02, east: 0.80 } // Adjusted south to 0.65, east to 0.78
-    },
+    // 6. GORYUN (KOREA): Mid-East
+    "Goryun Kingdom":        { color: "#7b1fa2", geoWeight: { north: 0.40, south: 0.60, west: 0.05, east: 0.85 } },
 
-    // 7. XIARAN: Desert/Silk Road
-    "Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.80, south: 0.20, west: 0.90, east: 0.10 } }, 
+    // 7. XIARAN: Desert/Silk Road (Northwest)
+    "Xiaran Dominion":       { color: "#fbc02d", geoWeight: { north: 0.75, south: 0.25, west: 0.90, east: 0.10 } }, 
 
-    // 8. TIBET: High Plateau
-    "High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.45, south: 0.55, west: 0.95, east: 0.05 } }, 
+    // 8. TIBET: Extreme Southwest
+    "High Plateau Kingdoms": { color: "#8d6e63", geoWeight: { north: 0.10, south: 0.90, west: 0.98, east: 0.02 } }, 
 
-// JAPAN: Pushed to the far east
-    "Yamato Clans": { 
-        color: "#c2185b", 
-        geoWeight: { north: 0.15, south: 0.65, west: 0.05, east: 0.98 } // Changed east to 0.98
-    },
+    // 9. YAMATO (JAPAN): Extreme East
+    "Yamato Clans":          { color: "#c2185b", geoWeight: { north: 0.15, south: 0.65, west: 0.02, east: 0.98 } },
 	
-    // 10. BANDITS: Spread thin
+    // 10. BANDITS: General spread
     "Bandits":               { color: "#222222", geoWeight: { north: 0.50, south: 0.50, west: 0.50, east: 0.50 } }, 
 
     // 11. PLAYER: Yellow Sea Anchor
-    "Player's Kingdom":      { color: "#FFFFFF", geoWeight: { north: 0.48, south: 0.42, west: 0.25, east: 0.75 } } 
+    "Player's Kingdom":      { color: "#FFFFFF", geoWeight: { north: 0.45, south: 0.45, west: 0.30, east: 0.70 } } 
 };
 const SYLLABLE_POOLS = {
     "Hong Dynasty": ["Han","Zhuo","Mei","Ling","Xian","Yue","Lu","Feng","Bai","Shan","Qiao","He","Jin","Dao","Tong","An","Wu","Lin","Wan","Bao","Zi","Rong","Dong","Cheng","Hua","Shou","Yi","Tao","Yan","Gui"],
@@ -47,13 +41,8 @@ const SYLLABLE_POOLS = {
     "Sege", "Ula",  "Baya", "Kiye", "Ye"
 ],
  "Xiaran Dominion": ["Xi","Ran","Bao","Ling","Tao","Yun","Hai","Shuo","Gu","Lan","Zhi","Min","Qiao","Fen","Jiao","Lei","Yan","Yao","Jun","Qiu"],
-    "Ghurvansh Dominion": [
-  "Raj", "Vik", "Dev", "Sur", "Pak", "Har", "Ind", "Chand", "Prab", "Var", 
-  "Bal", "Gur", "Deep", "Ragh", "Anu", "Bhav", "Arj", "Kum", "Tar", 
-  "Yad", "Shiv", "Bhup", "Pad", "Singh", "Jai"],
-    "Great Khaganate": ["Or","Kar","Batu","Sar","Tem","Alt","Bor","Khan","Ur","Tol","Dar","Mur","Nog","Tog","Bal","Kher","Ulan","Tark","Sog","Yar"],
-"Hmong Realm": [
-  "Pao",
+   
+   "Dab Tribes": ["Pao",
   "Vang",
   "Tou",
   "Mee",
@@ -65,7 +54,13 @@ const SYLLABLE_POOLS = {
   "Ntxa",
   "Ntsh",
   "Plig",
-  "Xyoo"
+  "Xyoo"],
+  
+    "Great Khaganate": ["Or","Kar","Batu","Sar","Tem","Alt","Bor","Khan","Ur","Tol","Dar","Mur","Nog","Tog","Bal","Kher","Ulan","Tark","Sog","Yar"],
+"Tran Realm": [
+  "Nguyen", "Tran", "Le", "Pham", "Hoang", "Phan", "Vu", "Dang", "Bui", "Do", 
+  "Ho", "Ngo", "Phat", "Minh", "Anh", "Long", "Duc", "Kim", "Duy", "Thanh", 
+  "Son", "Hai", "Linh", "Tien", "Nam"
 ],
  "Goryun Kingdom": ["Gyeong","Han","Nam","Seong","Hae","Pak","Cheon","Il","Sung","Jeon","Gwang","Dong","Seo","Baek","Won","Dae","Hwa","Mun","Kim"],
     "High Plateau Kingdoms": ["Lha","Tse","Nor","Gar","Ri","Do","Shar","Lang","Zang","Yul","Cham","Phu","Sum","Rin","Tag","Yak","Tso","Ling","Par"],

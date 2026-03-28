@@ -637,16 +637,16 @@ cities.forEach(c => {
 						ctx.closePath(); ctx.fill(); ctx.stroke();
 					
 
-					//ctx.fillStyle = "#fff";
-					//ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, Math.PI * 2); ctx.fill();
+					ctx.fillStyle = "#fff";
+					ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, Math.PI * 2); ctx.fill();
 
-					//let fontSize = Math.max(12, 20 / zoom); 
-					//ctx.font = `bold ${fontSize}px Georgia`;
-					//ctx.textAlign = "center";
-					//ctx.fillStyle = "#111"; 
-					//ctx.fillText(c.name, c.x + 2, c.y - 18);
-					//ctx.fillStyle = c.color; 
-					//ctx.fillText(c.name, c.x, c.y - 20); FOR DEBUGGING MAPS
+					let fontSize = Math.max(12, 20 / zoom); 
+					ctx.font = `bold ${fontSize}px Georgia`;
+					ctx.textAlign = "center";
+					ctx.fillStyle = "#111"; 
+					ctx.fillText(c.name, c.x + 2, c.y - 18);
+					ctx.fillStyle = c.color; 
+					ctx.fillText(c.name, c.x, c.y - 20); //FOR DEBUGGING MAPS
 				});
 		 
 		 // ---> ADD THIS LINE <---
