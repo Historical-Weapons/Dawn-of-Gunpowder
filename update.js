@@ -401,9 +401,17 @@ if (typeof globalNPCs !== 'undefined' && player) {
         player.lastEncounteredFaction = null; // Reset stinger so it can trigger if you move back in
 
     } else {
-        // TRIGGER: SAFE/CALM
-        if (AudioManager.currentTrack !== "WorldMap_Calm") {
-            AudioManager.playMusic("WorldMap_Calm");
+// Define what SHOULD be playing
+const targetSong = 'music/gameloop.mp3';
+
+// TRIGGER: SAFE/CALM
+if (AudioManager.currentTrack !== targetSong) {
+    // This only runs ONCE when the song changes
+AudioManager.playRandomMP3List([
+    'music/gameloop1.mp3',
+    'music/gameloop2.mp3',
+    'music/gameloop3.mp3'
+]);
         }
         player.lastEncounteredFaction = null;
     }

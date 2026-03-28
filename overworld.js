@@ -39,7 +39,10 @@ const YELLOW_RIVER_COORDS = [
     [0.454, 0.492], [0.458, 0.494], [0.462, 0.496], [0.466, 0.498], [0.470, 0.500],
     // Final stretch emptying into the Yellow Sea
     [0.478, 0.494], [0.486, 0.488], [0.494, 0.482], [0.502, 0.476], [0.510, 0.470],
-    [0.518, 0.464], [0.526, 0.458], [0.534, 0.452], [0.542, 0.446], [0.550, 0.440]
+    [0.518, 0.464], [0.526, 0.458], [0.534, 0.452], [0.542, 0.446], [0.550, 0.440],
+[0.558, 0.446], [0.566, 0.452], [0.574, 0.458], [0.582, 0.464], [0.590, 0.470]
+	
+	
 ];
 
 const YANGTZE_RIVER_COORDS = [
@@ -72,7 +75,11 @@ const YANGTZE_RIVER_COORDS = [
     [0.510, 0.742], [0.515, 0.739], [0.520, 0.736], [0.525, 0.733], [0.530, 0.730],
     // Empty into sea
     [0.533, 0.729], [0.536, 0.728], [0.539, 0.727], [0.542, 0.726], [0.545, 0.725],
-    [0.548, 0.724], [0.551, 0.723], [0.554, 0.722], [0.557, 0.721], [0.560, 0.720]
+    [0.548, 0.724], [0.551, 0.723], [0.554, 0.722], [0.557, 0.721], [0.560, 0.720],
+	[0.563, 0.723], [0.566, 0.726],[0.569, 0.729], [0.572, 0.732], [0.575, 0.735], [0.578, 0.738], [0.581, 0.741],
+[0.584, 0.744], [0.587, 0.747], [0.590, 0.750], [0.593, 0.753], [0.596, 0.756]
+	
+	
 ];
 
 function resizeCanvasAndResetCamera() {
@@ -1167,9 +1174,9 @@ if (qJagged_QL < 1.0) {
 
 
 
-
+//MACRO RIVER LOGIC
 // Only allow rivers on land above sea level but below high peaks
-if (e > 0.35 && e < 0.75) {
+
     
     // Create an organic thickness. The fbm noise makes the river width pulse slightly
     // rather than looking like a perfectly uniform digital line.
@@ -1186,7 +1193,9 @@ if (e > 0.35 && e < 0.75) {
     if (!isMacroRiver && checkHardcodedRiver(warpX, warpY, YANGTZE_RIVER_COORDS, finalThickness)) {
         isMacroRiver = true;
     }
-}
+	
+	
+
 
 // --- 15 TILE ASSIGNMENT & BIOME RULES ---
 let tile = { 

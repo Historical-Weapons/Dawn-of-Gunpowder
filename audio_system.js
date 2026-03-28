@@ -1,5 +1,5 @@
 // ============================================================================
-// EMPIRE OF THE 13TH CENTURY - PURE JS SYNTH AUDIO SYSTEM (ZERO ASSETS)
+// EMPIRE OF THE 13TH CENTURY - PURE JS SYNTH AUDIO SYSTEM (ZERO ASSETS) + MP3
 // ============================================================================
 
 class AudioManagerSystem {
@@ -8,6 +8,15 @@ class AudioManagerSystem {
         this.masterMusicVolume = 0.15; // Kept lower so it doesn't overpower SFX
         this.masterSfxVolume = 0.5;
         this.initialized = false;
+        
+        // MP3 state
+        this.currentMp3 = null;
+        this.mp3Volume = 0.2; // Default volume for MP3 tracks
+        this.fadeInterval = null; // Used for smooth transitions
+        
+        // Playlist state
+        this.currentPlaylist = [];
+        this.isPlaylistMode = false;
         
         // Sequencer state
         this.currentTrack = null;
@@ -28,292 +37,61 @@ class AudioManagerSystem {
             drone: [0, 7, 12, 0, 7, 12, 0]             // Static/Tension
         };
 
-        // --- 20 PROCEDURAL MUSIC PROFILES ---
+        // --- PROCEDURAL MUSIC PROFILES ---
         this.tracks = {
             // Factions
             "Hong Dynasty":          { scale: SCALES.majorPentatonic, root: 60, tempo: 140, wave: 'triangle', pattern: [0,2,4,2, 5,4,2,-1] },
             "Shahdom of Iransar":    { scale: SCALES.harmonicMinor, root: 58, tempo: 110, wave: 'sine',     pattern: [0,1,2,1, 4,3,2,-1] },
-            "Great Khaganate":       { scale: SCALES.minorPentatonic,root: 50, tempo: 160, wave: 'sawtooth', pattern: [0,0,3,0, 5,0,3,-1] }, // Throat singing vibe
+            "Great Khaganate":       { scale: SCALES.minorPentatonic,root: 50, tempo: 160, wave: 'sawtooth', pattern: [0,0,3,0, 5,0,3,-1] }, 
             "Jinlord Confederacy":   { scale: SCALES.minorPentatonic,root: 55, tempo: 130, wave: 'square',   pattern: [0,-1,2,-1, 4,2,0,-1] },
-            "Vietan Realm":          { scale: SCALES.majorPentatonic, root: 65, tempo: 120, wave: 'triangle', pattern: [0,3,5,6, 5,3,0,-1] }, // Bamboo xylophone vibe
+            "Vietan Realm":          { scale: SCALES.majorPentatonic, root: 65, tempo: 120, wave: 'triangle', pattern: [0,3,5,6, 5,3,0,-1] }, 
             "Goryun Kingdom":        { scale: SCALES.dorian,          root: 57, tempo: 100, wave: 'square',   pattern: [0,2,4,2, 0,-1,-1,-1] },
             "Xiaran Dominion":       { scale: SCALES.majorPentatonic, root: 62, tempo: 150, wave: 'sine',     pattern: [4,3,2,0, 2,0,-1,-1] },
             "High Plateau Kingdoms": { scale: SCALES.majorPentatonic, root: 53, tempo: 90,  wave: 'triangle', pattern: [0,-1,2,-1, 4,-1,-1,-1] },
             "Yamato Clans":          { scale: SCALES.hirajoshi,       root: 60, tempo: 115, wave: 'square',   pattern: [0,1,3,4, 3,1,0,-1] },
-        "Bandits": { 
-    scale: SCALES.chromatic,       
-    root: 55, 
-    tempo: 220, 
-    wave: 'sawtooth', 
-    pattern: [
-        0,3,1,7, 2,9,3,-1,
-        11,4,6,8, 10,-1,7,5,
-        12,10,8,6, 4,2,0,-1,
-        3,6,9,12, 11,7,5,3,
-        0,-1,12,7, 3,10,-1,6,
-        8,5,2,9, 11,-1,4,1,
-        13,11,9,7, 5,3,1,-1,
-        0,4,8,12, 7,3,-1,10
-    ] 
-}, // Hyper-chaotic, dense, aggressive   "Independent":           { scale: SCALES.dorian,          root: 60, tempo: 100, wave: 'triangle', pattern: [0,2,4,-1, 4,2,0,-1] },
+            "Bandits": { 
+                scale: SCALES.chromatic,       
+                root: 55, 
+                tempo: 220, 
+                wave: 'sawtooth', 
+                pattern: [
+                    0,3,1,7, 2,9,3,-1,
+                    11,4,6,8, 10,-1,7,5,
+                    12,10,8,6, 4,2,0,-1,
+                    3,6,9,12, 11,7,5,3,
+                    0,-1,12,7, 3,10,-1,6,
+                    8,5,2,9, 11,-1,4,1,
+                    13,11,9,7, 5,3,1,-1,
+                    0,4,8,12, 7,3,-1,10
+                ] 
+            }, 
+            "Independent":           { scale: SCALES.dorian,          root: 60, tempo: 100, wave: 'triangle', pattern: [0,2,4,-1, 4,2,0,-1] },
             
             // General Game States
-            "MainMenu":              { scale: SCALES.dorian,          root: 55, tempo: 110, wave: 'square',   pattern: [0,4,7,4, 0,7,12,-1] }, // Epic build
-            "WorldMap_Calm": {
-    scale: SCALES.dorian,
-    root: 60,
-    tempo: 108, // faster, removes sluggish feel
-    wave: 'triangle', // softer than sine for GBA vibe
-    pattern: [
-
-        // Phrase A – flowing intro
-        0,2,4,5, 4,2,0,-1,
-        2,4,5,7, 5,4,2,-1,
-
-        // Phrase B – gentle rise
-        4,5,7,9, 7,5,4,-1,
-        5,7,9,10, 9,7,5,-1,
-
-        // Phrase C – melodic loop (signature)
-        7,5,4,2, 4,5,7,-1,
-        9,7,5,4, 5,4,2,-1,
-
-        // Phrase D – variation (GBA-style emotional shift)
-        0,2,4,7, 5,4,2,-1,
-        4,5,7,9, 7,5,4,-1,
-
-        // Phrase E – descending calm resolution
-        9,7,5,4, 2,0,-2,-1,
-        0,2,4,5, 4,2,0,-1,
-
-        // Phrase F – loop bridge (prevents repetition fatigue)
-        2,4,5,7, 9,7,5,-1,
-        7,5,4,2, 0,-1,-2,-1,
-
-        // Phrase G – callback to intro
-        0,2,4,5, 4,2,0,-1,
-        2,4,5,7, 5,4,2,-1
-    ]
-},
-        "WorldMap_Tension": { 
-    scale: SCALES.drone,
-    root: 48,
-    tempo: 140,
-    wave: 'sawtooth',
-    pattern: [
-        0,-1,1,-1, 0,-1,-1,-1,
-        0,1,0,-1, 2,-1,1,-1,
-
-        0,-1,1,2, 1,-1,0,-1,
-        -1,-1,0,1, 0,-1,-1,-1,
-
-        0,1,2,1, 0,-1,1,-1,
-        2,-1,3,-1, 2,1,0,-1,
-
-        0,-1,1,-1, 2,-1,1,-1,
-        0,-1,-2,-1, -1,-1,0,-1,
-
-        0,1,0,1, 2,1,0,-1,
-        1,-1,2,-1, 3,-1,2,-1,
-
-        0,-1,1,2, 3,-1,2,-1,
-        1,-1,0,-1, -1,-1,-2,-1,
-
-        0,1,2,3, 2,1,0,-1,
-        1,-1,0,-1, 0,-1,-1,-1
-    ]
-},
-
-    "Battle_Skirmish": {
-    scale: SCALES.minorPentatonic,
-    root: 58,
-    tempo: 168,
-    wave: 'square',
-    pattern: [
-
-        // Phrase A – core motif
-        0,2,4,2, 0,2,4,7,
-        4,2,0,2, 4,7,4,2,
-
-        // Phrase B – response (higher energy)
-        4,7,9,7, 4,7,9,12,
-        9,7,4,7, 9,7,4,2,
-
-        // Phrase C – descending pressure
-        7,5,4,2, 4,5,7,9,
-        7,5,4,2, 0,2,4,2,
-
-        // Phrase D – quick run + turnaround
-        0,2,4,5, 7,9,7,5,
-        4,2,0,2, 4,2,0,-1,
-
-        // Phrase E – variation loop
-        2,4,7,4, 2,4,7,9,
-        7,4,2,4, 7,9,7,4,
-
-        // Phrase F – tension build
-        4,7,9,10, 12,10,9,7,
-        9,7,5,4, 2,0,2,-1,
-
-        // Phrase G – callback
-        0,2,4,2, 0,2,4,7,
-        4,2,0,2, 4,2,0,-1
-    ]
-},
-
-   "Battle_Massive": {
-    scale: SCALES.harmonicMinor,
-    root: 50,
-    tempo: 148,
-    wave: 'sawtooth',
-    pattern: [
-
-        // Phrase A – marching core
-        0,0,3,5, 7,5,3,0,
-        0,3,5,7, 8,7,5,3,
-
-        // Phrase B – rising tension
-        3,5,7,8, 10,8,7,5,
-        7,8,10,12, 10,8,7,5,
-
-        // Phrase C – heavy descent
-        12,10,8,7, 5,3,2,0,
-        3,5,7,5, 3,2,0,-1,
-
-        // Phrase D – dramatic push
-        0,3,7,10, 8,7,5,3,
-        5,7,8,10, 12,10,8,7,
-
-        // Phrase E – warlike repetition
-        7,7,8,10, 12,10,8,7,
-        5,5,7,8, 10,8,7,5,
-
-        // Phrase F – tension spike
-        8,10,12,13, 15,13,12,10,
-        12,10,8,7, 5,3,2,-1,
-
-        // Phrase G – final resolve loop
-        0,3,5,7, 8,7,5,3,
-        5,3,2,0, 0,-1,0,-1
-    ]
-},       
-
-	"Battle_Gunpowder": {
-    scale: SCALES.chromatic,
-    root: 45,
-    tempo: 208,
-    wave: 'square',
-    pattern: [
-
-        // Phrase A – frantic ignition (tight chromatic flicker)
-        0,1,0,2, 1,3,2,4,
-        3,5,4,3, 2,1,0,-1,
-
-        // Phrase B – rising instability
-        0,2,3,5, 6,5,7,8,
-        7,6,5,3, 2,1,0,-1,
-
-        // Phrase C – chaotic zig-zag
-        4,2,5,3, 6,4,7,5,
-        8,6,9,7, 6,5,3,2,
-
-        // Phrase D – rapid climb burst
-        0,1,2,3, 4,5,6,7,
-        8,9,10,9, 8,7,6,5,
-
-        // Phrase E – collapsing panic
-        10,8,9,7, 8,6,7,5,
-        6,4,5,3, 4,2,3,1,
-
-        // Phrase F – unstable loop (signature chaos motif)
-        0,3,1,4, 2,5,3,6,
-        4,7,5,8, 6,5,4,2,
-
-        // Phrase G – tension spike (high register)
-        7,9,10,12, 11,13,12,11,
-        10,9,8,7, 6,5,4,3,
-
-        // Phrase H – stutter panic callback
-        0,1,0,1, 2,1,2,3,
-        1,0,1,2, 0,-1,0,-1,
-
-        // Phrase I – final unstable descent (loop reset)
-        5,4,3,2, 3,2,1,0,
-        2,1,0,-2, -1,0,-1,-1
-    ]
-},      
-
-	"City_Ambient": {
-    scale: SCALES.majorPentatonic,
-    root: 64,
-    tempo: 112,
-    wave: 'triangle',
-    pattern: [
-
-        // Phrase A – gentle intro (establish mood)
-        0,2,4,2, 0,2,4,7,
-        4,2,0,-1, 2,4,2,-1,
-
-        // Phrase B – upward life (people movement feel)
-        2,4,7,9, 7,4,2,-1,
-        4,7,9,11, 9,7,4,-1,
-
-        // Phrase C – calm response (lower register)
-        0,-1,2,4, 2,0,-1,-1,
-        0,2,4,2, 0,-1,0,-1,
-
-        // Phrase D – melodic sparkle (city energy)
-        7,9,11,9, 7,9,7,4,
-        9,11,12,11, 9,7,4,-1,
-
-        // Phrase E – flowing walk cycle feel
-        0,2,4,7, 4,2,0,-1,
-        2,4,7,9, 7,4,2,-1,
-
-        // Phrase F – variation (keeps loop fresh)
-        4,2,0,2, 4,7,4,2,
-        7,9,7,4, 2,0,-1,-1,
-
-        // Phrase G – higher “busy street” layer feel
-        9,11,12,11, 9,7,9,11,
-        12,14,12,11, 9,7,4,-1,
-
-        // Phrase H – soft resolution
-        7,4,2,0, 2,4,2,0,
-        0,-1,0,-1, -2,-1,0,-1,
-
-        // Phrase I – loop bridge (prevents obvious repetition)
-        2,4,7,4, 2,4,7,9,
-        7,4,2,-1, 0,2,0,-1,
-
-        // Phrase J – callback to intro (smooth loop reset)
-        0,2,4,2, 0,2,4,7,
-        4,2,0,-1, 0,-1,0,-1
-    ]
-}, 
-
-
-      "Victory":               { scale: SCALES.majorPentatonic, root: 60, tempo: 120, wave: 'square',   pattern: [0,2,4,7, 9,-1,-1,-1] },
+            "MainMenu":              { scale: SCALES.dorian,          root: 55, tempo: 110, wave: 'square',   pattern: [0,4,7,4, 0,7,12,-1] },
+            "WorldMap_Calm":         { scale: SCALES.dorian,          root: 60, tempo: 108, wave: 'triangle', pattern: [0,2,4,5, 4,2,0,-1, 2,4,5,7, 5,4,2,-1, 4,5,7,9, 7,5,4,-1, 5,7,9,10, 9,7,5,-1, 7,5,4,2, 4,5,7,-1, 9,7,5,4, 5,4,2,-1, 0,2,4,7, 5,4,2,-1, 4,5,7,9, 7,5,4,-1, 9,7,5,4, 2,0,-2,-1, 0,2,4,5, 4,2,0,-1, 2,4,5,7, 9,7,5,-1, 7,5,4,2, 0,-1,-2,-1, 0,2,4,5, 4,2,0,-1, 2,4,5,7, 5,4,2,-1] },
+            "WorldMap_Tension":      { scale: SCALES.drone,           root: 48, tempo: 140, wave: 'sawtooth', pattern: [0,-1,1,-1, 0,-1,-1,-1, 0,1,0,-1, 2,-1,1,-1, 0,-1,1,2, 1,-1,0,-1, -1,-1,0,1, 0,-1,-1,-1, 0,1,2,1, 0,-1,1,-1, 2,-1,3,-1, 2,1,0,-1, 0,-1,1,-1, 2,-1,1,-1, 0,-1,-2,-1, -1,-1,0,-1, 0,1,0,1, 2,1,0,-1, 1,-1,2,-1, 3,-1,2,-1, 0,-1,1,2, 3,-1,2,-1, 1,-1,0,-1, -1,-1,-2,-1, 0,1,2,3, 2,1,0,-1, 1,-1,0,-1, 0,-1,-1,-1] },
+            "Battle_Skirmish":       { scale: SCALES.minorPentatonic, root: 58, tempo: 168, wave: 'square',   pattern: [0,2,4,2, 0,2,4,7, 4,2,0,2, 4,7,4,2, 4,7,9,7, 4,7,9,12, 9,7,4,7, 9,7,4,2, 7,5,4,2, 4,5,7,9, 7,5,4,2, 0,2,4,2, 0,2,4,5, 7,9,7,5, 4,2,0,2, 4,2,0,-1, 2,4,7,4, 2,4,7,9, 7,4,2,4, 7,9,7,4, 4,7,9,10, 12,10,9,7, 9,7,5,4, 2,0,2,-1, 0,2,4,2, 0,2,4,7, 4,2,0,2, 4,2,0,-1] },
+            "Battle_Massive":        { scale: SCALES.harmonicMinor,   root: 50, tempo: 148, wave: 'sawtooth', pattern: [0,0,3,5, 7,5,3,0, 0,3,5,7, 8,7,5,3, 3,5,7,8, 10,8,7,5, 7,8,10,12, 10,8,7,5, 12,10,8,7, 5,3,2,0, 3,5,7,5, 3,2,0,-1, 0,3,7,10, 8,7,5,3, 5,7,8,10, 12,10,8,7, 7,7,8,10, 12,10,8,7, 5,5,7,8, 10,8,7,5, 8,10,12,13, 15,13,12,10, 12,10,8,7, 5,3,2,-1, 0,3,5,7, 8,7,5,3, 5,3,2,0, 0,-1,0,-1] },        
+            "Battle_Gunpowder":      { scale: SCALES.chromatic,       root: 45, tempo: 208, wave: 'square',   pattern: [0,1,0,2, 1,3,2,4, 3,5,4,3, 2,1,0,-1, 0,2,3,5, 6,5,7,8, 7,6,5,3, 2,1,0,-1, 4,2,5,3, 6,4,7,5, 8,6,9,7, 6,5,3,2, 0,1,2,3, 4,5,6,7, 8,9,10,9, 8,7,6,5, 10,8,9,7, 8,6,7,5, 6,4,5,3, 4,2,3,1, 0,3,1,4, 2,5,3,6, 4,7,5,8, 6,5,4,2, 7,9,10,12, 11,13,12,11, 10,9,8,7, 6,5,4,3, 0,1,0,1, 2,1,2,3, 1,0,1,2, 0,-1,0,-1, 5,4,3,2, 3,2,1,0, 2,1,0,-2, -1,0,-1,-1] },      
+            "City_Ambient":          { scale: SCALES.majorPentatonic, root: 64, tempo: 112, wave: 'triangle', pattern: [0,2,4,2, 0,2,4,7, 4,2,0,-1, 2,4,2,-1, 2,4,7,9, 7,4,2,-1, 4,7,9,11, 9,7,4,-1, 0,-1,2,4, 2,0,-1,-1, 0,2,4,2, 0,-1,0,-1, 7,9,11,9, 7,9,7,4, 9,11,12,11, 9,7,4,-1, 0,2,4,7, 4,2,0,-1, 2,4,7,9, 7,4,2,-1, 4,2,0,2, 4,7,4,2, 7,9,7,4, 2,0,-1,-1, 9,11,12,11, 9,7,9,11, 12,14,12,11, 9,7,4,-1, 7,4,2,0, 2,4,2,0, 0,-1,0,-1, -2,-1,0,-1, 2,4,7,4, 2,4,7,9, 7,4,2,-1, 0,2,0,-1, 0,2,4,2, 0,2,4,7, 4,2,0,-1, 0,-1,0,-1] }, 
+            "Victory":               { scale: SCALES.majorPentatonic, root: 60, tempo: 120, wave: 'square',   pattern: [0,2,4,7, 9,-1,-1,-1] },
             "Defeat":                { scale: SCALES.harmonicMinor,   root: 55, tempo: 60,  wave: 'sawtooth', pattern: [4,3,2,0, -1,-1,-1,-1] },
-			
-			// --- ADD THESE BELOW "Defeat" INSIDE this.tracks ---
             
-            "gold_buy":         { scale: SCALES.majorPentatonic, root: 72, tempo: 200, wave: 'sine',     pattern: [0, 2, 4, 7, -1, -1, -1, -1] },
-            "error":            { scale: SCALES.harmonicMinor,   root: 40, tempo: 180, wave: 'sawtooth', pattern: [1, 0, 1, 0, -1, -1, -1, -1] },
-            "ui_click":         { scale: SCALES.majorPentatonic, root: 80, tempo: 240, wave: 'sine',     pattern: [0, -1, -1, -1, -1, -1, -1, -1] },
+            "gold_buy":              { scale: SCALES.majorPentatonic, root: 72, tempo: 200, wave: 'sine',     pattern: [0, 2, 4, 7, -1, -1, -1, -1] },
+            "error":                 { scale: SCALES.harmonicMinor,   root: 40, tempo: 180, wave: 'sawtooth', pattern: [1, 0, 1, 0, -1, -1, -1, -1] },
+            "ui_click":              { scale: SCALES.majorPentatonic, root: 80, tempo: 240, wave: 'sine',     pattern: [0, -1, -1, -1, -1, -1, -1, -1] },
             
-            // Additional Common Game Effects as Tracks
-            "Level_Up":         { scale: SCALES.majorPentatonic, root: 60, tempo: 160, wave: 'square',   pattern: [0, 2, 4, 7, 12, 7, 12, -1] },
-            "Quest_Complete":   { scale: SCALES.dorian,          root: 62, tempo: 130, wave: 'triangle', pattern: [0, 4, 2, 5, 7, -1, -1, -1] },
-            "Discovery":        { scale: SCALES.majorPentatonic, root: 67, tempo: 90,  wave: 'sine',     pattern: [0, 7, 12, 14, -1, -1, -1, -1] },
-            "Danger_Nearby":    { scale: SCALES.drone,           root: 45, tempo: 140, wave: 'sawtooth', pattern: [0, 1, 0, 1, 0, 1, -1, -1] },
-            "Item_Pickup":      { scale: SCALES.majorPentatonic, root: 75, tempo: 200, wave: 'sine',     pattern: [0, 4, 7, -1, -1, -1, -1, -1] },
-            "Resting_Theme":    { scale: SCALES.majorPentatonic, root: 55, tempo: 60,  wave: 'triangle', pattern: [0, -1, 4, -1, 2, -1, 0, -1] },
-            "Infiltration":     { scale: SCALES.minorPentatonic, root: 50, tempo: 110, wave: 'square',   pattern: [0, -1, 3, -1, 0, -1, 2, -1] },
-            "Trade_Menu":       { scale: SCALES.majorPentatonic, root: 65, tempo: 100, wave: 'sine',     pattern: [0, 2, 0, 4, 2, 0, -1, -1] },
-            "Ambush":           { scale: SCALES.chromatic,       root: 52, tempo: 190, wave: 'sawtooth', pattern: [0, 1, 2, 1, 0, 1, 2, -1] },
-            "Tavern_Jingle":    { scale: SCALES.dorian,          root: 58, tempo: 140, wave: 'triangle', pattern: [0, 2, 4, 0, 5, 4, 2, 0] }
-			
+            "Level_Up":              { scale: SCALES.majorPentatonic, root: 60, tempo: 160, wave: 'square',   pattern: [0, 2, 4, 7, 12, 7, 12, -1] },
+            "Quest_Complete":        { scale: SCALES.dorian,          root: 62, tempo: 130, wave: 'triangle', pattern: [0, 4, 2, 5, 7, -1, -1, -1] },
+            "Discovery":             { scale: SCALES.majorPentatonic, root: 67, tempo: 90,  wave: 'sine',     pattern: [0, 7, 12, 14, -1, -1, -1, -1] },
+            "Danger_Nearby":         { scale: SCALES.drone,           root: 45, tempo: 140, wave: 'sawtooth', pattern: [0, 1, 0, 1, 0, 1, -1, -1] },
+            "Item_Pickup":           { scale: SCALES.majorPentatonic, root: 75, tempo: 200, wave: 'sine',     pattern: [0, 4, 7, -1, -1, -1, -1, -1] },
+            "Resting_Theme":         { scale: SCALES.majorPentatonic, root: 55, tempo: 60,  wave: 'triangle', pattern: [0, -1, 4, -1, 2, -1, 0, -1] },
+            "Infiltration":          { scale: SCALES.minorPentatonic, root: 50, tempo: 110, wave: 'square',   pattern: [0, -1, 3, -1, 0, -1, 2, -1] },
+            "Trade_Menu":            { scale: SCALES.majorPentatonic, root: 65, tempo: 100, wave: 'sine',     pattern: [0, 2, 0, 4, 2, 0, -1, -1] },
+            "Ambush":                { scale: SCALES.chromatic,       root: 52, tempo: 190, wave: 'sawtooth', pattern: [0, 1, 2, 1, 0, 1, 2, -1] },
+            "Tavern_Jingle":         { scale: SCALES.dorian,          root: 58, tempo: 140, wave: 'triangle', pattern: [0, 2, 4, 0, 5, 4, 2, 0] }
         };
     }
 
@@ -323,6 +101,143 @@ class AudioManagerSystem {
         this.ctx = new AudioContext();
         this.initialized = true;
         console.log("Procedural Audio System Initialized");
+    }
+
+    // ========================================================================
+    // MP3 MUSIC PLAYER
+    // ========================================================================
+    
+    playMP3(url, loop = true) {
+        // Stop any playing synth music so they don't clash
+        this.stopMusic();
+        
+        // Stop any MP3 that is already playing
+        this.stopMP3();
+        
+        this.isPlaylistMode = false;
+        this.currentTrack = url; 
+        
+        this.currentMp3 = new Audio(url);
+        this.currentMp3.volume = 0; // Start at 0 for fade in
+        this.currentMp3.loop = loop;
+        
+        this.currentMp3.play().then(() => {
+            this._fadeMP3(this.currentMp3, this.mp3Volume, 1000); // 1 sec fade in
+        }).catch(err => {
+            console.warn("Browser blocked audio playback or file not found:", err);
+        });
+        
+        console.log("Playing MP3:", url);
+    }
+    
+    // --- NEW: Playlist Function ---
+    // Usage: AudioManager.playRandomMP3List(['music/track1.mp3', 'music/track2.mp3', 'music/track3.mp3']);
+    playRandomMP3List(trackArray) {
+        if (!trackArray || trackArray.length === 0) return;
+        
+        // Use a generic ID for the current track so the `update()` loop doesn't restart it
+        if (this.currentTrack === "PLAYLIST_MODE") return; 
+        
+        this.stopMusic();
+        this.stopMP3();
+        
+        this.isPlaylistMode = true;
+        this.currentPlaylist = trackArray;
+        this.currentTrack = "PLAYLIST_MODE";
+        
+        this._playNextInList();
+    }
+    
+    _playNextInList(previousTrack = null) {
+        if (!this.isPlaylistMode || this.currentPlaylist.length === 0) return;
+        
+        // Pick a random track that isn't the one that just played
+        let nextTrack;
+        if (this.currentPlaylist.length > 1) {
+            do {
+                nextTrack = this.currentPlaylist[Math.floor(Math.random() * this.currentPlaylist.length)];
+            } while (nextTrack === previousTrack);
+        } else {
+            nextTrack = this.currentPlaylist[0];
+        }
+        
+        console.log("Playlist playing:", nextTrack);
+        
+        this.currentMp3 = new Audio(nextTrack);
+        this.currentMp3.volume = 0; // Start at 0 for fade in
+        
+        this.currentMp3.play().then(() => {
+            this._fadeMP3(this.currentMp3, this.mp3Volume, 2000); // 2 sec fade in
+        }).catch(err => {
+            console.warn("Playlist error:", err);
+            // If it fails, try the next one after a delay
+            setTimeout(() => this._playNextInList(), 2000);
+            return;
+        });
+        
+        // When the song gets close to ending, start the next one
+        this.currentMp3.addEventListener('timeupdate', () => {
+            // If we are within 2 seconds of the end, fade out and trigger next
+            if (this.currentMp3 && this.currentMp3.duration - this.currentMp3.currentTime < 2.0) {
+                // Prevent this listener from firing multiple times
+                this.currentMp3.removeEventListener('timeupdate', arguments.callee);
+                
+                let fadingTrack = this.currentMp3;
+                this._fadeMP3(fadingTrack, 0, 1900, () => {
+                    fadingTrack.pause();
+                });
+                
+                // Start the next song
+                this._playNextInList(nextTrack);
+            }
+        });
+    }
+    
+    // Internal helper to handle smooth volume fading
+    _fadeMP3(audioObj, targetVolume, duration, callback = null) {
+        if (!audioObj) return;
+        
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        
+        let steps = 20; // Update volume 20 times over the duration
+        let timeStep = duration / steps;
+        let volumeStep = (targetVolume - audioObj.volume) / steps;
+        
+        this.fadeInterval = setInterval(() => {
+            if (!audioObj) {
+                clearInterval(this.fadeInterval);
+                return;
+            }
+            
+            let newVol = audioObj.volume + volumeStep;
+            
+            // Clamp volume to valid bounds
+            if (newVol > 1.0) newVol = 1.0;
+            if (newVol < 0.0) newVol = 0.0;
+            
+            audioObj.volume = newVol;
+            
+            // Check if we've reached the target
+            if ((volumeStep > 0 && audioObj.volume >= targetVolume - 0.01) || 
+                (volumeStep < 0 && audioObj.volume <= targetVolume + 0.01)) {
+                
+                audioObj.volume = targetVolume;
+                clearInterval(this.fadeInterval);
+                if (callback) callback();
+            }
+        }, timeStep);
+    }
+
+    stopMP3() {
+        this.isPlaylistMode = false; // Turn off playlist mode
+        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        
+        if (this.currentMp3) {
+            this.currentMp3.pause();
+            this.currentMp3.currentTime = 0;
+            this.currentMp3 = null;
+        }
+        this.currentTrack = null;
     }
 
     // ========================================================================
@@ -337,6 +252,9 @@ class AudioManagerSystem {
     playMusic(trackName) {
         if (!this.initialized || !this.tracks[trackName] || this.currentTrack === trackName) return;
         
+        // Stop MP3 if one is playing so they don't clash
+        this.stopMP3();
+
         this.stopMusic();
         this.currentTrack = trackName;
         this.isPlaying = true;
@@ -366,52 +284,52 @@ class AudioManagerSystem {
         }
     }
 
-playNextNote() {
-    const track = this.tracks[this.currentTrack];
-    const secondsPerBeat = 60.0 / track.tempo;
-    
-    const noteIndex = track.pattern[this.currentStep];
-    
-    if (noteIndex !== -1 && noteIndex !== undefined) {
-        // SURGERY: We use a "Double Modulo" to ensure negative pattern numbers 
-        // still point to a valid index in the scale array.
-        const scaleLen = track.scale.length;
-        const safeIndex = ((noteIndex % scaleLen) + scaleLen) % scaleLen;
+    playNextNote() {
+        const track = this.tracks[this.currentTrack];
+        const secondsPerBeat = 60.0 / track.tempo;
         
-        const midiNote = track.root + track.scale[safeIndex];
-        const freq = this.midiToFreq(midiNote);
+        const noteIndex = track.pattern[this.currentStep];
         
-        // Final safety check: ensure freq is a real number
-        if (isFinite(freq)) {
-            const osc = this.ctx.createOscillator();
-            const gain = this.ctx.createGain();
+        if (noteIndex !== -1 && noteIndex !== undefined) {
+            // SURGERY: We use a "Double Modulo" to ensure negative pattern numbers 
+            // still point to a valid index in the scale array.
+            const scaleLen = track.scale.length;
+            const safeIndex = ((noteIndex % scaleLen) + scaleLen) % scaleLen;
             
-            osc.type = track.wave;
-            osc.frequency.value = freq;
+            const midiNote = track.root + track.scale[safeIndex];
+            const freq = this.midiToFreq(midiNote);
             
-            gain.gain.setValueAtTime(0, this.nextNoteTime);
-            gain.gain.linearRampToValueAtTime(this.masterMusicVolume, this.nextNoteTime + 0.05);
-            gain.gain.exponentialRampToValueAtTime(0.001, this.nextNoteTime + secondsPerBeat - 0.05);
+            // Final safety check: ensure freq is a real number
+            if (isFinite(freq)) {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = track.wave;
+                osc.frequency.value = freq;
+                
+                gain.gain.setValueAtTime(0, this.nextNoteTime);
+                gain.gain.linearRampToValueAtTime(this.masterMusicVolume, this.nextNoteTime + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.nextNoteTime + secondsPerBeat - 0.05);
 
-            osc.connect(gain);
-            gain.connect(this.ctx.destination);
-            
-            osc.start(this.nextNoteTime);
-            osc.stop(this.nextNoteTime + secondsPerBeat);
-            
-            this.activeOscillators.push(osc);
-            setTimeout(() => {
-                this.activeOscillators = this.activeOscillators.filter(o => o !== osc);
-            }, secondsPerBeat * 1000 + 100);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                
+                osc.start(this.nextNoteTime);
+                osc.stop(this.nextNoteTime + secondsPerBeat);
+                
+                this.activeOscillators.push(osc);
+                setTimeout(() => {
+                    this.activeOscillators = this.activeOscillators.filter(o => o !== osc);
+                }, secondsPerBeat * 1000 + 100);
+            }
+        }
+
+        this.nextNoteTime += secondsPerBeat;
+        this.currentStep++;
+        if (this.currentStep >= track.pattern.length) {
+            this.currentStep = 0; 
         }
     }
-
-    this.nextNoteTime += secondsPerBeat;
-    this.currentStep++;
-    if (this.currentStep >= track.pattern.length) {
-        this.currentStep = 0; 
-    }
-}
 
     // ========================================================================
     // PROCEDURAL SOUND EFFECTS (10 EFFECTS)

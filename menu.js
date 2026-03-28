@@ -8,61 +8,27 @@ window.showMainMenu = function () {
         if (menuActive) return;
         menuActive = true;
 		
-        // --- SELF-CONTAINED MINI MUSIC ENGINE (No AudioManager needed) ---
-        const startStandaloneMusic = () => {
-            const AudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (AudioCtx.state === 'suspended') AudioCtx.resume();
+       // --- REVISED MENU MUSIC LOGIC ---
+const startStandaloneMusic = () => {
+    if (!menuActive) return;
 
-            const masterGain = AudioCtx.createGain();
-            masterGain.gain.value = 0.15; // Volume
-            masterGain.connect(AudioCtx.destination);
+    // 1. Initialize the global manager (handles browser unlock)
+    if (typeof AudioManager !== 'undefined') {
+        AudioManager.init();
 
-            let step = 0;
-            const tempo = 120;
-            const beatTime = 60 / tempo;
-            // A heroic minor melody (Midi notes)
-            const melody = [55, 58, 60, 62, 55, 58, 60, 63, 62, 60, 58, 55]; 
+        // 2. Play your MP3 file (false = no loop)
+        // Ensure path matches your folder: music/menu_noloop.mp3
+        AudioManager.playMP3('music/menu_noloop.mp3', false);
+    }
 
-            const playNote = (time) => {
-                // Important: Only play if the menu is still active
-                if (!menuActive) return;
-                const osc = AudioCtx.createOscillator();
-                const g = AudioCtx.createGain();
-                
-                // Use a 'square' wave for that retro 8-bit RPG feel
-                osc.type = 'square';
-                const freq = 440 * Math.pow(2, (melody[step] - 69) / 12);
-                osc.frequency.setValueAtTime(freq, time);
+    // 3. Remove listeners so it only triggers once
+    window.removeEventListener('mousedown', startStandaloneMusic);
+    window.removeEventListener('keydown', startStandaloneMusic);
+};
 
-                g.gain.setValueAtTime(0, time);
-                g.gain.linearRampToValueAtTime(0.2, time + 0.05);
-                g.gain.exponentialRampToValueAtTime(0.001, time + beatTime - 0.05);
-
-                osc.connect(g);
-                g.connect(masterGain);
-
-                osc.start(time);
-                osc.stop(time + beatTime);
-
-                step = (step + 1) % melody.length;
-                // Schedule the next note
-                setTimeout(() => playNote(AudioCtx.currentTime + beatTime), beatTime * 1000);
-            };
-			playNote(AudioCtx.currentTime);
-
-           window.addEventListener('menuDestroyed', () => {
-                AudioCtx.close();
-            }, { once: true });
-
-            // Remove listeners so it doesn't try to start twice
-            window.removeEventListener('mousedown', startStandaloneMusic);
-            window.removeEventListener('keydown', startStandaloneMusic);
-        };
-
-        // 2. ATTACH the listeners inside showMainMenu
-        // Use 'mousedown' instead of 'click'—it's more responsive!
-        window.addEventListener('mousedown', startStandaloneMusic);
-        window.addEventListener('keydown', startStandaloneMusic);
+// --- ADD THESE LINES TO HOOK IT UP ---
+window.addEventListener('mousedown', startStandaloneMusic);
+window.addEventListener('keydown', startStandaloneMusic);
 
         // --- REST OF YOUR MENU CODE ---
         
@@ -161,25 +127,27 @@ window.showMainMenu = function () {
             return btn;
         }
 
-        function destroyMenu() {
-			// Trigger the stop signal for the standalone music
-            window.dispatchEvent(new Event('menuDestroyed'));
-			
-            menu.style.opacity = "0";
-            if (menuAnimFrameId) {
-                cancelAnimationFrame(menuAnimFrameId);
-                menuAnimFrameId = null;
-            }
-            backgroundUnits = [];
-            particles = [];
-            window.removeEventListener('resize', resizeCanvas);
+function destroyMenu() {
+    // Stop the MP3 if it's still playing
+    if (typeof AudioManager !== 'undefined') {
+        AudioManager.stopMP3();
+    }
 
-            setTimeout(() => {
-                if (menu.parentNode) menu.parentNode.removeChild(menu);
-                menuActive = false;
-                window.isPaused = false; // UNPAUSE
-            }, 500);
-        }
+    menu.style.opacity = "0";
+    if (menuAnimFrameId) {
+        cancelAnimationFrame(menuAnimFrameId);
+        menuAnimFrameId = null;
+    }
+    backgroundUnits = [];
+    particles = [];
+    window.removeEventListener('resize', resizeCanvas);
+
+    setTimeout(() => {
+        if (menu.parentNode) menu.parentNode.removeChild(menu);
+        menuActive = false;
+        window.isPaused = false; 
+    }, 500);
+}
 const playBtn = createBtn("Enter World", () => {
     // --- SURGERY: MAXIMIZE BROWSER ---
     if (document.documentElement.requestFullscreen) {
