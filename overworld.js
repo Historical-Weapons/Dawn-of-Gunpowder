@@ -107,7 +107,7 @@ const PALETTE = {
         desert: "#bfa373", dune: "#cfae7e",
         plains: "#767950", meadow: "#626b42",
         forest: "#425232", jungle: "#2d3b22",
-        highlands: "#826b52", mountains: "#5c4f42", snow: "#d8d3c5"
+        highlands: "#8da388", mountains: "#58694f", snow: "#d8d3c5"
     };
 
     const worldMap = [];
@@ -297,7 +297,7 @@ async function generateMap() {
     for (let i = 0; i < COLS; i++) {
         if (i % 50 === 0) {
             let percent = Math.floor((i / COLS) * 60);
-            await setLoading(percent, "Generating terrain, be patient!");
+            await setLoading(percent, "Generating Terrain...");
         }
 
         worldMap[i] = [];
@@ -386,32 +386,43 @@ if (warpX < mainlandCoast + 0.1) {
                     }
 				}
 			}
-            // --- 5. THE BOHAI/YELLOW SEA CARVE ---
-            // We dig a hole *between* China and where Korea will be to ensure water separation
-            let yellowSeaDist = Math.hypot(warpX - 0.68, warpY - 0.42);
-            if (yellowSeaDist < 0.08) {
-                e = Math.min(e, 0.2 + fbm(warpX*10, warpY*10)*0.1); // Force water
-            }
+// --- 5. THE BOHAI/YELLOW SEA CARVE ---
+// We use a vertical ellipse to clear the "green circle" land bridge
+let yellowSeaX = 0.62; 
+let yellowSeaY = 0.48; 
+let distToYellowSea = Math.hypot((warpX - yellowSeaX) * 1.6, (warpY - yellowSeaY) * 0.8); 
 
-            // --- 6. THE KOREAN PENINSULA ---
-            // A dedicated structural line dropping down from the Jurchen lands
-            if (warpY >= 0.38 && warpY <= 0.62 && warpX > 0.65) {
-                let kLineProgress = (warpY - 0.38) / 0.24; // 0 to 1 down the peninsula
-                let kCenterX = 0.73 + (kLineProgress * 0.04); // Slightly angles eastward
-                let kDistToCenter = Math.abs(warpX - kCenterX);
-                let kWidth = 0.035 - (kLineProgress * 0.02); // Tapers to a point at the south
-                
-                if (kDistToCenter < kWidth) {
-                    let kShatter = fbm(warpX * 20, warpY * 20) * 0.15;
-                    e = Math.max(e, 0.45 + kShatter + (0.05 * (1 - kLineProgress))); // Higher in the north, tapers down
-                    m += 0.3; // Mixed terrain (Lush)
-                    
-                    // Add a specific, small mountain spine down the east coast of Korea (Taebaek Mountains)
-                    if (warpX > kCenterX && kShatter > 0.08) {
-                        e += 0.15; 
-                    }
-                }
-            }
+if (distToYellowSea < 0.12) { 
+    // Force a shallow coastal/ocean floor to keep China and Korea separated
+    e = Math.min(e, 0.28); 
+}
+
+// --- 6. THE KOREAN PENINSULA ---
+if (warpY >= 0.34 && warpY <= 0.65 && warpX > 0.62) { 
+    let kLineProgress = (warpY - 0.34) / 0.31; 
+    let kCenterX = 0.72 + (kLineProgress * 0.04); 
+    
+    // Widening the neck (top) to ensure it hits the mainland
+    let kWidth = 0.055 - (kLineProgress * 0.025); 
+    if (kLineProgress < 0.2) kWidth += 0.015; 
+
+    let kDistToCenter = Math.abs(warpX - kCenterX);
+    
+    if (kDistToCenter < kWidth) {
+        let kShatter = fbm(warpX * 22, warpY * 22);
+        
+        // Elevation 0.6+ ensures "Highlands" or "Mountains" tiles
+        e = Math.max(e, 0.62 + kShatter * 0.15); 
+        
+        // m=0.42 prevents "Dense Forest" but allows sporadic "Forest" or "Plains"
+        m = 0.42; 
+        
+        // Create the Taebaek Mountain spine along the East Coast
+        if (warpX > kCenterX + 0.005) {
+            e += 0.12; 
+        }
+    }
+}
 
             // --- 7. JAPAN (Bottom Right Corner ONLY) ---
             // Anchored strictly to the extreme bottom right
@@ -538,6 +549,13 @@ for (let j = 0; j < ROWS; j++) {
                 bgCtx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, treeSize, 0, Math.PI, true);
                 bgCtx.fill();
             }
+						// Inside the if(tile.name.includes("Forest")) block:
+			let isKorea = (nx > 0.65 && ny > 0.35 && ny < 0.65);
+
+			// If it's Korea, make the density much lower regardless of other fades
+			if (isKorea) {
+				densityThreshold = 0.95; // Only 5% chance of a tree blob
+			}
         } 
         
         // 2. NORTHERN CHINA & MONGOLIA SPARSE TREES
