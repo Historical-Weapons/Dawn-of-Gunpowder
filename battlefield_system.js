@@ -220,16 +220,14 @@ currentBattleData = {
  
     let totalCombatants = playerTroopCount + enemyNPC.count;
     
-    if (enemyNPC.faction === "Bandits") {
-        AudioManager.playMusic("Bandits");
-    } else if (totalCombatants > 300) {
-        AudioManager.playMusic("Battle_Massive");
-    } else if (enemyNPC.faction === "Hong Dynasty" || enemyNPC.faction === "Xiaran Dominion") {
-        AudioManager.playMusic("Battle_Gunpowder"); // Heavily gunpowder focused factions
-    } else {
-        AudioManager.playMusic("Battle_Skirmish");
+
+    if (typeof AudioManager !== 'undefined') {
+        AudioManager.init();
+
+        // 2. Play your MP3 file (false = no loop)
+        // Ensure path matches your folder: music/menu_noloop.mp3
+        AudioManager.playMP3('music/battlemusic.mp3', false);
     }
-    
     AudioManager.playSound("charge"); // Warcry SFX on spawn
 	// Trigger the Epic Zoom: Starts at 0.3x (high up), lands at 1.5x (tactical view) over 1.5 seconds
     if (typeof triggerEpicZoom === 'function') {
