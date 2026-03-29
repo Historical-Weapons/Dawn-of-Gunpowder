@@ -3,11 +3,15 @@
 // ============================================================================
 
 
-const BATTLE_WORLD_WIDTH = 2400; 
-const BATTLE_WORLD_HEIGHT = 1600; 
+// FOR SIEGE COMPATIBILITY REPLACED TO LET INSTEAD
+let BATTLE_WORLD_WIDTH = 2400; 
+let BATTLE_WORLD_HEIGHT = 1600; 
 const BATTLE_TILE_SIZE = 8;
-const BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
-const BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+let BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
+let BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+
+ 
+
 let unitIdCounter = 0;
 const VIEW_PADDING = 200;
 
@@ -92,7 +96,7 @@ function generateBattlefield(worldTerrainType) {
     }
 
     // --- SURGERY: CANVAS EXPANSION ---
-    const VISUAL_PADDING = 1200; // The size of the "Outer Bound" area
+    const VISUAL_PADDING = 4000; // The size of the "Outer Bound" area
     const canvas = document.createElement('canvas');
     // We make the canvas significantly larger than the gameplay area
     canvas.width = BATTLE_WORLD_WIDTH + (VISUAL_PADDING * 2);
@@ -181,7 +185,19 @@ function generateBattlefield(worldTerrainType) {
 }
 // --- ENTER BATTLE LOGIC ---
 function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
+	
+	
     if (inCityMode) return; 
+	
+	// SAFETY RESET: Ensure dimensions return to standard defaults 
+    // before starting a non-siege battle
+    inSiegeBattle = false; 
+    BATTLE_WORLD_WIDTH = 2400; 
+    BATTLE_WORLD_HEIGHT = 1600;
+    BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
+    BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+    
+ 
 	
 
     savedWorldPlayerState_Battle.x = playerObj.x;
@@ -292,6 +308,22 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
     let spawnXCenter = BATTLE_WORLD_WIDTH / 2;
     let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[faction]) ? FACTIONS[faction].color : "#ffffff";
     
+	// =========================================================
+    // --- SURGERY: SIEGE DEFENDER OVERRIDE ---
+    // Forces enemy troops into a horizontal line 100px north of the gate
+    // =========================================================
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
+        let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
+        if (southGate) {
+            // BATTLE_TILE_SIZE is 8. So 100 pixels north (-) of the gate
+            spawnY = (southGate.y * BATTLE_TILE_SIZE) - 100; 
+        } else {
+            spawnY = BATTLE_WORLD_HEIGHT - 600; // Safe fallback inside walls
+        }
+    }
+	
+	
+	
     let composition = [];
 
 // =========================================================
@@ -663,6 +695,11 @@ let finalDamage = Math.floor(totalDamage);
  
 /* --- TACTICAL AI UPDATE LOOP --- */
 function updateBattleUnits() {
+	
+	// Add to the top of updateBattleUnits():
+if (typeof processSiegeEngines === 'function') processSiegeEngines();
+
+
 const now = Date.now();
 
     if (typeof processTacticalOrders === 'function') {
@@ -747,39 +784,59 @@ units.forEach(unit => {
 					}
 
 					/* FLEEING MECHANICS (TWO-STAGE) */
-					/* STAGE 2: Broken (Run Off Map, White Flag outside border) */
-					if (unit.stats.morale <= 0) {
-						unit.state = "FLEEING";
-						
-						if (!unit.escapePoint || unit.escapeType !== "OUTER") {
-					 
-							let distToLeft = unit.x;
-							let distToRight = BATTLE_WORLD_WIDTH - unit.x;
-							let distToTop = unit.y;
-							let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
-							let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
-							
-							// Make the escape point massive so they never reach it and just keep running
-							let outerPadding = -2000; 
-							
-							if (minDist === distToLeft) unit.escapePoint = { x: outerPadding, y: unit.y };
-							else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - outerPadding, y: unit.y };
-							else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: outerPadding };
-							else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - outerPadding };
-							
-							unit.escapeType = "OUTER";
-							unit.fleeTimer = 0; // Initialize our new despawn timer
-						}
+/* STAGE 2: Broken (Run Off Map) */
+if (unit.stats.morale <= 0) {
+    unit.state = "FLEEING";
+    
+    if (!unit.escapePoint || unit.escapeType !== "OUTER") {
+        unit.escapeType = "OUTER";
+        unit.fleeTimer = 0;
 
-						let dx = unit.escapePoint.x - unit.x;
-						let dy = unit.escapePoint.y - unit.y;
-						let dist = Math.hypot(dx, dy);
+        // --- PHASE 3: COWARDS OPEN THE NORTH GATE AND FLEE ---
+        if (inSiegeBattle && unit.side === "enemy" && typeof overheadCityGates !== 'undefined') {
+            let northGate = overheadCityGates.find(g => g.side === "north");
+            if (northGate) {
+                // Set escape point far north, directly through the gate
+                unit.escapePoint = { x: northGate.x * BATTLE_TILE_SIZE, y: -500 }; 
+            }
+        } else {
+            // Standard battle flee logic
+            let distToLeft = unit.x;
+            let distToRight = BATTLE_WORLD_WIDTH - unit.x;
+            let distToTop = unit.y;
+            let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
+            let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+            
+            let outerPadding = -2000; 
+            if (minDist === distToLeft) unit.escapePoint = { x: outerPadding, y: unit.y };
+            else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - outerPadding, y: unit.y };
+            else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: outerPadding };
+            else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - outerPadding };
+        }
+    }
 
-						// They will always be > 8 distance away, so they keep running continuously
-						if (dist > 8) {
-							unit.x += (dx / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
-							unit.y += (dy / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
-						}
+    // If a fleeing enemy reaches the North Gate, they throw it open in panic
+    if (inSiegeBattle && unit.side === "enemy") {
+        let northGate = overheadCityGates.find(g => g.side === "north");
+        if (northGate && !northGate.isOpen) {
+            let distToGate = Math.hypot(unit.x - (northGate.x * BATTLE_TILE_SIZE), unit.y - (northGate.y * BATTLE_TILE_SIZE));
+            if (distToGate < 100) {
+                northGate.isOpen = true;
+                northGate.gateHP = 0;
+                if (typeof updateCityGates === 'function') updateCityGates(battleEnvironment.grid);
+                console.log("Defenders have thrown open the North Gate to escape!");
+            }
+        }
+    }
+
+    let dx = unit.escapePoint.x - unit.x;
+    let dy = unit.escapePoint.y - unit.y;
+    let dist = Math.hypot(dx, dy);
+
+    if (dist > 8) {
+        unit.x += (dx / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
+        unit.y += (dy / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
+    }
 
 						// Check if they have officially crossed the red boundary line
 						let isOutsideBorder = unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT;
@@ -787,17 +844,17 @@ units.forEach(unit => {
 						if (isOutsideBorder) {
 							unit.fleeTimer = (unit.fleeTimer || 0) + 1;
 							
-if (unit.fleeTimer >= 300) { 
-    unit.state = "retreated";
-    unit.removeFromBattle = true;
-    unit.target = null;
-    unit.cooldown = 0;
+							if (unit.fleeTimer >= 300) { 
+								unit.state = "retreated";
+								unit.removeFromBattle = true;
+								unit.target = null;
+								unit.cooldown = 0;
 
-    let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
-    let scale = sideTotal > 300 ? 5 : 1;
-    currentBattleData.fledCounts[unit.side] += scale;
-    return;
-}
+								let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
+								let scale = sideTotal > 300 ? 5 : 1;
+								currentBattleData.fledCounts[unit.side] += scale;
+								return;
+							}
 						}
 						return; 
 					}
@@ -889,6 +946,48 @@ if (unit.fleeTimer >= 300) {
 							shouldHold = true;
 						}
 					}
+				
+// =========================================================
+// --- SURGERY: SIEGE DEFENDER AI OVERRIDE ---
+// =========================================================
+if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && unit.side === "enemy") {
+    let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
+    
+    // PHASE 1: Gate is intact. Hold positions.
+    if (southGate && (!southGate.isOpen && southGate.gateHP > 0)) {
+        shouldHold = true; 
+    } 
+    // PHASE 2: Gate Breached! Fall back to Plaza Last Stand.
+    else {
+        let plazaX = BATTLE_WORLD_WIDTH / 2;
+        let plazaY = (typeof CITY_LOGICAL_HEIGHT !== 'undefined' ? CITY_LOGICAL_HEIGHT : 3200) / 2;
+        let distToPlaza = Math.hypot(plazaX - unit.x, plazaY - unit.y);
+        
+        if (distToPlaza > 150) {
+            shouldHold = false;
+            
+            // If they are trapped on the wall, steer them toward the closest ladder first
+            if (unit.onWall && typeof cityLadders !== 'undefined' && cityLadders.length > 0) {
+                let closestLadder = cityLadders.reduce((prev, curr) => 
+                    Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
+                );
+                dx = closestLadder.x - unit.x;
+                dy = closestLadder.y - unit.y;
+                dist = Math.hypot(dx, dy);
+            } else {
+                // Ground pathing to plaza
+                dx = plazaX - unit.x;
+                dy = plazaY - unit.y;
+                dist = distToPlaza; 
+            }
+        } else {
+            // Phase 2b: Formed up at the plaza
+            shouldHold = true; 
+        }
+    }
+}
+// =========================================================
+
 
 					// Execute movement or hold ground
 					if (shouldHold) {
@@ -912,16 +1011,23 @@ if (unit.fleeTimer >= 300) {
 							let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
 							let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
 
-							if (notAtEdge) {
-								unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
-								unit.x += (Math.random() - 0.5);
+								if (notAtEdge) {
+									unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
+									unit.x += (Math.random() - 0.5);
+								}
+							
+							} else {
+								// Standard Aggressive Movement
+								let moveVector = { dx: dx, dy: dy, dist: dist };
+								
+											// OVERRIDE: Only call the siege logic if we are actually in a siege battle
+								if (inSiegeBattle && typeof getSiegePathfindingVector === 'function') {
+									moveVector = getSiegePathfindingVector(unit, unit.target, dx, dy, dist);
+								}
+
+								unit.x += (moveVector.dx / moveVector.dist) * (unit.stats.speed * speedMod);
+								unit.y += (moveVector.dy / moveVector.dist) * (unit.stats.speed * speedMod);
 							}
-						} else {
-							// Standard Aggressive Movement
-		// Remove the (Math.random() - 0.5) * 0.2 noise entirely for a clean line
-		unit.x += (dx / dist) * (unit.stats.speed * speedMod);
-		unit.y += (dy / dist) * (unit.stats.speed * speedMod);
-						}
 					}
 
 					// --- DYNAMIC STATE DETECTION ---
@@ -1254,19 +1360,28 @@ function applyUnitCollisions(units) {
         }
     }
 }
-function isBattleCollision(x, y) {
+
+function isBattleCollision(x, y, onWall = false) {
     let tx = Math.floor(x / BATTLE_TILE_SIZE);
     let ty = Math.floor(y / BATTLE_TILE_SIZE);
 
-    // Out of bounds
     if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) return true;
 
-    // Check grid: 6 is Rocks (Impassable)
-    // You can also add 4 (Water) if you don't want the player to swim
-    if (battleEnvironment.grid[tx][ty] === 6) return true;
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+        let tile = battleEnvironment.grid[tx][ty];
+        if (tile === 9) return false; // Ladders always walkable
+        if (onWall) {
+            return !(tile === 8 || tile === 10); // Must stay on parapet
+        } else {
+            // Player and troops CANNOT walk on buildings (2), trees (3), water (4), solid walls (6), tower bases (7)
+            return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7; 
+        }
+    }
 
+    if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 6) return true;
     return false;
 }
+
 
 // Shared function to draw stuck projectiles and bomb marks
 function drawStuckProjectileOrEffect(ctx, type) {
@@ -1301,9 +1416,10 @@ function drawStuckProjectileOrEffect(ctx, type) {
 function leaveBattlefield(playerObj) {
     console.log("Leaving battlefield. Restoring overworld state...");
 
+ 
     // --- 1. THE MODE SWITCH (CRITICAL FIX) ---
-    // We flip this to FALSE immediately so the next frame draws the map, not the grass.
     inBattleMode = false; 
+    if (typeof inSiegeBattle !== 'undefined') inSiegeBattle = false; // Reset Siege state
 
     // --- 2. EMERGENCY COORDINATE & CAMERA RESTORATION ---
     if (playerObj && savedWorldPlayerState_Battle) {

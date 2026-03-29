@@ -28,15 +28,15 @@ const player = {
 				faction: "Player's Kingdom",
 				enemies: ["Bandits"], // Bandits are hostile by default
 				
-			roster: Array(100).fill("Militia").map(u => ({ type: u, exp: 1 }))
-			//	roster: [
-		//	"Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", 
-		//	"Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", 
-		//	"Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", 
-		//	"Heavy Lancer", "Elite Lancer", "Rocket", "Mangudai", "Hand Cannoneer", 
-		//	"Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", 
-	//		"Slinger", "Glaiveman", "Javelinier"
-	//	].map(u => ({ type: u, exp: 1 })),
+	//		roster: Array(100).fill("Militia").map(u => ({ type: u, exp: 1 }))
+			roster: [
+			"Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", 
+			"Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", 
+			"Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", 
+			"Heavy Lancer", "Elite Lancer", "Rocket", "Mangudai", "Hand Cannoneer", 
+		"Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", 
+			"Slinger", "Glaiveman", "Javelinier"
+		].map(u => ({ type: u, exp: 1 })),
 
     };
 	const keys = {};
@@ -250,7 +250,14 @@ let economyTick = 0;
 
             if (isPlayerDead || aliveEnemies === 0) {
  
-                leaveBattlefield(player);
+  // To this:
+if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+    concludeSiegeBattlefield(player);
+} else {
+    leaveBattlefield(player);
+}
+				
+				
             } else {
                 console.log("Cannot retreat while enemies remain!");
             }
@@ -333,7 +340,7 @@ else if (inCityMode) {
 }
 	
 	
-    else {
+    else { //overworld
  
         economyTick++;
         if (economyTick > 300) { 
@@ -555,7 +562,13 @@ const cityPanel = document.getElementById('city-panel');
 				}
 
 				drawBattleUnits(ctx);
-
+					// Option to Draw the broken gates over the battlefield if we are in a siege
+					  //  if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && typeof city_system_renderGateOverlays === 'function') {
+					   //     city_system_renderGateOverlays(ctx);
+						//}
+						
+						// Add to the draw loop in update.js
+				if (typeof renderSiegeEngines === 'function') renderSiegeEngines(ctx);
 		 
 // --- UPDATE UI TEXT: Dynamic Positioning Logic ---
 const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
@@ -580,7 +593,7 @@ ctx.textAlign = "center";
 ctx.fillText(
     `Enemies Remaining: ${aliveEnemies}`,
     BATTLE_WORLD_WIDTH / 2,
-    canvas.height - 50
+    canvas.height + 450
 );
 
 } else {
@@ -641,7 +654,10 @@ ctx.shadowBlur = 0;
 				ctx.imageSmoothingEnabled = true;
 				ctx.drawImage(bgCanvas, 0, 0);
 
-				// SURGERY: Calculate what the camera can actually see right now
+		 // ---> ADD THIS LINE <---
+               if (typeof drawSiegeVisuals === 'function') drawSiegeVisuals(ctx);
+			   
+	 
 				let halfWidth = (canvas.width / 2) / zoom;
 				let halfHeight = (canvas.height / 2) / zoom;
 				// Add 150px padding so things don't pop out abruptly at the edges
@@ -684,9 +700,7 @@ cities.forEach(c => {
 					ctx.fillText(c.name, c.x, c.y - 20); //FOR DEBUGGING MAPS
 				});
 		 
-		 // ---> ADD THIS LINE <---
-               if (typeof drawSiegeVisuals === 'function') drawSiegeVisuals(ctx);
-			   
+
 			   // SURGERY: Pass the camera bounds to the NPC rendering system
 				drawAllNPCs(ctx, drawCaravan, drawShip, zoom, camLeft, camRight, camTop, camBottom);
 				

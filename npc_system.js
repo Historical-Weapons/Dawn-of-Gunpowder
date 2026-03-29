@@ -492,8 +492,8 @@ function spawnBandit(padX, padY) {
 	if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
     let coords = getRandomLandCoordinate(padX, padY);
     
-    // TRIPLE QUANTITY: Min 9, Max 54.
-    let banditCount = (Math.floor(Math.random() * 16) + 3) ;
+ 
+    let banditCount = (Math.floor(Math.random() * 10) + 3) ;
     globalNPCs.push({
         id: Math.random().toString(36).substr(2, 9),
         role: "Bandit",
@@ -546,7 +546,9 @@ function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
             if (Math.random() < 0.15) spawnNPCFromCity(city, "Patrol", cities);
         }
     });
-    let banditCount = cities.length * 2; 
+
+// Inside initializeNPCs function
+let banditCount = Math.min(10, cities.length * 2);//<<<<<<<<<<<<<<<<<<<<10 bandits only for debugging
     for(let i=0; i<banditCount; i++) {
         spawnBandit(padX, padY);
     }

@@ -117,14 +117,20 @@ document.addEventListener("keydown", (event) => {
             calculateFormationOffsets(selectedUnits, currentFormationStyle, commander);
             break;
 
-case "q": // SEEK & ENGAGE (SMART ATTACK MOVE)
-    selectedUnits.forEach(u => {
-        u.hasOrders = true;
-        u.orderType = "seek_engage"; // NEW TYPE
-        u.orderTargetPoint = null;   // IMPORTANT: no waypoint
-        u.formationTimer = 120;      // shorter than normal so they react faster
-    });
-    break;
+case "q": // SEEK & ENGAGE or SMART SIEGE ASSAULT
+            if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+                // Initialize the complex Siege Assault logic
+                executeSiegeAssaultAI(selectedUnits);
+            } else {
+                // Standard Field Battle Charge
+                selectedUnits.forEach(u => {
+                    u.hasOrders = true;
+                    u.orderType = "seek_engage"; 
+                    u.orderTargetPoint = null;   
+                    u.formationTimer = 120;      
+                });
+            }
+            break;
 
         case "r": // RETREAT 
             selectedUnits.forEach(u => {
@@ -357,6 +363,112 @@ if (unit.orderType === "seek_engage") {
     }
     return; // CRITICAL: skip formation movement logic
 }
+// ==========================
+            // SMART SIEGE ASSAULT LOGIC
+            // ==========================
+            if (unit.orderType === "siege_assault") {
+                let wallBoundaryY = (typeof CITY_LOGICAL_HEIGHT !== 'undefined' ? CITY_LOGICAL_HEIGHT : 3200) - 40;
+                let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
+                let gateBreached = southGate && (southGate.gateHP <= 0 || southGate.isOpen);
+                
+                // --- PHASE 2: GATE IS BREACHED OR WE ARE OVER THE WALL ---
+                if (gateBreached || unit.y < wallBoundaryY || unit.onWall) {
+                    // 1. Force Ranged into Melee mode once inside the city walls
+                    if (unit.y < wallBoundaryY && (unit.stats.role === "archer" || unit.stats.role === "crossbow" || getTacticalRole(unit) === "GUNPOWDER")) {
+                        unit.stats.range = 10; // Lock to melee
+                        unit.stats.currentStance = "statusmelee";
+                    }
+
+                    // 2. Everyone drops siege roles and floods the city
+                    if (nearestEnemy) {
+                        unit.target = nearestEnemy;
+                        
+                        // Cavalry gets aggressive pathing straight through the gate
+                        if (unit.siegeRole === "cavalry_reserve" && unit.y > wallBoundaryY && southGate) {
+                            unit.target = { x: southGate.x * BATTLE_TILE_SIZE, y: southGate.y * BATTLE_TILE_SIZE - 50, isDummy: true };
+                        }
+                    }
+                    return; // Skip standard movement, let them swarm
+                }
+
+                // --- PHASE 1: SIEGE EQUIPMENT PUSH ---
+                let destX = unit.x;
+                let destY = unit.y;
+
+                switch (unit.siegeRole) {
+                    case "ram_pusher":
+                        if (unit.siegeTarget && unit.siegeTarget.hp > 0) {
+                            destX = unit.siegeTarget.x + (Math.random() - 0.5) * 15;
+                            // Queue system: First 6 push, the rest line up behind them
+                            let queueOffset = unit.queuePos > 6 ? (unit.queuePos * 4) : 0; 
+                            destY = unit.siegeTarget.y + 15 + queueOffset;
+                        } else {
+                            unit.siegeRole = "infantry_reserve"; // Ram destroyed, become reserve
+                        }
+                        break;
+
+                    case "ladder_carrier":
+                        if (unit.siegeTarget && unit.siegeTarget.hp > 0) {
+                            if (!unit.siegeTarget.isDeployed) {
+                                // Move to carry or escort the ladder
+                                destX = unit.siegeTarget.x + (Math.random() - 0.5) * 20;
+                                let queueOffset = unit.queuePos > 2 ? (unit.queuePos * 5) : 0;
+                                destY = unit.siegeTarget.y + 10 + queueOffset;
+                            } else {
+                                // Ladder is up! Climb it.
+                                destX = unit.siegeTarget.x;
+                                destY = unit.siegeTarget.y - 10;
+                            }
+                        } else {
+                            unit.siegeRole = "infantry_reserve";
+                        }
+                        break;
+
+                    case "trebuchet_crew":
+                        if (unit.siegeTarget && unit.siegeTarget.hp > 0) {
+                            destX = unit.siegeTarget.x + (Math.random() - 0.5) * 25;
+                            destY = unit.siegeTarget.y + 20 + (Math.random() * 10);
+                        } else {
+                            unit.siegeRole = "ranged_support";
+                        }
+                        break;
+
+                    case "ranged_support":
+                        // Move up close behind the infantry line / mantlets
+                        destX = unit.x; // Keep horizontal spread
+                        let frontLineY = siegeEquipment.rams[0] ? siegeEquipment.rams[0].y : wallBoundaryY + 300;
+                        destY = Math.max(frontLineY + 120, wallBoundaryY + 150);
+                        
+                        // If they have a clean shot at a wall defender, take it
+                        if (nearestEnemy && nearestEnemy.onWall && Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y) < unit.stats.range) {
+                            unit.target = nearestEnemy;
+                            return;
+                        }
+                        break;
+
+                    case "infantry_reserve":
+                        destX = unit.x;
+                        destY = wallBoundaryY + 200; // Wait patiently outside arrow range
+                        break;
+
+                    case "cavalry_reserve":
+                        destX = unit.x;
+                        destY = wallBoundaryY + 350; // Wait behind the archers
+                        break;
+                }
+
+                // Assign the calculated staging waypoint
+                unit.target = { 
+                    x: destX, 
+                    y: destY, 
+                    hp: 100, 
+                    isDummy: true,
+                    side: unit.side, 
+                    stats: { meleeDefense: 0, armor: 0, health: 100 } 
+                };
+                
+                return; // Override standard pathing
+            }
 
 //standard
 			
@@ -587,3 +699,93 @@ document.addEventListener('contextmenu', (e) => {
 
     if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
 });
+
+// ============================================================================
+// SIEGE ASSAULT COMMAND ENGINE
+// ============================================================================
+function executeSiegeAssaultAI(units) {
+    if (!siegeEquipment) return;
+
+    let meleeInfantry = [];
+    let gunpowder = [];
+    let archers = [];
+    let cavalry = [];
+
+    // 1. Categorize Troops
+    units.forEach(u => {
+        let role = getTacticalRole(u);
+        let textCheck = (u.stats.name + " " + u.unitType).toLowerCase();
+        
+        if (role === "CAVALRY" || u.stats.isLarge || textCheck.includes("elephant") || textCheck.includes("camel")) {
+            cavalry.push(u);
+        } else if (role === "GUNPOWDER") {
+            gunpowder.push(u);
+        } else if (role === "RANGED") {
+            archers.push(u);
+        } else {
+            meleeInfantry.push(u);
+        }
+    });
+
+    // 2. Identify Artillery Crews (Gunpowder first, then Archers if needed)
+    let artilleryCrews = [];
+    let trebCount = siegeEquipment.trebuchets.length;
+    let crewsNeeded = trebCount * 3; // 3 men per trebuchet visually
+
+    while (artilleryCrews.length < crewsNeeded && gunpowder.length > 0) {
+        artilleryCrews.push(gunpowder.shift());
+    }
+    while (artilleryCrews.length < crewsNeeded && archers.length > 0) {
+        artilleryCrews.push(archers.shift());
+    }
+
+    // 3. Assign Orders
+    let ramIndex = 0;
+    let ladderIndex = 0;
+
+    // Distribute Melee Infantry
+    meleeInfantry.forEach((u, index) => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "infantry_reserve";
+        
+        // Assign to Rams (Front of the queue)
+        if (siegeEquipment.rams.length > 0 && index < 25) { 
+            u.siegeRole = "ram_pusher";
+            u.siegeTarget = siegeEquipment.rams[ramIndex % siegeEquipment.rams.length];
+            u.queuePos = index; // Used to line them up behind the ram
+            ramIndex++;
+        } 
+        // Assign to Ladders
+        else if (siegeEquipment.ladders.length > 0 && index >= 25 && index < 60) {
+            u.siegeRole = "ladder_carrier";
+            u.siegeTarget = siegeEquipment.ladders[ladderIndex % siegeEquipment.ladders.length];
+            u.queuePos = index - 25;
+            ladderIndex++;
+        }
+    });
+
+    // Distribute Artillery Crews
+    artilleryCrews.forEach((u, index) => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "trebuchet_crew";
+        u.siegeTarget = siegeEquipment.trebuchets[index % trebCount];
+    });
+
+    // Distribute remaining Ranged (Support fire behind infantry)
+    [...gunpowder, ...archers].forEach(u => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "ranged_support";
+    });
+
+    // Distribute Cavalry (Rear Guard)
+    cavalry.forEach(u => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "cavalry_reserve";
+    });
+
+    if (typeof AudioManager !== 'undefined') AudioManager.playSound('charge');
+}

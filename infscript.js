@@ -500,18 +500,40 @@ else if (type === "spearman") {
         const safeName = unitName || "";
         const isGlaive = safeName === "Glaiveman" || safeName.includes("Glaive");
 
-        // --- 1. Improved Attack Animation ---
+        // --- 1. Improved Attack Animations ---
         const attackProgress = isAttacking ? (Math.sin(frame * 0.8) * 0.5 + 0.5) : 0;
-        const thrust = isAttacking ? 14 * Math.pow(attackProgress, 1.5) : 0; 
-        const lift = isAttacking ? -6 * attackProgress : 0;
+        
+        let thrust = 0;
+        let lift = 0;
+        let swingAngleOffset = 0;
 
-        // --- 2. Shaft Placement ---
+        if (isGlaive) {
+            // GLAIVE: Weighted downward swing/chop
+            thrust = isAttacking ? 5 * attackProgress : 0; // Less forward movement
+            lift = isAttacking ? 8 * Math.sin(frame * 0.8) : 0; // Drops the tip
+            swingAngleOffset = isAttacking ? (Math.sin(frame * 0.8) * 0.6) * dir : 0; // Rotates the shaft
+        } else {
+            // SPEAR: Sharp linear forward stab
+            thrust = isAttacking ? 16 * Math.pow(attackProgress, 1.5) : 0; // Snappy thrust
+            lift = isAttacking ? -2 * attackProgress : 0; // Keeps it mostly level
+            swingAngleOffset = 0;
+        }
+
+        // --- 2. Shaft Placement & Pivot ---
         const shaftStartX = -7 * dir;
         const shaftStartY = 4;
-        const shaftEndX = (28 + (typeof weaponBob !== 'undefined' ? weaponBob : 0) + thrust) * dir;
-        const shaftEndY = -24 + (typeof weaponBob !== 'undefined' ? weaponBob : 0) + lift;
+        
+        // Base coordinates before rotation
+        const baseEndX = (28 + (typeof weaponBob !== 'undefined' ? weaponBob : 0) + thrust) * dir;
+        const baseEndY = -24 + (typeof weaponBob !== 'undefined' ? weaponBob : 0) + lift;
 
-        const shaftAngle = Math.atan2(shaftEndY - shaftStartY, shaftEndX - shaftStartX);
+        let shaftAngle = Math.atan2(baseEndY - shaftStartY, baseEndX - shaftStartX);
+        shaftAngle += swingAngleOffset; // Apply the glaive's rotational swing
+
+        // Calculate final end coordinates using the new angle to keep the shaft connected
+        const length = Math.hypot(baseEndX - shaftStartX, baseEndY - shaftStartY);
+        const finalEndX = shaftStartX + Math.cos(shaftAngle) * length;
+        const finalEndY = shaftStartY + Math.sin(shaftAngle) * length;
 
         ctx.save();
         ctx.lineCap = "round";
@@ -519,41 +541,40 @@ else if (type === "spearman") {
 
         // --- 3. Draw Shaft (Standard Wood) ---
         ctx.strokeStyle = "#4e342e";
-        ctx.lineWidth = 2.2; // Slightly thinner for a "cheap" feel
+        ctx.lineWidth = 2.2; 
         ctx.beginPath();
         ctx.moveTo(shaftStartX, shaftStartY);
-        ctx.lineTo(shaftEndX, shaftEndY);
+        ctx.lineTo(finalEndX, finalEndY);
         ctx.stroke();
 
         // --- 4. Draw Head (Small, Cheap Iron) ---
-        ctx.fillStyle = "#757575"; // Dulled, weathered iron (not shiny)
+        ctx.fillStyle = "#757575"; 
         ctx.strokeStyle = "#424242";
         ctx.lineWidth = 0.5;
         
         ctx.save();
-        ctx.translate(shaftEndX, shaftEndY);
+        ctx.translate(finalEndX, finalEndY);
         ctx.rotate(shaftAngle);
 
         ctx.beginPath();
         if (isGlaive) {
-            // Glaive: Slightly shorter and more curved (Reaper/Chopping style)
+            // Glaive: Slightly shorter and more curved
             ctx.moveTo(0, -1.5);
-            ctx.quadraticCurveTo(8, -4, 12, 0); // Curved edge
-            ctx.lineTo(10, 2); // Blunt back
+            ctx.quadraticCurveTo(8, -4, 12, 0); 
+            ctx.lineTo(10, 2); 
             ctx.lineTo(0, 1.5);
         } else {
-            // CHEAP SPEAR: Small needle-point leaf blade
-            // Shortened from 18px to 7px to lose the "sword-staff" look
-            ctx.moveTo(-2, 0);    // Socket base
-            ctx.lineTo(0, -2);    // Shoulder
-            ctx.lineTo(7, 0);     // Sharp Point (Small & Forward)
-            ctx.lineTo(0, 2);     // Shoulder
+            // Spear: Small needle-point leaf blade
+            ctx.moveTo(-2, 0);    
+            ctx.lineTo(0, -2);    
+            ctx.lineTo(7, 0);     
+            ctx.lineTo(0, 2);     
             ctx.closePath();
         }
         ctx.fill();
         ctx.stroke();
 
-        // Socket binding (The "Cheap" fix: simple dark wrap instead of a tassel)
+        // Socket binding
         ctx.fillStyle = "#2b1b17";
         ctx.fillRect(-2, -1.2, 3, 2.4);
         
@@ -573,7 +594,6 @@ else if (type === "spearman") {
             ctx.fill();
             ctx.stroke();
             
-            // Simple iron boss in center
             ctx.fillStyle = "#757575";
             ctx.beginPath();
             ctx.arc(shieldX, shieldY, 2, 0, Math.PI * 2);

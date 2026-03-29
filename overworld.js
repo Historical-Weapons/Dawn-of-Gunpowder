@@ -224,7 +224,7 @@ const PALETTE = {
    
 
      
-function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
+function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {//THIS ONE IS ALL MOVEMENT
     // --- NEW: SIEGE LOCK ---
     if (player.isSieging && !inBattleMode) {
         player.isMoving = false;
@@ -262,6 +262,7 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
 // --- 2. battleINPUT PROCESSING ---
 
 // Check if player is alive before allowing WASD/Arrow movement
+// Check if player is alive before allowing WASD/Arrow movement
 if (player.hp > 0) {
     if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
     if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
@@ -274,44 +275,68 @@ if (player.hp > 0) {
 
 if (player.isMoving) player.anim++;
 
-// Calculate the intended destination
-// (dx and dy will remain 0 if the player is dead, keeping nextX/Y equal to current position)
-let nextX = player.x + dx;
-let nextY = player.y + dy;
-    // --- 3. SURGERY: MOVEMENT LOGIC & BOUNDARIES ---
-    
-    if (inBattleMode) {
-        // -> THE FIX: Save the old coordinates BEFORE we move the player!
-        let oldX = player.x;
-        let oldY = player.y;
+			// 1. Calculate Intended Movement
+			let nextX = player.x + dx;
+			let nextY = player.y + dy;
+			
+			
+		// --- 3. SURGERY: MOVEMENT LOGIC & COLLISION ---
+		if (inBattleMode) {
+			let oldX = player.x;
+			let oldY = player.y;
 
-        // --- BATTLEFIELD INVISIBLE WALL ---
-        // Clamp the destination so the player never crosses the 0 or Max bounds
-        player.x = Math.max(0, Math.min(nextX, BATTLE_WORLD_WIDTH));
-        player.y = Math.max(0, Math.min(nextY, BATTLE_WORLD_HEIGHT));
-   
-        // --- THE FIX FOR CAVSCRIPT ---
-        // Find the actual Commander unit in the battle array to sync animations
-        let cmdUnit = battleEnvironment.units.find(u => u.isCommander);
-        if (cmdUnit) {
-            // Update the Commander's physical position to match the player object
-            cmdUnit.x = player.x;
-            cmdUnit.y = player.y;
 
-            // Calculate Velocity: This now works because oldX and oldY exist!
-            cmdUnit.vx = cmdUnit.x - oldX;
-            cmdUnit.vy = cmdUnit.y - oldY;
 
-            // Set the state so the renderer knows which animation to play
-            if (player.isMoving) {
-                cmdUnit.state = "moving";
-            } else if (cmdUnit.state !== "attacking") {
-                cmdUnit.state = "idle";
-                cmdUnit.vx = 0;
-                cmdUnit.vy = 0;
-            }
-        }
-   } 
+			// 2. Perform Collision Detection (Independent Axis Check for "Sliding")
+			// This uses the isBattleCollision function we defined in battlefield_system.js
+			
+			// Check X-axis movement
+			if (!isBattleCollision(nextX, player.y, player.onWall)) {
+				player.x = Math.max(0, Math.min(nextX, BATTLE_WORLD_WIDTH));
+			}
+			
+			// Check Y-axis movement
+			if (!isBattleCollision(player.x, nextY, player.onWall)) {
+				player.y = Math.max(0, Math.min(nextY, BATTLE_WORLD_HEIGHT));
+			}
+
+			// --- LADDER LOGIC: Auto-climb when touching a ladder tile ---
+			if (inSiegeBattle) {
+				let pTx = Math.floor(player.x / BATTLE_TILE_SIZE);
+				let pTy = Math.floor(player.y / BATTLE_TILE_SIZE);
+				let currentTile = (battleEnvironment.grid[pTx] && battleEnvironment.grid[pTx][pTy]);
+				
+				if (currentTile === 9) { // Ladder
+					player.onWall = true;
+				} else if (currentTile === 1 || currentTile === 5) { // Ground/Road
+					player.onWall = false;
+				}
+			}
+
+			// --- THE FIX FOR CAVSCRIPT (Animation & Commander Sync) ---
+			let cmdUnit = battleEnvironment.units.find(u => u.isCommander);
+			if (cmdUnit) {
+				// Sync physical units
+				cmdUnit.x = player.x;
+				cmdUnit.y = player.y;
+				cmdUnit.onWall = player.onWall; // Ensure commander visuals match elevation
+
+				// Calculate Velocity for rotation
+				cmdUnit.vx = cmdUnit.x - oldX;
+				cmdUnit.vy = cmdUnit.y - oldY;
+
+				// Determine if we are actually making progress (handling the collision stop)
+				let isActuallyMoving = (Math.abs(cmdUnit.vx) > 0.1 || Math.abs(cmdUnit.vy) > 0.1);
+
+				if (isActuallyMoving) {
+					cmdUnit.state = "moving";
+				} else if (cmdUnit.state !== "attacking") {
+					cmdUnit.state = "idle";
+					cmdUnit.vx = 0;
+					cmdUnit.vy = 0;
+				}
+			}
+		}
     else if (!isCity) {
         // --- WORLD MAP COLLISION (Original Logic) ---
         let ntx = Math.floor(nextX / tileSize);

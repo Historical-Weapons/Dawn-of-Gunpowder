@@ -159,7 +159,7 @@ function buildCityWalls(grid, arch, ctx, factionName) {
 
 overheadCityGates = [
     { x: midX, y: startY, arch: arch, isOpen: false, gateHP: 1000, side: "north" },
-    { x: midX, y: endY, arch: arch, isOpen: true, gateHP: 0, side: "south" }
+    { x: midX, y: endY, arch: arch, isOpen: false, gateHP: 1000, side: "south" }
 ];
 
  //1 let

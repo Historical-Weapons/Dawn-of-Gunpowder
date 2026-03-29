@@ -181,7 +181,7 @@ if (attackerDead || isInBattle) {
         let defenderMilitary = def.militaryPop || def.troops || 0;
 
 // Condition: Defenders MUST outnumber attacker to trigger this event
-        if (defenderMilitary > attackerCount && Math.random() < 0.005) {
+        if (defenderMilitary > attackerCount && Math.random() < 0.00005) {         //for DEBUGGING I HAVE IT AS LOWER BUT ORIGINAL IS 0.005
             console.log(`${def.name} garrison sallies out to break the siege!`);
 
 			if (atk.isPlayer) {
@@ -414,7 +414,7 @@ function triggerSiegeAssault() {
     const gui = document.getElementById('siege-gui');
     if (gui) gui.style.display = 'none';
 
-    // 3. ENTER BATTLEFIELD (Placeholder transition)
+  
     console.log(`Assaulting ${city.name}! Transitioning to battlefield_system.js...`);
     
     if (typeof enterBattlefield === "function" && typeof generateNPCRoster === "function") {
@@ -427,9 +427,14 @@ function triggerSiegeAssault() {
             isCityGarrison: true // Custom flag you can use later in battlefield_system.js to spawn walls
         };
         
-        // BELOW IS A PLACEHOLDER OF A STANDARD BATTLE WHICH WE NEED TO REPLACE WITH FULL SIEGE BATTLE;
-        enterBattlefield(garrisonForce, player, { name: "City Walls", speed: 0.8 });
-    }
+			// REPLACE WITH THIS:
+					if (typeof enterSiegeBattlefield === "function") {
+						enterSiegeBattlefield(garrisonForce, player, city);
+					} else {
+						// Fallback if siegebattle.js isn't loaded
+						//enterBattlefield(garrisonForce, player, { name: "City Walls", speed: 0.8 });
+					}
+				}
 
 	else {
         alert("Battlefield system not loaded! The assault failed.");
