@@ -82,6 +82,34 @@ const YANGTZE_RIVER_COORDS = [
 	
 ];
 
+const TIBET_RIVER_A = [
+    // Source: Deep South-West winding North-East
+    [0.005, 0.980], [0.008, 0.970], [0.012, 0.962], [0.015, 0.950], [0.018, 0.935],
+    [0.020, 0.920], [0.022, 0.905], [0.025, 0.890], [0.028, 0.875], [0.030, 0.860],
+    [0.032, 0.845], [0.035, 0.830], [0.038, 0.815], [0.040, 0.800], [0.042, 0.785],
+    [0.045, 0.770], [0.048, 0.760], [0.052, 0.755], [0.056, 0.748], [0.062, 0.740],
+    [0.070, 0.730], [0.080, 0.720], [0.090, 0.710], [0.100, 0.700], [0.110, 0.692],
+    [0.120, 0.685] // Connection point to Yangtze
+];
+
+const TIBET_RIVER_B = [
+    // Source: Extreme bottom edge winding toward Central Yangtze
+    [0.020, 0.995], [0.025, 0.985], [0.030, 0.975], [0.035, 0.965], [0.040, 0.955],
+    [0.045, 0.945], [0.050, 0.935], [0.055, 0.925], [0.060, 0.915], [0.065, 0.905],
+    [0.070, 0.895], [0.075, 0.885], [0.080, 0.875], [0.085, 0.865], [0.090, 0.855],
+    [0.095, 0.845], [0.100, 0.835], [0.110, 0.830], [0.120, 0.825], [0.130, 0.820],
+    [0.140, 0.815], [0.150, 0.810], [0.160, 0.805], [0.170, 0.798], [0.175, 0.794],
+    [0.180, 0.790] // Connection point to Yangtze
+];
+
+const TIBET_RIVER_C = [
+    // Source: Bottom-left corner winding along the lower map boundary
+    [0.001, 0.999], [0.010, 0.995], [0.020, 0.990], [0.030, 0.985], [0.040, 0.980],
+    [0.050, 0.975], [0.060, 0.970], [0.070, 0.965], [0.080, 0.960], [0.090, 0.955],
+    [0.100, 0.950], [0.110, 0.945], [0.120, 0.940], [0.130, 0.935], [0.140, 0.930],
+    [0.150, 0.920], [0.160, 0.910], [0.170, 0.900], [0.180, 0.890], [0.190, 0.880],
+    [0.200, 0.870], [0.210, 0.860], [0.215, 0.855], [0.220, 0.850] // Connection point to Yangtze
+];
 function resizeCanvasAndResetCamera() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -182,8 +210,8 @@ function fbm(x, y, octaves = 6) {
 const PALETTE = {
         ocean: "#2b4a5f", coastal: "#3a5f75",
         desert: "#bfa373", dune: "#cfae7e",
-        plains: "#767950", meadow: "#8da388",
-        forest: "#425232", jungle: "#2d3b22",
+        plains: "#a3a073", meadow: "#6b7a4a",
+        forest: "#425232", jungle: "#244222",
         highlands: "#626b42", mountains: "#58694f", snow: "#d8d3c5"
     };
 
@@ -436,7 +464,7 @@ let isMacroRiver = false;
 	if (distToSichuan < 0.10) {
 		let basinDepth = smoothstep(0.10, 0.0, distToSichuan);
 		
-		// Drop elevation to "Plains" level (0.42) regardless of the plateau height
+		// Drop elevation to "Steppes" level (0.42) regardless of the plateau height
 		let targetBasinE = 0.42 + (fbm(warpX * 20, warpY * 20) * 0.05);
 		e = (e * (1 - basinDepth)) + (targetBasinE * basinDepth);
 		
@@ -468,66 +496,66 @@ let isMacroRiver = false;
     // --- 6 & 7. NORTHERN TRANSITION: XINJIANG TO MANCHURIA ---
     if (warpY < 0.50) {
 
-		
-        // A. TIAN SHAN / ALTAI MOUNTAINS (NW Ridges)
-        // Adds diagonal, jagged mountain ranges into the NW desert so it isn't completely flat.
-// --- REVISED 6-A. TIAN SHAN / ALTAI MOUNTAINS ---
-let mountainStrike = Math.abs((warpX * 2.0 + warpY) - 0.55);
-if (mountainStrike < 0.12 && warpX < 0.35) {
-    let ridgeLift = smoothstep(0.12, 0.0, mountainStrike) * fbm(warpX * 18, warpY * 18);
-    e += ridgeLift * 0.30; 
-    // FIX: Clamp to ensure no snow peaks in the NW
-    e = Math.min(e, 0.72); 
-    m += ridgeLift * 0.15;
-}
+					
+					// A. TIAN SHAN / ALTAI MOUNTAINS (NW Ridges)
+					// Adds diagonal, jagged mountain ranges into the NW desert so it isn't completely flat.
+			// --- REVISED 6-A. TIAN SHAN / ALTAI MOUNTAINS ---
+			let mountainStrike = Math.abs((warpX * 2.0 + warpY) - 0.55);
+			if (mountainStrike < 0.12 && warpX < 0.35) {
+				let ridgeLift = smoothstep(0.12, 0.0, mountainStrike) * fbm(warpX * 18, warpY * 18);
+				e += ridgeLift * 0.30; 
+				// FIX: Clamp to ensure no snow peaks in the NW
+				e = Math.min(e, 0.72); 
+				m += ridgeLift * 0.15;
+			}
 
-        // B. THE ORGANIC BIOME SWEEP
-        // We warp the coordinates heavily. This prevents the "flag stripes" effect.
-        // It makes the forest/steppe border wave up and down like natural weather patterns.
-        let biomeWarpX = warpX + fbm(warpX * 4, warpY * 4) * 0.12;
-        let biomeWarpY = warpY + fbm(warpX * 4 + 10, warpY * 4 + 10) * 0.12;
-        
-        // Base X-progress (0 = Deep West/Desert, 1 = Far East/Forest)
-        let xProgress = Math.max(0, Math.min(1, (biomeWarpX - 0.15) / 0.75));
-        
-        // We use an exponential curve for moisture. It stays dry (plains/desert) for a long time,
-        // then rapidly gets wet (forest/jungle) as you hit the Eastern seaboard.
-        let baseM = 0.30 + (Math.pow(xProgress, 1.8) * 0.45); 
-        
-        // Add medium-frequency "patch" noise to create islands of forest in the plains,
-        // and islands of meadow in the forest.
-        let patchNoise = (fbm(warpX * 15, warpY * 15) - 0.5) * 0.18;
-        
-        // Override the moisture with our natural, sweeping, noisy gradient
-        m = baseM + patchNoise;
-		
-// C.  RANGE, diagonal "/" + shifted further down
-let shaanxiShiftX = 0.06;
-let shaanxiShiftY = 0.16; // was 0.06, now +10% more down
+					// B. THE ORGANIC BIOME SWEEP
+					// We warp the coordinates heavily. This prevents the "flag stripes" effect.
+					// It makes the forest/steppe border wave up and down like natural weather patterns.
+					let biomeWarpX = warpX + fbm(warpX * 4, warpY * 4) * 0.12;
+					let biomeWarpY = warpY + fbm(warpX * 4 + 10, warpY * 4 + 10) * 0.12;
+					
+					// Base X-progress (0 = Deep West/Desert, 1 = Far East/Forest)
+let xProgress = Math.max(0, Math.min(1, (biomeWarpX - 0.10) / 0.80));
+					
+					// We use an exponential curve for moisture. It stays dry (plains/desert) for a long time,
+					// then rapidly gets wet (forest/jungle) as you hit the Eastern seaboard.
+let baseM = 0.34 + (Math.pow(xProgress, 1.45) * 0.40);
+					
+					// Add medium-frequency "patch" noise to create islands of forest in the plains,
+					// and islands of meadow in the forest.
+					let patchNoise = (fbm(warpX * 15, warpY * 15) - 0.5) * 0.18;
+					
+					// Override the moisture with our natural, sweeping, noisy gradient
+					m = baseM + patchNoise;
+					
+			// C.  RANGE, diagonal "/" + shifted further down
+			let shaanxiShiftX = 0.06;
+			let shaanxiShiftY = 0.16; // was 0.06, now +10% more down
 
-// Shift the ridge in world space
-let sX = biomeWarpX - shaanxiShiftX;
-let sY = biomeWarpY + shaanxiShiftY;
+			// Shift the ridge in world space
+			let sX = biomeWarpX - shaanxiShiftX;
+			let sY = biomeWarpY + shaanxiShiftY;
 
-// MIRRORED diagonal ridge ("/" instead of "\")
-let shaanxiSpineY = 0.16 - (sX * 0.58) + Math.sin(sX * 10) * 0.03;
-let distToShaanxi = Math.abs(sY - shaanxiSpineY);
+			// MIRRORED diagonal ridge ("/" instead of "\")
+			let shaanxiSpineY = 0.16 - (sX * 0.58) + Math.sin(sX * 10) * 0.03;
+			let distToShaanxi = Math.abs(sY - shaanxiSpineY);
 
-if (distToShaanxi < 0.12 && xProgress > 0.6) {
-    let mountainLift = smoothstep(0.12, 0.0, distToShaanxi);
-    let ruggedness = fbm(warpX * 22, warpY * 22) * 1.2;
- //   e += mountainLift * ruggedness * 0.22;
+			if (distToShaanxi < 0.12 && xProgress > 0.6) {
+				let mountainLift = smoothstep(0.12, 0.0, distToShaanxi);
+				let ruggedness = fbm(warpX * 22, warpY * 22) * 1.2;
+			 //   e += mountainLift * ruggedness * 0.22;
 
-    // Moisture now correctly follows the mirrored slope
-    if (sY >= shaanxiSpineY) {
-    //    m += mountainLift * 0.25;
-    }
-}
-		
-		else if (warpX < 0.6) {
-            // Keep the Mongolian steppe/Gobi relatively flat outside of specific ranges
-            e = Math.min(e, 0.52 + fbm(warpX*10, warpY*10)*0.05);
-        }
+				// Moisture now correctly follows the mirrored slope
+				if (sY >= shaanxiSpineY) {
+				//    m += mountainLift * 0.25;
+				}
+			}
+					
+					else if (warpX < 0.6) {
+						// Keep the Mongolian steppe/Gobi relatively flat outside of specific ranges
+						e = Math.min(e, 0.52 + fbm(warpX*10, warpY*10)*0.05);
+					}
     }
 
     // 🛠️ FIX 1: REMOVE MOUNTAIN LINE NEAR LANZHOU
@@ -1194,8 +1222,47 @@ if (qJagged_QL < 1.0) {
         isMacroRiver = true;
     }
 	
-	
+	// MACRO RIVER LOGIC
+// Only allow rivers on land above sea level but below high peaks
 
+// Create an organic thickness specific to the Tibet region
+let baseThickness_tibet = 0.0035; 
+let riverEdgeNoise_tibet = fbm(warpX * 30, warpY * 30) * 0.002;
+let finalThickness_tibet = baseThickness_tibet + riverEdgeNoise_tibet;
+
+// Tributaries should be thinner than the main arteries
+let tributaryThickness_tibet = (baseThickness_tibet * 0.6) + riverEdgeNoise_tibet; 
+
+// Check Yellow River (using global coords and local tibet thickness logic)
+if (checkHardcodedRiver(warpX, warpY, YELLOW_RIVER_COORDS, finalThickness_tibet)) {
+    isMacroRiver = true;
+}
+
+// Check main Yangtze River
+if (!isMacroRiver && checkHardcodedRiver(warpX, warpY, YANGTZE_RIVER_COORDS, finalThickness_tibet)) {
+    isMacroRiver = true;
+}
+
+// Check Tibet Tributaries (South-West) with updated tibet naming
+if (!isMacroRiver && (
+    checkHardcodedRiver(warpX, warpY, TIBET_RIVER_A, tributaryThickness_tibet) ||
+    checkHardcodedRiver(warpX, warpY, TIBET_RIVER_B, tributaryThickness_tibet) ||
+    checkHardcodedRiver(warpX, warpY, TIBET_RIVER_C, tributaryThickness_tibet)
+)) {
+    isMacroRiver = true;
+}
+	
+	
+// --- NEW EMERGENCY FILTER: SOUTHERN MOISTURE CAP ---
+    // User logic: "If y is above the second half (bottom half), m cannot exceed 60"
+    if (j > ROWS * 0.5) { 
+        // We assume m is on a 0-100 scale here based on your "60" and "59" values.
+        // If your m is 0.0 to 1.0, use (m > 0.60) and (m = 0.59)
+        let mCheck = m * 100; 
+        if (mCheck > 60) {
+            m = 59 / 100; 
+        }
+    }
 
 // --- 15 TILE ASSIGNMENT & BIOME RULES ---
 let tile = { 
@@ -1210,7 +1277,7 @@ let tile = {
 
 // 1. WATER & RIVERS
 if (e < 0.25) {
-    tile.name = "Ocean"; tile.color = PALETTE.ocean; tile.speed = 2.0; 
+    tile.name = "Ocean"; tile.color = PALETTE.ocean; tile.speed = 2.5; 
 } else if (e < 0.35) {
     tile.name = "Coastal"; tile.color = PALETTE.coastal; tile.speed = 1.8; 
 } else if (isMacroRiver || isProcRiver) {
@@ -1222,17 +1289,17 @@ if (e < 0.25) {
 // 2. HIGH ALTITUDE (Mountains & Snow)
 else if (e > 0.82) {
     // Roof of the world / Himalayas
-    tile.name = "Snowy Peaks"; tile.color = PALETTE.snow; tile.speed = 0.2; tile.impassable = false;
+    tile.name = "Dry Mountains"; tile.color = PALETTE.snow; tile.speed = 0.4; tile.impassable = false;
 } else if (e > 0.72) {
     // High Mountains
-    tile.name = "Mountains"; tile.color = PALETTE.mountains; tile.speed = 0.30;
+    tile.name = "Mountains"; tile.color = PALETTE.mountains; tile.speed = 0.50;
 } else if (e > 0.58) {
     // Highlands / Plateaus
-    if (m < 0.3) {
+    if (m < 0.2) {
         tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.85;
-    } else if (m > 0.7) {
+    } else if (m > 0.4) {
         // High moisture in highlands = Jungle (e.g., Yunnan/Taiwan)
-        tile.name = "Jungle"; tile.color = PALETTE.jungle; tile.speed = 0.25;
+        tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.65;
     } else {
         tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.85;
     }
@@ -1243,21 +1310,22 @@ else if (e > 0.82) {
 // 3. LOWLANDS (The moisture-rich biomes)
 else {
     if (m < 0.25) {
-        tile.name = "Desert"; tile.color = PALETTE.desert; tile.speed = 0.75;
-    } else if (m < 0.38) {
-        tile.name = "Dunes"; tile.color = PALETTE.dune; tile.speed = 0.85;
+        tile.name = "Desert"; tile.color = PALETTE.desert; tile.speed = 0.90;
+    } else if (m < 0.35) {
+        tile.name = "Dunes"; tile.color = PALETTE.dune; tile.speed = 0.95;
     } else if (m > 0.75) {
-        tile.name = "Jungle"; tile.color = PALETTE.jungle; tile.speed = 0.24;
+      //  tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.24;
+	          tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.77;
     } else if (m > 0.55) {
-        tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.47;
+        tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.77;
     } else if (m > 0.42) {
-        tile.name = "Meadow"; tile.color = PALETTE.meadow; tile.speed = 1.1;
+        tile.name = "Plains"; tile.color = PALETTE.meadow; tile.speed = 1.3;
     } else {
         // Default temperate land
-        tile.name = "Plains"; tile.color = PALETTE.plains; tile.speed = 1.5;
+        tile.name = "Steppes"; tile.color = PALETTE.plains; tile.speed = 1.2;
     }
 }
-            
+
             // --- 12. DATA SAVING & CANVAS RENDERING ---
             worldMap[i][j] = tile;
             
@@ -1308,77 +1376,110 @@ for (let j = 0; j < ROWS; j++) {
 			}
         } 
 else if (tile.name === "Highlands") {
-    const isNorthChina = (nx > 0.3 && nx < 0.7 && ny > 0.3 && ny < 0.6);
-    const isMongolia = (nx < 0.45 && ny < 0.4);
-    
-    // --- 1. DYNAMIC FADING ---
-    // We check how "extreme" the elevation is. If it's borderline, we lower density.
-    // Assuming elevation (e) is stored in the tile object.
-    let edgeFade = tile.e ? Math.min(1, (tile.e - 0.55) * 5) : 1; 
-
-    // --- 2. HIGHLAND "BUMPS" (Rolling Hills) ---
-    // Instead of triangles, we draw 1-2 soft shaded arcs per tile
-    if (Math.random() < 0.7 * edgeFade) {
-        bgCtx.fillStyle = "rgba(0, 0, 0, 0.12)"; // Subtle shadow color
-        let bumpX = px + (Math.random() * TILE_SIZE);
-        let bumpY = py + (TILE_SIZE * 0.8);
-        let bumpW = TILE_SIZE * (0.5 + Math.random() * 0.5);
-        let bumpH = bumpW * 0.4;
-
-        bgCtx.beginPath();
-        // Drawing a smooth "hump"
-        bgCtx.ellipse(bumpX, bumpY, bumpW, bumpH, 0, 0, Math.PI, true);
-        bgCtx.fill();
-    }
-
-    // --- 3. THE TREE LOGIC ---
-    if (isNorthChina || isMongolia) {
-        // KEEP: Original rare "lone tree" logic for the North
-        if (Math.random() > 0.985) {
-            drawHighlandTree(bgCtx, px, py, "#4a5d3a", 0.3);
-        }
-    } else {
-        // NEW: Increased tree density for Southern/Other Highlands
-        // Higher probability (15%) and slightly larger clusters
-        if (Math.random() > 0.85 * (2 - edgeFade)) {
-            let treeColor = "#2d4c1e"; // Lusher, darker green for South
-            drawHighlandTree(bgCtx, px, py, treeColor, 0.4);
-            
-            // Occasional secondary "buddy" tree to create a cluster
-            if (Math.random() > 0.5) {
-                drawHighlandTree(bgCtx, px + 2, py + 1, treeColor, 0.25);
+    // --- 0. WATER SAFETY CHECK ---
+    // Check neighbors to ensure we aren't drawing hills/trees into a river or ocean
+    let isNearWater = false;
+    for (let ni = -1; ni <= 1; ni++) {
+        for (let nj = -1; nj <= 1; nj++) {
+            let neighbor = worldMap[i + ni] ? worldMap[i + ni][j + nj] : null;
+            if (neighbor) {
+                const nName = neighbor.name;
+                if (nName.includes("Ocean") || nName.includes("Coastal") || nName === "River") {
+                    isNearWater = true;
+                    break;
+                }
             }
         }
+        if (isNearWater) break;
     }
 
-    // Standard ground grit (reduced to let the bumps shine)
-    if (Math.random() > 0.95) {
-        bgCtx.fillStyle = "rgba(0,0,0,0.03)";
-        bgCtx.fillRect(px + Math.random()*TILE_SIZE, py + Math.random()*TILE_SIZE, 1, 1);
+    // Only proceed with decorative logic if we are safely inland
+    if (!isNearWater) {
+        const isNorthChina = (nx > 0.3 && nx < 0.7 && ny > 0.3 && ny < 0.6);
+        const isMongolia = (nx < 0.45 && ny < 0.4);
+        const isAridNorth = isNorthChina || isMongolia;
+        
+        // --- 1. DYNAMIC FADING ---
+        let edgeFade = tile.e ? Math.min(1, (tile.e - 0.55) * 5) : 1; 
+
+        // --- 2. REGIONAL LOGIC (Hills & Trees) ---
+        if (isAridNorth) {
+            // MONGOLIA / NORTH CHINA: Hills and trees are very rare
+            if (Math.random() < 0.05 * edgeFade) {
+                drawHighlandBump(bgCtx, px, py, TILE_SIZE);
+            }
+
+            if (Math.random() > 0.985) {
+                drawHighlandTree(bgCtx, px, py, "#4a5d3a", 0.3);
+            }
+        } else {
+            // SOUTHERN / GENERAL HIGHLANDS: Fairly popular frequency
+            if (Math.random() < 0.7 * edgeFade) {
+                drawHighlandBump(bgCtx, px, py, TILE_SIZE);
+            }
+
+            // Tree frequency at 15% with clusters
+            if (Math.random() > 0.85 * (2 - edgeFade)) {
+                let treeColor = "#2d4c1e"; 
+                drawHighlandTree(bgCtx, px, py, treeColor, 0.4);
+                
+                if (Math.random() > 0.5) {
+                    drawHighlandTree(bgCtx, px + 2, py + 1, treeColor, 0.25);
+                }
+            }
+        }
+
+        // Standard ground grit (Only inland)
+        if (Math.random() > 0.95) {
+            bgCtx.fillStyle = "rgba(0,0,0,0.03)";
+            bgCtx.fillRect(px + Math.random()*TILE_SIZE, py + Math.random()*TILE_SIZE, 1, 1);
+        }
     }
 }
 
 
+
+
     
-else if(tile.name === "Plains" || tile.name === "Desert") {
+else if(tile.name === "Steppes" || tile.name === "Desert") {
     let nx = i / COLS;
     let ny = j / ROWS;
 
-    // Check if we are in the Inner Mongolia / NW region
-    if (nx < 0.45 && ny < 0.4 && Math.random() > 0.96) {
-        // Draw a tiny, sparse tree (a dark green dot or small arc)
+    // 1. RARE TREES: Reduced from > 0.96 (4%) to > 0.995 (0.5%)
+    // This makes trees feel like a rare oasis or a lone hardy shrub.
+    if (nx < 0.45 && ny < 0.4 && Math.random() > 0.995) {
         bgCtx.fillStyle = "#364528";
         bgCtx.beginPath();
         bgCtx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, TILE_SIZE * 0.4, 0, Math.PI * 2);
         bgCtx.fill();
-    } else if(Math.random() > 0.8) {
-        // Standard grit/sand texture
-        bgCtx.fillStyle = "rgba(0,0,0,0.03)";
+    } 
+    // 2. FREQUENT GRIT: Increased from > 0.8 (20%) to > 0.4 (60%)
+    // This ensures most tiles have some texture, giving it a dusty, granular feel.
+    else if(Math.random() > 0.4) {
+        bgCtx.fillStyle = "rgba(0,0,0,0.04)"; // Slightly more visible grit
         bgCtx.beginPath();
-        bgCtx.arc(px + Math.random()*TILE_SIZE, py + Math.random()*TILE_SIZE, Math.random()*3+1, 0, Math.PI*2);
+        bgCtx.arc(px + Math.random()*TILE_SIZE, py + Math.random()*TILE_SIZE, Math.random()*2+0.5, 0, Math.PI*2);
         bgCtx.fill();
     }
 }
+
+else if(tile.name === "Meadow" || tile.name === "Plains") {
+    // 1. SCATTERED TREES (Increased to 16% chance: 4x the original 4%)
+    if (Math.random() > 0.84) { 
+        bgCtx.fillStyle = "#425232"; 
+        bgCtx.beginPath();
+        bgCtx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, TILE_SIZE * 0.5, 0, Math.PI, true);
+        bgCtx.fill();
+    } 
+    // 2. LUSH TEXTURE (Remains popular on non-tree tiles)
+    else if(Math.random() > 0.7) { 
+        bgCtx.fillStyle = "rgba(255,255,255,0.15)";
+        bgCtx.beginPath();
+        bgCtx.arc(px + Math.random()*TILE_SIZE, py + Math.random()*TILE_SIZE, Math.random()*2+1, 0, Math.PI*2);
+        bgCtx.fill();
+    }
+}
+
 else if (tile.name !== "Ocean" && tile.name !== "River"&& tile.name !== "Coastal") {
             // --- GENERIC GRASS TUFTS ---
             // Catch-all for any land tiles that didn't get specific textures above
@@ -1408,7 +1509,7 @@ if(tile.name.includes("Forest")) {
     let jurchenFade = Math.max(0, Math.min(1, (nx - 0.45) / 0.20));
 
     // Dynamic Density: Dense at the core, sparse at the edge
-    let densityThreshold = 0.50 - (jurchenFade * 0.48); 
+    let densityThreshold = (0.50 - (jurchenFade * 0.48))/3; 
 
     if(Math.random() > densityThreshold) { 
         // 1. DIVERSE COLOR PALETTE
@@ -1445,6 +1546,14 @@ if(tile.name.includes("Forest")) {
         // Standard Temperate Forest (Classic Arcs)
         else {
             bgCtx.arc(centerX, centerY, treeSize, 0, Math.PI, true);
+			
+			        bgCtx.fill();
+        
+        // Subtle outline for depth
+        bgCtx.strokeStyle = "rgba(0,0,0,0.2)";
+        bgCtx.lineWidth = 0.5;
+      
+			
         }
 
         bgCtx.fill();
@@ -1455,43 +1564,66 @@ if(tile.name.includes("Forest")) {
       
     }
 }
-                // --- MOUNTAIN ICONS & TIMBERLINES (SPARSE PEAKS, DENSE TREES) ---
-if (tile.name.includes("Mountain") || tile.name.includes("Snowy")) {
+  // --- MOUNTAIN ICONS & TIMBERLINES (SPARSE PEAKS, DENSE TREES) ---
+if (tile.name.includes("Mountain") || tile.name.includes("Dry Mountains")) {
     
-    let isSnowy = tile.name.includes("Snowy");
+    let isDryMountains = tile.name.includes("Dry Mountains");
+    let isExtremePeak = tile.name === "Dry Mountains"; // Differentiate between pure white and icy blue
 
     // ==========================================
     // 1. PEAK GENERATION (Drastically Reduced)
     // ==========================================
     // Snowy gets ~3% chance, Regular gets ~1% chance to draw a peak
-    let peakSpawnThreshold = isSnowy ? 0.97 : 0.99;
+    let peakSpawnThreshold = isDryMountains ? 0.97 : 0.97;
 
     if (hash(i, j) > peakSpawnThreshold) {
         
-        let isNearWater = false;
-        for (let ni = -1; ni <= 1; ni++) {
-            for (let nj = -1; nj <= 1; nj++) {
-                let neighbor = worldMap[i + ni] ? worldMap[i + ni][j + nj] : null;
-                if (neighbor && (neighbor.name.includes("Ocean") || neighbor.name === "River")) {
-                    isNearWater = true; 
-                    break;
+        let isInvalidTerrain = false;
+        
+        // 1a. HARD GUARD: Just in case the tile itself is water-based
+        let tName = tile.name;
+        if (tName.includes("Ocean") || tName.includes("Coastal") || tName === "River") {
+            isInvalidTerrain = true;
+        }
+
+        // 1b. NEIGHBOR GUARD: Check surroundings
+        if (!isInvalidTerrain) {
+            for (let ni = -1; ni <= 1; ni++) {
+                for (let nj = -1; nj <= 1; nj++) {
+                    let neighbor = worldMap[i + ni] ? worldMap[i + ni][j + nj] : null;
+                    if (neighbor) {
+                        let nName = neighbor.name;
+                        if (nName.includes("Ocean") || nName.includes("Coastal") || nName === "River") {
+                            isInvalidTerrain = true; 
+                            break;
+                        }
+                    }
                 }
+                if (isInvalidTerrain) break; // Break outer loop early if water is found
             }
         }
         
-        if (!isNearWater) {
+        if (!isInvalidTerrain) {
+            // SCALE LOGIC: 
+            // Bumps = ~1x. Mountains = 4x Bumps. Snowy = 8x Mountains (32x).
+            let scaleMultiplier = isDryMountains ? 4 : 2; 
+
             let randomXOffset = (Math.random() - 0.5) * 120; 
             let randomYOffset = (Math.random() - 0.5) * 120; 
             let finalPx = px + randomXOffset;
             let finalPy = py + randomYOffset;
 
-            // Tone down peaks: Lower height multiplier, wider base
-            let randomHeightVar = (Math.random() - 0.5) * 15; 
-            let randomWidthVar = (Math.random() - 0.5) * 30; 
-            let height = Math.max(8, (tile.e - 0.5) * 25 + 5 + randomHeightVar);
-            let width = TILE_SIZE * 5.5 + randomWidthVar;
+            // Apply scale multiplier to height and width variance
+            let randomHeightVar = (Math.random() - 0.5) * (15 * (scaleMultiplier / 4)); 
+            let randomWidthVar = (Math.random() - 0.5) * (30 * (scaleMultiplier / 4)); 
+            
+            // Base calculations scaled up
+            let baseHeight = Math.max(8, (tile.e - 0.5) * 25 + 5);
+            let height = (baseHeight * (scaleMultiplier / 2.5)) + randomHeightVar; 
+            let width = (TILE_SIZE * scaleMultiplier) + randomWidthVar;
 
             let alpha = 0.75; 
+            
             // Edge Tapering logic
             let edge_taper_pad = 500;
             if (px < edge_taper_pad) alpha = Math.min(alpha, px / edge_taper_pad);
@@ -1507,55 +1639,27 @@ if (tile.name.includes("Mountain") || tile.name.includes("Snowy")) {
             bgCtx.shadowBlur = 15;
             bgCtx.shadowColor = 'rgba(0,0,0,0.3)';
 
-          // 1. Draw the Main Rounded Hump (Base)
-            bgCtx.fillStyle = "#3e342a"; 
-            bgCtx.beginPath();
-            bgCtx.moveTo(finalPx - width/2, finalPy + TILE_SIZE);
-            // The control point (finalPx, finalPy - height) pulls the line into a curve
-            bgCtx.quadraticCurveTo(finalPx, finalPy + TILE_SIZE - (height * 1.4), finalPx + width/2, finalPy + TILE_SIZE);
-            bgCtx.fill();
-
-            // 2. Set the "Top" color based on the tile type
-            if (isSnowy) {
-                bgCtx.fillStyle = tile.name === "Snowy Peaks" ? "#ffffff" : "#d4dee2";
+            // Dispatch to the correct helper function
+            if (isDryMountains) {
+                drawSnowyPeak(bgCtx, finalPx, finalPy, width, height, isExtremePeak, TILE_SIZE);
             } else {
-                bgCtx.fillStyle = "#756654";
+                drawMountain(bgCtx, finalPx, finalPy, width, height, TILE_SIZE);
             }
 
-            // 3. Draw "Bumps" (Secondary overlapping humps)
-            // This creates the non-uniform, weathered look
-            for (let b = 0; b < 2; b++) {
-                let shift = (b - 0.5) * (width * 0.3);
-                let bWidth = width * 0.6;
-                let bHeight = height * 0.7;
-
-                bgCtx.beginPath();
-                bgCtx.moveTo(finalPx + shift - bWidth/2, finalPy + TILE_SIZE);
-                bgCtx.quadraticCurveTo(finalPx + shift, finalPy + TILE_SIZE - bHeight, finalPx + shift + bWidth/2, finalPy + TILE_SIZE);
-                bgCtx.fill();
-            }
-
-            // 4. Subtle Rounded Outline
-            bgCtx.strokeStyle = "rgba(0,0,0,0.1)"; 
-            bgCtx.lineWidth = 1.5;
-            bgCtx.beginPath();
-            bgCtx.moveTo(finalPx - width/2, finalPy + TILE_SIZE);
-            bgCtx.quadraticCurveTo(finalPx, finalPy + TILE_SIZE - (height * 1.4), finalPx + width/2, finalPy + TILE_SIZE);
-            bgCtx.stroke();
- 
             bgCtx.restore();
         }
     }
+
 
     // ==========================================
     // 2. ALPINE TREE GENERATION (The Focus)
     // ==========================================
     // Regular mountains get dense trees. Snowy mountains get very sparse trees.
     // We use Math.random() here so multiple trees can spawn per tile without relying entirely on the single hash.
-    let treeDensity = isSnowy ? 0.95 : 0.60; 
+    let treeDensity = isDryMountains ? 0.95 : 0.60; 
 
     // We allow a loop to attempt drawing 1 to 2 trees per tile to create thick "alpine forests"
-    let maxTrees = isSnowy ? 1 : 2;
+    let maxTrees = isDryMountains ? 1 : 2;
     
     for(let t = 0; t < maxTrees; t++) {
         if (Math.random() > treeDensity) {
@@ -1564,13 +1668,13 @@ if (tile.name.includes("Mountain") || tile.name.includes("Snowy")) {
             let treeY = py + TILE_SIZE/2 + ((Math.random() - 0.5) * TILE_SIZE * 0.8);
             
             // Pine/Alpine tree colors
-            let baseColor = isSnowy ? [45, 60, 50] : [35, 55, 30]; 
+            let baseColor = isDryMountains ? [45, 60, 50] : [35, 55, 30]; 
             let jitter = Math.floor(Math.random() * 10) - 5;
             
             bgCtx.fillStyle = `rgb(${baseColor[0]+jitter}, ${baseColor[1]+jitter}, ${baseColor[2]+jitter})`;
             
             // Trees get slightly smaller at higher elevations
-            let sizeScale = isSnowy ? 0.25 : 0.35;
+            let sizeScale = isDryMountains ? 0.25 : 0.35;
             let treeRadius = TILE_SIZE * (sizeScale + (Math.random() * 0.1));
 
             bgCtx.beginPath();
@@ -1720,7 +1824,102 @@ function checkHardcodedRiver(x, y, riverArray, thickness) {
     return false;
 }
 
-		
+ 
+ 
+ 
+ function getMountainAlpha(size, tileSize) {
+    // Bigger mountains = less translucent
+    let t = Math.max(0, Math.min(1, size / (tileSize * 2.0)));
+
+    // Small peaks: a bit more see-through
+    // Large peaks: mostly solid
+    let alpha = 0.78 + (t * 0.18); // 0.78 -> 0.96
+
+    // Slight random variation
+    alpha += (Math.random() * 0.08) - 0.04; // +/- 0.04
+
+    return Math.max(0.72, Math.min(0.98, alpha));
+}
+
+function drawHighlandBump(ctx, px, py, size) {
+    let bumpX = px + (Math.random() * size);
+    let bumpY = py + (size * 0.8);
+    let bumpW = size * (0.5 + Math.random() * 0.5);
+    let bumpH = bumpW * 0.4;
+
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.08 + Math.random() * 0.08})`;
+
+    ctx.beginPath();
+    ctx.ellipse(bumpX, bumpY, bumpW, bumpH, 0, 0, Math.PI, true);
+    ctx.fill();
+}
+
+function drawMountain(ctx, x, y, width, height, tileSize) {
+    const alpha = getMountainAlpha(height, tileSize);
+
+    // Brown backfill for normal mountains
+    ctx.fillStyle = `rgba(62, 52, 42, ${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, y + tileSize);
+    ctx.quadraticCurveTo(x, y + tileSize - (height * 1.4), x + width / 2, y + tileSize);
+    ctx.fill();
+
+    // Lighter brown top layer
+    ctx.fillStyle = `rgba(117, 102, 84, ${Math.min(0.98, alpha + 0.02)})`;
+
+    for (let b = 0; b < 2; b++) {
+        let shift = (b - 0.5) * (width * 0.3);
+        let bWidth = width * 0.6;
+        let bHeight = height * 0.7;
+
+        ctx.beginPath();
+        ctx.moveTo(x + shift - bWidth / 2, y + tileSize);
+        ctx.quadraticCurveTo(x + shift, y + tileSize - bHeight, x + shift + bWidth / 2, y + tileSize);
+        ctx.fill();
+    }
+
+    ctx.strokeStyle = `rgba(0,0,0,${0.08 + Math.random() * 0.05})`;
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, y + tileSize);
+    ctx.quadraticCurveTo(x, y + tileSize - (height * 1.4), x + width / 2, y + tileSize);
+    ctx.stroke();
+}
+
+function drawSnowyPeak(ctx, x, y, width, height, isExtremePeak, tileSize) {
+    const alpha = getMountainAlpha(height, tileSize);
+
+    // Same mountain body, but still slightly translucent
+    ctx.fillStyle = `rgba(62, 52, 42, ${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, y + tileSize);
+    ctx.quadraticCurveTo(x, y + tileSize - (height * 1.4), x + width / 2, y + tileSize);
+    ctx.fill();
+
+    // Whitish backfill for dry/snowy mountains
+    ctx.fillStyle = isExtremePeak
+        ? `rgba(255, 255, 255, ${Math.min(0.98, alpha + 0.02)})`
+        : `rgba(212, 222, 226, ${Math.min(0.96, alpha + 0.01)})`;
+
+    for (let b = 0; b < 2; b++) {
+        let shift = (b - 0.5) * (width * 0.3);
+        let bWidth = width * 0.6;
+        let bHeight = height * 0.7;
+
+        ctx.beginPath();
+        ctx.moveTo(x + shift - bWidth / 2, y + tileSize);
+        ctx.quadraticCurveTo(x + shift, y + tileSize - bHeight, x + shift + bWidth / 2, y + tileSize);
+        ctx.fill();
+    }
+
+    ctx.strokeStyle = `rgba(0,0,0,${0.10 + Math.random() * 0.06})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, y + tileSize);
+    ctx.quadraticCurveTo(x, y + tileSize - (height * 1.4), x + width / 2, y + tileSize);
+    ctx.stroke();
+}
+	
 		//lack memory
 		// // --- 11. 🏝️ TSUSHIMA (BETWEEN KOREA & JAPAN) ---
 // let tX_Tsu = 0.865;      // Positioned East of Korea's tip

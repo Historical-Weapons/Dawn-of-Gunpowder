@@ -13,7 +13,8 @@ class AudioManagerSystem {
         this.currentMp3 = null;
         this.mp3Volume = 0.2; // Default volume for MP3 tracks
         this.fadeInterval = null; // Used for smooth transitions
-        
+        this._activeTracks = new Set(); // CRITICAL: Initialize this!
+        this._playSessionId = 0;        // CRITICAL: Initialize this!
         // Playlist state
         this.currentPlaylist = [];
         this.isPlaylistMode = false;
@@ -107,23 +108,33 @@ this.fadeInterval = null; // Used for smooth transitions
     // ========================================================================
     // MP3 MUSIC PLAYER
     // ========================================================================
-    
+// ========================================================================
+    // MP3 MUSIC PLAYER (BULLETPROOF REVISION)
+    // ========================================================================
+
     playMP3(url, loop = true) {
-        // Stop any playing synth music so they don't clash
-        this.stopMusic();
-        
-        // Stop any MP3 that is already playing
-        this.stopMP3();
-        
+        // 1. Stop all current music and increment the session ID to kill pending callbacks
+        this.stopMusic(); // Synth killer
+        this.stopMP3();   // MP3 killer
+
+        const currentSession = this._playSessionId;
         this.isPlaylistMode = false;
         this.currentTrack = url; 
         
-        this.currentMp3 = new Audio(url);
-        this.currentMp3.volume = 0; // Start at 0 for fade in
-        this.currentMp3.loop = loop;
+        const newAudio = new Audio(url);
+        this._trackAudio(newAudio); // Add to our global kill-list
         
-        this.currentMp3.play().then(() => {
-            this._fadeMP3(this.currentMp3, this.mp3Volume, 1000); // 1 sec fade in
+        this.currentMp3 = newAudio;
+        newAudio.volume = 0; // Start at 0 for fade in
+        newAudio.loop = loop;
+        
+        newAudio.play().then(() => {
+            // RACE CONDITION CHECK: Did another file stop/change the music while this was buffering?
+            if (this._playSessionId !== currentSession) {
+                this._nukeAudio(newAudio);
+                return;
+            }
+            this._fadeMP3(newAudio, this.mp3Volume, 1000); // 1 sec fade in
         }).catch(err => {
             console.warn("Browser blocked audio playback or file not found:", err);
         });
@@ -131,16 +142,16 @@ this.fadeInterval = null; // Used for smooth transitions
         console.log("Playing MP3:", url);
     }
     
-    // --- NEW: Playlist Function ---
-    // Usage: AudioManager.playRandomMP3List(['music/track1.mp3', 'music/track2.mp3', 'music/track3.mp3']);
+    // --- Playlist Logic ---
+    
     playRandomMP3List(trackArray) {
         if (!trackArray || trackArray.length === 0) return;
         
-        // Use a generic ID for the current track so the `update()` loop doesn't restart it
+        // Use a generic ID for the current track so external update loops don't restart it
         if (this.currentTrack === "PLAYLIST_MODE") return; 
         
         this.stopMusic();
-        this.stopMP3();
+        this.stopMP3(); // Increments session ID, kills all active tracks
         
         this.isPlaylistMode = true;
         this.currentPlaylist = trackArray;
@@ -149,119 +160,171 @@ this.fadeInterval = null; // Used for smooth transitions
         this._playNextInList();
     }
     
-_playNextInList(previousTrack = null) {
-    if (!this.isPlaylistMode || this.currentPlaylist.length === 0) return;
+    _playNextInList(previousTrack = null) {
+        if (!this.isPlaylistMode || !this.currentPlaylist || this.currentPlaylist.length === 0) return;
 
-    // Pick a random track that isn't the one that just played
-    let nextTrack;
-    if (this.currentPlaylist.length > 1) {
-        do {
-            nextTrack = this.currentPlaylist[Math.floor(Math.random() * this.currentPlaylist.length)];
-        } while (nextTrack === previousTrack);
-    } else {
-        nextTrack = this.currentPlaylist[0];
-    }
+        const currentSession = this._playSessionId;
 
-    console.log("Playlist playing:", nextTrack);
-
-    const currentAudio = new Audio(nextTrack);
-    this.currentMp3 = currentAudio;
-    currentAudio.volume = 0;
-    currentAudio.loop = false;
-
-    currentAudio.play().then(() => {
-        this._fadeMP3(currentAudio, this.mp3Volume, 2000);
-    }).catch(err => {
-        console.warn("Playlist error:", err);
-        if (this.isPlaylistMode) {
-            this.playlistTimeout = setTimeout(() => this._playNextInList(previousTrack), 2000);
-        }
-        return;
-    });
-
-    const MIN_PLAY_MS = 120000; // 1 minute minimum before switching
-    const startedAt = Date.now();
-    let advanced = false;
-
-    const advanceToNext = () => {
-        if (advanced || !this.isPlaylistMode) return;
-        advanced = true;
-
-        if (this.playlistTimeout) {
-            clearTimeout(this.playlistTimeout);
-            this.playlistTimeout = null;
+        // Pick a random track that isn't the one that just played
+        let nextTrackUrl;
+        if (this.currentPlaylist.length > 1) {
+            do {
+                nextTrackUrl = this.currentPlaylist[Math.floor(Math.random() * this.currentPlaylist.length)];
+            } while (nextTrackUrl === previousTrack);
+        } else {
+            nextTrackUrl = this.currentPlaylist[0];
         }
 
-        const fadingTrack = currentAudio;
-        this._fadeMP3(fadingTrack, 0, 1900, () => {
-            fadingTrack.pause();
-            if (this.currentMp3 === fadingTrack) this.currentMp3 = null;
+        console.log("Playlist playing:", nextTrackUrl);
+
+        const currentAudio = new Audio(nextTrackUrl);
+        this._trackAudio(currentAudio); // Add to global kill-list
+        
+        this.currentMp3 = currentAudio;
+        currentAudio.volume = 0;
+        currentAudio.loop = false;
+
+        // Wait for the browser to load the track's duration before skipping
+        currentAudio.addEventListener('loadedmetadata', () => {
+            if (this._playSessionId !== currentSession) return; // Abort if music changed
+
+            const minPlayableSeconds = 30; 
+            if (currentAudio.duration > minPlayableSeconds) {
+                const maxStartTime = currentAudio.duration - minPlayableSeconds;
+                currentAudio.currentTime = Math.random() * maxStartTime;
+            }
         });
 
-        this.playlistTimeout = setTimeout(() => {
-            if (this.isPlaylistMode) this._playNextInList(nextTrack);
-        }, 2000);
-    };
+        currentAudio.play().then(() => {
+            if (this._playSessionId !== currentSession) {
+                this._nukeAudio(currentAudio);
+                return;
+            }
+            this._fadeMP3(currentAudio, this.mp3Volume, 2000);
+        }).catch(err => {
+            console.warn("Playlist error:", err);
+            if (this.isPlaylistMode && this._playSessionId === currentSession) {
+                this.playlistTimeout = setTimeout(() => this._playNextInList(nextTrackUrl), 2000);
+            }
+        });
 
-    this.playlistTimeout = setTimeout(advanceToNext, MIN_PLAY_MS);
+        const MIN_PLAY_MS = 60000; // 1 minute minimum before switching
+        let advanced = false;
 
-    currentAudio.addEventListener('ended', () => {
-        const elapsed = Date.now() - startedAt;
-        if (elapsed >= MIN_PLAY_MS) {
+        const advanceToNext = () => {
+            // Abort if already advanced OR if another file interrupted the session
+            if (advanced || !this.isPlaylistMode || this._playSessionId !== currentSession) return;
+            advanced = true;
+
+            if (this.playlistTimeout) {
+                clearTimeout(this.playlistTimeout);
+                this.playlistTimeout = null;
+            }
+
+            const fadingTrack = currentAudio;
+            
+            // 1. Fade out the current track completely
+            this._fadeMP3(fadingTrack, 0, 1900, () => {
+                // 2. Destroy the old track completely
+                this._nukeAudio(fadingTrack);
+                
+                if (this.currentMp3 === fadingTrack) {
+                    this.currentMp3 = null;
+                }
+                
+                // 3. Start the next track ONLY if we are still in the exact same session
+                if (this.isPlaylistMode && this._playSessionId === currentSession) {
+                    this._playNextInList(nextTrackUrl);
+                }
+            });
+        };
+
+        this.playlistTimeout = setTimeout(advanceToNext, MIN_PLAY_MS);
+
+        currentAudio.addEventListener('ended', () => {
             advanceToNext();
-        }
-        // If it ends before 1 minute, do nothing.
-        // The timeout above will handle the next switch.
-    }, { once: true });
-}
+        }, { once: true });
+    }
     
-    // Internal helper to handle smooth volume fading
+    // --- Helper Methods ---
+
     _fadeMP3(audioObj, targetVolume, duration, callback = null) {
         if (!audioObj) return;
         
-        if (this.fadeInterval) clearInterval(this.fadeInterval);
+        if (audioObj._fadeInterval) clearInterval(audioObj._fadeInterval);
         
-        let steps = 20; // Update volume 20 times over the duration
+        let steps = 20; 
         let timeStep = duration / steps;
         let volumeStep = (targetVolume - audioObj.volume) / steps;
         
-        this.fadeInterval = setInterval(() => {
-            if (!audioObj) {
-                clearInterval(this.fadeInterval);
+        audioObj._fadeInterval = setInterval(() => {
+            if (!audioObj || audioObj.paused) {
+                clearInterval(audioObj._fadeInterval);
                 return;
             }
             
             let newVol = audioObj.volume + volumeStep;
             
-            // Clamp volume to valid bounds
             if (newVol > 1.0) newVol = 1.0;
             if (newVol < 0.0) newVol = 0.0;
             
             audioObj.volume = newVol;
             
-            // Check if we've reached the target
             if ((volumeStep > 0 && audioObj.volume >= targetVolume - 0.01) || 
                 (volumeStep < 0 && audioObj.volume <= targetVolume + 0.01)) {
                 
                 audioObj.volume = targetVolume;
-                clearInterval(this.fadeInterval);
+                clearInterval(audioObj._fadeInterval);
+                audioObj._fadeInterval = null;
                 if (callback) callback();
             }
         }, timeStep);
     }
 
-    stopMP3() {
-        this.isPlaylistMode = false; // Turn off playlist mode
-        if (this.fadeInterval) clearInterval(this.fadeInterval);
-        
-        if (this.currentMp3) {
-            this.currentMp3.pause();
-            this.currentMp3.currentTime = 0;
-            this.currentMp3 = null;
-        }
-        this.currentTrack = null;
+    // NEW: Keeps track of all created audios to prevent ghosts
+    _trackAudio(audioObj) {
+        if (!this._activeTracks) this._activeTracks = new Set();
+        this._activeTracks.add(audioObj);
     }
 
+    // NEW: The ultimate weapon against zombie audio elements
+    _nukeAudio(audioObj) {
+        if (!audioObj) return;
+        
+        if (audioObj._fadeInterval) {
+            clearInterval(audioObj._fadeInterval);
+            audioObj._fadeInterval = null;
+        }
+        
+        audioObj.pause();
+        audioObj.removeAttribute('src'); // Forces browser to dump the memory
+        audioObj.load();
+        
+        if (this._activeTracks) {
+            this._activeTracks.delete(audioObj);
+        }
+    }
+
+    stopMP3() {
+        this.isPlaylistMode = false; 
+        this.currentTrack = null;
+        
+        // Increment session ID to instantly invalidate any pending timeouts or fade callbacks
+        this._playSessionId = (this._playSessionId || 0) + 1;
+        
+        if (this.playlistTimeout) {
+            clearTimeout(this.playlistTimeout);
+            this.playlistTimeout = null;
+        }
+        
+        // Nuke EVERY track that was ever created and hasn't been cleaned up yet
+        if (this._activeTracks) {
+            this._activeTracks.forEach(audio => this._nukeAudio(audio));
+            this._activeTracks.clear();
+        }
+        
+        this.currentMp3 = null;
+    }
     // ========================================================================
     // MUSIC GENERATOR (THE MINI-SEQUENCER)
     // ========================================================================
