@@ -79,13 +79,13 @@ let tSize = 8;
 let maxCols = 0, maxRows = 0;
 let lastBattleTime = 0;
 const BATTLE_COOLDOWN = 2000;  
-const MAX_GLOBAL_NPCS = 1000; // NEW: Hard cap to save CPU
+const MAX_GLOBAL_NPCS = 500; // NEW: Hard cap to save CPU
 // ============================================================================
 // CORE HELPER FUNCTIONS
 // ============================================================================
 
 function getRandomLandCoordinate(padX = 0, padY = 0) {
-    if (!worldMapRef) return { x: 5000, y: 5000 };
+    if (!worldMapRef) return { x: 500, y: 500 };
     let attempts = 0;
     while(attempts < 5000) {
         let cx = Math.floor(Math.random() * ((maxCols * tSize) - 2 * padX)) + padX;
@@ -101,7 +101,7 @@ function getRandomLandCoordinate(padX = 0, padY = 0) {
                 }
         attempts++;
     }
-    return { x: 5000, y: 5000 };
+    return { x: 500, y: 500 };
 }
 
 function getFactionByGeography(x, y, worldWidth, worldHeight) {
@@ -493,7 +493,7 @@ function spawnBandit(padX, padY) {
     let coords = getRandomLandCoordinate(padX, padY);
     
     // TRIPLE QUANTITY: Min 9, Max 54.
-    let banditCount = (Math.floor(Math.random() * 16) + 3) * 3;
+    let banditCount = (Math.floor(Math.random() * 16) + 3) ;
     globalNPCs.push({
         id: Math.random().toString(36).substr(2, 9),
         role: "Bandit",
@@ -1039,7 +1039,7 @@ if (npc.role === "Bandit") {
    else if (Math.random() < 0.3 && rc.militaryPop > 30) spawnNPCFromCity(rc, "Patrol", cities);
 else if (rc.pop > 6000 && rc.militaryPop > 80 && Math.random() < 0.10) spawnNPCFromCity(rc, "Military", cities);
     }
-    if (Math.random() < 0.02 && globalNPCs.filter(n => n.role === "Bandit").length < cities.length * 1.5) {
+    if (Math.random() < 0.005 && globalNPCs.filter(n => n.role === "Bandit").length < cities.length * 1.5) {
         if (typeof spawnBandit === 'function') spawnBandit(0, 0); 
     }
 }

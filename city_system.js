@@ -2,12 +2,15 @@
 // EMPIRE OF THE 13TH CENTURY - CITY DIMENSION GENERATOR (ORGANIC UPDATE)
 // ============================================================================
 
-const CITY_WORLD_WIDTH = 3200; 
-const CITY_WORLD_HEIGHT = 3200; 
+const CITY_WORLD_WIDTH = 3200;  
+const CITY_LOGICAL_HEIGHT = 3200; // The city itself
+const CITY_WORLD_HEIGHT = 4000;   // City + 800px (25%) deployment zone at bottom
 const CITY_TILE_SIZE = 8;
 const city_system_troop_storage = {};
 const CITY_COLS = Math.floor(CITY_WORLD_WIDTH / CITY_TILE_SIZE);
 const CITY_ROWS = Math.floor(CITY_WORLD_HEIGHT / CITY_TILE_SIZE);
+const CITY_LOGICAL_ROWS = Math.floor(CITY_LOGICAL_HEIGHT / CITY_TILE_SIZE);
+
 const cityTroopNPCs = {};
 async function initAllCities(factions) {
     const factionList = Array.isArray(factions) ? factions : Object.keys(factions);
@@ -17,17 +20,15 @@ async function initAllCities(factions) {
         await new Promise(r => setTimeout(r, 10)); 
     }
 }
- 
-function city_system_generateTroops(factionName, grid) {
-	let maxTroops = 15; // Hard limit for optimization
+ function city_system_generateTroops(factionName, grid) {
+    let maxTroops = 15; // UPDATED: Increased this so your targetTroops (15-25) actually spawn
     city_system_troop_storage[factionName] = [];
     
-    // --- FIX: Reliable Troop Spawning ---
     // 1. Find all valid road (1) and plaza (5) tiles across the city
     let validSpots = [];
     for (let x = 0; x < CITY_COLS; x++) {
         for (let y = 0; y < CITY_ROWS; y++) {
-            if (grid[x][y] === 1 || grid[x][y] === 5) {
+            if (grid[x] && (grid[x][y] === 1 || grid[x][y] === 5)) {
                 validSpots.push({ x: x, y: y });
             }
         }
@@ -38,10 +39,7 @@ function city_system_generateTroops(factionName, grid) {
 
     // 2. Pick random valid spots until target is reached
     while (city_system_troop_storage[factionName].length < targetTroops && validSpots.length > 0) {
-        // Grab a random valid index
         let rIndex = Math.floor(Math.random() * validSpots.length);
-        
-        // Splice removes it from the array so we don't spawn two troops on the exact same tile
         let spot = validSpots.splice(rIndex, 1)[0]; 
 
         city_system_troop_storage[factionName].push({
@@ -51,28 +49,39 @@ function city_system_generateTroops(factionName, grid) {
             vy: (Math.random() - 0.5) * 0.8,
             animOffset: Math.random() * 100,
             weapon: city_weapon_pool[Math.floor(Math.random() * city_weapon_pool.length)],
-            dir: Math.random() > 0.5 ? 1 : -1
+            dir: Math.random() > 0.5 ? 1 : -1,
+            onWall: false // <--- ADDED: This prevents the 'undefined' collision error
         });
+
+        // OPTIMIZATION CHECK: Stop if we hit the hard limit
+        if (city_system_troop_storage[factionName].length >= maxTroops) break;
     }
-	if (city_system_troop_storage[factionName].length > maxTroops) return;
 }
 
 function city_system_renderTroops(ctx, factionName) {
     let troops = city_system_troop_storage[factionName];
     if (!troops) return;
     
-    // ---> SURGERY: Dynamically color the guards based on the CURRENT occupying ruler <---
     let currentRuler = (typeof activeCity !== 'undefined' && activeCity) ? activeCity.faction : factionName;
-    
-    let fColor = "#4a4a4a"; // Fallback
+    let fColor = "#4a4a4a"; 
     if (typeof ARCHITECTURE !== 'undefined' && ARCHITECTURE[currentRuler]) {
-        fColor = ARCHITECTURE[currentRuler].roofs[0];
+        fColor = ARCHITECTURE[currentRuler].roofs;
     } else if (typeof activeCity !== 'undefined' && activeCity && activeCity.color) {
-        fColor = activeCity.color; // Allows Player's white troops to appear when occupied!
+        fColor = activeCity.color; 
     }
 
     for (let t of troops) {
-        if (isCityCollision(t.x + t.vx, t.y + t.vy, factionName)) {
+        // --- NEW: Auto-transition Guards on Ladders ---
+        let tx = Math.floor(t.x / CITY_TILE_SIZE);
+        let ty = Math.floor(t.y / CITY_TILE_SIZE);
+        if (typeof cityDimensions !== 'undefined' && cityDimensions[factionName]) {
+            let currentTile = cityDimensions[factionName].grid[tx] ? cityDimensions[factionName].grid[tx][ty] : 0;
+            if (currentTile === 9) t.onWall = true;
+            else if (currentTile === 0 || currentTile === 1 || currentTile === 5) t.onWall = false;
+        }
+
+        // --- FIX: Pass 't.onWall' to the collision check! ---
+        if (isCityCollision(t.x + t.vx, t.y + t.vy, factionName, t.onWall)) {
             t.vx *= -1; t.vy *= -1;
             t.dir = t.vx > 0 ? 1 : -1;
         } else {
@@ -83,6 +92,8 @@ function city_system_renderTroops(ctx, factionName) {
         let bob = Math.abs(Math.sin(frame * 0.2)) * 2;
 
         drawHuman(ctx, t.x, t.y, true, frame, fColor);
+
+        // ... (Keep your weapon rendering logic exactly as is) ...
 
         ctx.save();
         ctx.translate(t.x, t.y - bob);
@@ -251,8 +262,9 @@ function generateCity(factionName) {
     // Matrix: 0=Ground, 1=Road, 2=Building(Solid), 3=Tree(Solid), 4=Water(Solid), 5=Plaza
     const grid = Array.from({ length: CITY_COLS }, () => Array(CITY_ROWS).fill(0));
     
-    let midX = Math.floor(CITY_COLS / 2);
-    let midY = Math.floor(CITY_ROWS / 2);
+let midX = Math.floor(CITY_COLS / 2);
+    // SURGERY: Anchor the city center to the top 3200px (LOGICAL_ROWS)
+    let midY = Math.floor(CITY_LOGICAL_ROWS / 2); 
     let maxRadius = Math.min(midX, midY) - 5;
 
     // 1. Central Irregular Plaza
@@ -266,6 +278,47 @@ function generateCity(factionName) {
 
     // 2. Organic Winding Roads (Drunkard's Walk spreading outward)
     let numRoads = 60; // More branches = denser road network
+	
+// --- INTEGRATED WOBBLY ROADS (MIGRATED FROM FORTIFICATION SYSTEM) ---
+    let gateRadius = 4;
+    let startY = 5, endY = CITY_LOGICAL_ROWS - 5;
+    let startX = 5, endX = CITY_COLS - 5;
+// --- UPDATED VERTICAL ROAD LOOP ---
+// Change 'y < CITY_LOGICAL_ROWS' to 'y < CITY_ROWS'
+for (let y = 0; y < CITY_ROWS; y++) { 
+    let distToNorth = Math.abs(y - startY);
+    let distToSouth = Math.abs(y - endY);
+    let minDist = Math.min(distToNorth, distToSouth);
+    
+    // This logic keeps the road straight at the very ends (gates)
+    let straightness = Math.min(1, Math.max(0, (minDist - 15) / 20));
+    let wobble = Math.floor(Math.sin(y * 0.08) * 5 * straightness);
+    let currentMidX = midX + wobble;
+    
+    for (let x = currentMidX - gateRadius; x <= currentMidX + gateRadius; x++) {
+        if (grid[x] && grid[x][y] !== undefined) {
+            if (grid[x][y] !== 5) grid[x][y] = 1; // 1 = Road
+        }
+    }
+}
+
+    // Horizontal Wobbly Road (West to East)
+    for (let x = 0; x < CITY_COLS; x++) {
+        let distToWest = Math.abs(x - startX);
+        let distToEast = Math.abs(x - endX);
+        let minDist = Math.min(distToWest, distToEast);
+        let straightness = Math.min(1, Math.max(0, (minDist - 15) / 20));
+        let wobble = Math.floor(Math.sin(x * 0.08) * 5 * straightness);
+        let currentMidY = midY + wobble;
+
+        for (let y = currentMidY - gateRadius; y <= currentMidY + gateRadius; y++) {
+            if (grid[x] && grid[x][y] !== undefined) {
+                if (grid[x][y] !== 5) grid[x][y] = 1; // 1 = Road
+            }
+        }
+    }
+	
+	
     for(let r = 0; r < numRoads; r++) {
         let cx = midX;
         let cy = midY;
@@ -297,16 +350,23 @@ function generateCity(factionName) {
 
     // 3. Scatter Buildings Radially (Dense center, sparse edges)
     const buildings = [];
-    let numBuildingAttempts = 11000; 
+    let numBuildingAttempts = 110000; 
 
-    for (let i = 0; i < numBuildingAttempts; i++) {
+for (let i = 0; i < numBuildingAttempts; i++) {
         let bx = Math.floor(Math.random() * CITY_COLS);
-        let by = Math.floor(Math.random() * CITY_ROWS);
-
-        let dist = Math.hypot(bx - midX, by - midY);
-        let densityProb = 1 - (dist / maxRadius);
-        densityProb = Math.max(0.01, densityProb); 
-        densityProb = Math.pow(densityProb, 1.8); // Exponential drop-off to pack the center
+        // SURGERY: Limit building placement attempts to the logical city area
+        let by = Math.floor(Math.random() * CITY_LOGICAL_ROWS);
+       let dist = Math.hypot(bx - midX, by - midY);
+        
+        // 1. SHRINK RADIUS: Multiply maxRadius by 0.5 to 0.7 to pull the "cutoff" point inward
+        let densityProb = 1 - (dist / (maxRadius * 0.6)); 
+        
+        // 2. CLEARANCE: Ensure probability hits 0 quickly outside the target zone
+        densityProb = Math.max(0, densityProb); 
+        
+        // 3. SHARPEN DROP-OFF: Increase the exponent (from 1.8 to 4.0+) 
+        // High numbers pack the center and leave the outskirts empty.
+        densityProb = Math.pow(densityProb, 4.0);
 
         if (Math.random() > densityProb) continue;
 
@@ -428,36 +488,44 @@ if (typeof buildCityWalls === 'function') {
         grid: grid
     };
 	
-	
-	
-
-    cityDimensions[factionName] = {
-        bgCanvas: canvas,
-        grid: grid
-    };
-
-// FIXED: Calling the correctly renamed functions
-    generateCityCosmeticNPCs(factionName, grid);
-    city_system_generateTroops(factionName, grid); // Renamed call
-    
+	// Populate the city with NPCs and Troops
+    if (typeof generateCityCosmeticNPCs === 'function') {
+        generateCityCosmeticNPCs(factionName, grid);
+    }
+ 
   // Note: city_system_renderGateOverlays is usually called in the main 
     // animation loop, not during generation, but if you need it here:
-    city_system_renderGateOverlays(ctx);  
-}
+    city_system_renderGateOverlays(ctx); 
 
-// --- Collision Detection API ---
-function isCityCollision(x, y, factionName = currentActiveCityFaction) {
+// This populates the walls with archers and the city with guards
+    if (typeof spawnFortificationTroops === 'function') {
+        spawnFortificationTroops(factionName, grid, arch);
+    }
+	
+}
+function isCityCollision(x, y, factionName = currentActiveCityFaction, isOnWall = false) {
     if (!inCityMode || !factionName || !cityDimensions[factionName]) return false;
     
     let tileX = Math.floor(x / CITY_TILE_SIZE);
     let tileY = Math.floor(y / CITY_TILE_SIZE);
 
     if (tileX < 0 || tileX >= CITY_COLS || tileY < 0 || tileY >= CITY_ROWS) return true;
+    
     let tile = cityDimensions[factionName].grid[tileX][tileY];
-	// Include 6 (Wall) and 7 (Tower) in the collision check
-    return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7;
-}
+    
+    // FIX: 9 = Ladder Bridge. This is the transition zone, it's universally walkable!
+    if (tile === 9) return false;
 
+    if (isOnWall) {
+        // LAYER: ON WALL
+        // 8 = Parapet floor, 10 = Tower/Gate top. 
+        return !(tile === 8 || tile === 10);
+    } 
+
+    // LAYER: GROUND
+    // Notice Tile 9 isn't blocked here either, allowing ground troops to step onto it.
+    return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7 || tile === 8;
+}
 // --- City Entry/Exit ---
 function enterCity(factionName, playerObj) {
     generateCity(factionName);
@@ -478,15 +546,16 @@ function enterCity(factionName, playerObj) {
  // Find a safe spot (Road=1 or Plaza=5) near the center
     let foundSafeSpot = false;
     let grid = cityDimensions[factionName].grid;
-    let centerX = Math.floor(CITY_COLS / 2);
-    let centerY = Math.floor(CITY_ROWS / 2);
+	let centerX = Math.floor(CITY_COLS / 2);
+    // SURGERY: Start searching for a safe spawn spot in the logical city center
+    let centerY = Math.floor(CITY_LOGICAL_ROWS / 2);
 
     for (let radius = 0; radius < 30 && !foundSafeSpot; radius++) {
         for (let x = centerX - radius; x <= centerX + radius; x++) {
             for (let y = centerY - radius; y <= centerY + radius; y++) {
                 if (grid[x] && (grid[x][y] === 1 || grid[x][y] === 5)) {
                     playerObj.x = x * CITY_TILE_SIZE;
-                    playerObj.y = y * CITY_TILE_SIZE;
+                    playerObj.y = y * CITY_TILE_SIZE+300;
                     foundSafeSpot = true;
                     break;
                 }
@@ -496,8 +565,8 @@ function enterCity(factionName, playerObj) {
     }
 
     if (!foundSafeSpot) {
-        playerObj.x = CITY_WORLD_WIDTH / 2;
-        playerObj.y = CITY_WORLD_HEIGHT / 2;
+                    playerObj.x = x * CITY_TILE_SIZE;
+                    playerObj.y = y * CITY_TILE_SIZE+700;
     }
 	// Trigger the Epic Zoom: Starts at 0.3x, lands at 1.2x over 1.2 seconds
     if (typeof triggerEpicZoom === 'function') {
@@ -533,9 +602,7 @@ function leaveCity(playerObj) {
 	// ---> PASTE HERE <---
     AudioManager.playMusic("WorldMap_Calm");
 }
-// ============================================================================
-// NEW HUMAN DRAWING & NPC SYSTEM (DIVERSIFIED CIVILIAN WARDROBE)
-// ============================================================================
+
 
 // --- FACTION CIVILIAN STYLES DEFINITION ---
 const CIVILIAN_STYLES = {
@@ -543,7 +610,7 @@ const CIVILIAN_STYLES = {
         hats: ["conical", "conical", "skullcap", "topknot", "bamboo_hat", "scholar"], 
         clothes: ["#4e6b5d", "#3a4f41", "#7a5c53", "#5c5c5c", "#8b6914", "#2e2e2e"] 
     },
-    "Ghurvansh Dominion": { 
+    "Dab Tribes": { 
         hats: ["turban", "turban", "wrapped", "skullcap", "hood", "flat_cap"], 
         clothes: ["#8b5a2b", "#cd853f", "#556b2f", "#8b7500", "#a0522d", "#d2b48c"] 
     },
@@ -555,7 +622,7 @@ const CIVILIAN_STYLES = {
         hats: ["fur_cap", "conical", "skullcap", "hood", "bamboo_hat"], 
         clothes: ["#4f6a78", "#3f5461", "#2e404a", "#546e7a", "#1c262b", "#607d8b"] 
     },
-    "Mong Realm": { 
+    "Tran Realm": { 
         hats: ["conical", "bamboo_hat", "bamboo_hat", "bandana", "topknot"], 
         clothes: ["#4e342e", "#3e2723", "#5d4037", "#2e4a1f", "#1f3315", "#8d6e63"] 
     },
@@ -686,8 +753,7 @@ function drawHuman(ctx, x, y, moving, frame, baseColor, hatType = "conical", clo
 function generateCityCosmeticNPCs(factionName, grid) {
     cityCosmeticNPCs[factionName] = [];
     let midX = CITY_COLS / 2;
-    let midY = CITY_ROWS / 2;
-    
+let midY = Math.floor(CITY_LOGICAL_ROWS / 2);
     let spawned = 0;
     let attempts = 0;
     
@@ -742,8 +808,18 @@ function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
     let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[factionName]) 
                        ? FACTIONS[factionName].color : "#ffffff";
 
-    for (let npc of npcs) {
-        if (isCityCollision(npc.x, npc.y, factionName)) {
+for (let npc of npcs) {
+        // Auto-transition Civilians
+        let tx = Math.floor(npc.x / CITY_TILE_SIZE);
+        let ty = Math.floor(npc.y / CITY_TILE_SIZE);
+        if (typeof cityDimensions !== 'undefined' && cityDimensions[factionName]) {
+            let currentTile = cityDimensions[factionName].grid[tx] ? cityDimensions[factionName].grid[tx][ty] : 0;
+            if (currentTile === 9) npc.onWall = true;
+            else if (currentTile === 0 || currentTile === 1 || currentTile === 5) npc.onWall = false;
+        }
+
+        // FIX: Pass 'npc.onWall' HERE
+        if (isCityCollision(npc.x, npc.y, factionName, npc.onWall)) {
             let dirX = (CITY_WORLD_WIDTH / 2) - npc.x;
             let dirY = (CITY_WORLD_HEIGHT / 2) - npc.y;
             let angle = Math.atan2(dirY, dirX);
@@ -760,7 +836,8 @@ function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
             other !== npc && Math.hypot(other.x - nx, other.y - ny) < 12
         );
 
-        if (isCityCollision(nx, ny, factionName) || hitHuman) {
+        // FIX: Pass 'npc.onWall' HERE TOO
+        if (isCityCollision(nx, ny, factionName, npc.onWall) || hitHuman) {
             npc.vx *= -1; 
             npc.vy *= -1;
             npc.vx += (Math.random() - 0.5) * 0.4;
@@ -776,5 +853,6 @@ function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
         if (typeof fortification_system_renderDynamic === 'function') {
             fortification_system_renderDynamic(ctx, currentActiveCityFaction, player);
         }   
+	
     }
 }

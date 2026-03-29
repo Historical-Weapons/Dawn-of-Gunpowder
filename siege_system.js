@@ -427,9 +427,11 @@ function triggerSiegeAssault() {
             isCityGarrison: true // Custom flag you can use later in battlefield_system.js to spawn walls
         };
         
-        // Launch standard battle for now
+        // BELOW IS A PLACEHOLDER OF A STANDARD BATTLE WHICH WE NEED TO REPLACE WITH FULL SIEGE BATTLE;
         enterBattlefield(garrisonForce, player, { name: "City Walls", speed: 0.8 });
-    } else {
+    }
+
+	else {
         alert("Battlefield system not loaded! The assault failed.");
     }
 }

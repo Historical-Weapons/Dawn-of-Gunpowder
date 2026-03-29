@@ -1,137 +1,432 @@
 // ============================================================================
-// REVISED CITY WALL & DEFENSE SYSTEM (RESTORED RENDERING & FLIPPED SPEARS)
+// REVISED CITY WALL & DEFENSE SYSTEM 
 // ============================================================================
-let overheadCityGates = []; 
+let overheadCityGates = [];
+let cityTowerDoors = []; // Tracks two-way inner tower doors (ground <-> wall)
 let fortificationTroops = {}; 
+ let cityLadders = [];
  
+ 
+ function drawCityGateBlock(ctx, grid, gate, arch, midX, gateRadius, startY, endY, wallThick) {
+    const tile = CITY_TILE_SIZE;
+    const isNorth = gate.side === "north";
+    const gateY0 = isNorth ? startY : endY - wallThick + 1;
+    const gateY1 = gateY0 + wallThick - 1;
+    const gateX0 = midX - gateRadius;
+    const gateX1 = midX + gateRadius;
+
+    const hp = Math.max(0, Math.min(1000, gate.gateHP ?? 1000));
+    const wear = 1 - hp / 1000;
+    const open = !!gate.isOpen || hp <= 0;
+
+    const px = gateX0 * tile;
+    const py = gateY0 * tile;
+    const pw = (gateX1 - gateX0 + 1) * tile;
+    const ph = (gateY1 - gateY0 + 1) * tile;
+    const cx = px + pw / 2;
+
+    // Write collision for the whole gate block
+    for (let x = gateX0; x <= gateX1; x++) {
+        for (let y = gateY0; y <= gateY1; y++) {
+            if (!grid[x] || grid[x][y] === undefined) continue;
+
+            const isPillar = Math.abs(x - midX) === gateRadius;
+            grid[x][y] = isPillar ? 6 : (open ? 1 : 6);
+        }
+    }
+
+    // Pillars at the outer edges
+    ctx.fillStyle = "#37474f";
+    ctx.fillRect(gateX0 * tile, py, tile, ph);
+    ctx.fillRect(gateX1 * tile, py, tile, ph);
+
+    if (open) {
+        // Open gate: clear middle, only swung leaves + frame/shadow
+        ctx.fillStyle = arch.road;
+        ctx.fillRect(px, py, pw, ph);
+
+        // center seam shadow to imply depth
+        ctx.fillStyle = "rgba(0,0,0,0.10)";
+        ctx.fillRect(cx - tile * 0.12, py + 1, tile * 0.24, ph - 2);
+
+        // Side leaves swung outward, leaving the center transparent
+        const leafIn = tile * 0.55;
+        const leafOut = tile * 1.9;
+        const topBias = isNorth ? 3 : 8;
+        const bottomBias = isNorth ? 8 : 3;
+
+        // Left leaf
+        ctx.fillStyle = "#5d4037";
+        ctx.strokeStyle = "#2a1b16";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(px + 2, py + 2);
+        ctx.lineTo(px + leafIn, py + topBias);
+        ctx.lineTo(px + leafOut, py + ph - bottomBias);
+        ctx.lineTo(px + 2, py + ph - 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // plank lines on left leaf
+        ctx.strokeStyle = "rgba(0,0,0,0.18)";
+        ctx.beginPath();
+        ctx.moveTo(px + leafIn * 0.55, py + 5);
+        ctx.lineTo(px + leafIn * 0.95, py + ph - 5);
+        ctx.stroke();
+
+        // Right leaf
+        ctx.fillStyle = "#5d4037";
+        ctx.strokeStyle = "#2a1b16";
+        ctx.beginPath();
+        ctx.moveTo(px + pw - 2, py + 2);
+        ctx.lineTo(px + pw - leafIn, py + topBias);
+        ctx.lineTo(px + pw - leafOut, py + ph - bottomBias);
+        ctx.lineTo(px + pw - 2, py + ph - 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // plank lines on right leaf
+        ctx.strokeStyle = "rgba(0,0,0,0.18)";
+        ctx.beginPath();
+        ctx.moveTo(px + pw - leafIn * 0.55, py + 5);
+        ctx.lineTo(px + pw - leafIn * 0.95, py + ph - 5);
+        ctx.stroke();
+
+        // correct cap band for north vs south
+        ctx.fillStyle = "rgba(0,0,0,0.16)";
+        if (isNorth) ctx.fillRect(px, py, pw, 2);
+        else ctx.fillRect(px, py + ph - 2, pw, 2);
+
+        return;
+    }
+
+    // Closed gate: solid wood door with roof/cap aligned correctly
+    ctx.fillStyle = "#5d4037";
+    ctx.fillRect(px, py, pw, ph);
+
+    // vertical planks
+    ctx.fillStyle = "#3e2723";
+    for (let i = 1; i < pw; i += tile * 0.32) {
+        ctx.fillRect(px + i, py, 1, ph);
+    }
+
+    // iron bands
+    ctx.fillStyle = "#1f1f1f";
+    ctx.fillRect(px, py + 1, pw, 2);
+    ctx.fillRect(px, py + ph - 3, pw, 2);
+
+    // roof/cap on the correct edge
+    ctx.fillStyle = isNorth ? "#8d1f1f" : "#7a1818";
+    if (isNorth) ctx.fillRect(px, py, pw, 4);
+    else ctx.fillRect(px, py + ph - 4, pw, 4);
+
+    // wear overlay
+    if (wear > 0.25) {
+        ctx.fillStyle = `rgba(120, 40, 20, ${0.12 + wear * 0.28})`;
+        ctx.fillRect(px + tile * 0.15, py + tile * 0.15, pw - tile * 0.3, ph - tile * 0.3);
+    }
+
+    if (wear > 0.6) {
+        ctx.strokeStyle = "rgba(0,0,0,0.45)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(px + tile * 0.25, py + tile * 0.2);
+        ctx.lineTo(px + tile * 0.7, py + tile * 0.5);
+        ctx.lineTo(px + tile * 0.35, py + tile * 0.75);
+        ctx.stroke();
+    }
+}
+
+
 function buildCityWalls(grid, arch, ctx, factionName) {
+	// CRITICAL FIX: Wipe the old ladders so the player doesn't trigger ghost ladders!
+    cityLadders = [];
+	const gateDrawn = { north: false, south: false };
     const margin = 45; 
-    const wallThick = 3; 
+    const wallThick = 12; 
     const startX = margin;
     const endX = CITY_COLS - margin;
     const startY = margin;
-    const endY = CITY_ROWS - margin;
+    const endY = (typeof CITY_LOGICAL_ROWS !== 'undefined' ? CITY_LOGICAL_ROWS : CITY_ROWS) - margin;
     const midX = Math.floor(CITY_COLS / 2);
-    const gateRadius = 4; 
+    const gateRadius = 6; 
 
-    overheadCityGates = [];
-    overheadCityGates.push({ x: midX, y: startY, arch: arch });
-    overheadCityGates.push({ x: midX, y: endY, arch: arch });
-	
-    // 1. Force Grand Roads
-    ctx.fillStyle = arch.road;
-    for (let y = 0; y < CITY_ROWS; y++) {
-        for (let x = midX - gateRadius; x <= midX + gateRadius; x++) {
-            if (y <= startY + 5 || y >= endY - 5) {
-                grid[x][y] = 1; 
-                ctx.fillRect(x * CITY_TILE_SIZE, y * CITY_TILE_SIZE, CITY_TILE_SIZE, CITY_TILE_SIZE);
-            }
-        }
-    }
+    // Tower configuration tweaks
+    const towerInterval = 75; 
+    const cornerBuffer = 25;  
 
-    // 2. Define Thick Wall Grid & Collect Towers (SURGICAL UPGRADE)
+overheadCityGates = [
+    { x: midX, y: startY, arch: arch, isOpen: false, gateHP: 1000, side: "north" },
+    { x: midX, y: endY, arch: arch, isOpen: true, gateHP: 0, side: "south" }
+];
+
+ //1 let
+
     let towers = [];
     let baseColor = arch.walls[1] || arch.walls[0];
-    ctx.fillStyle = baseColor;
 
-    const towerInterval = 25; // Add a tower every 25 tiles
-
+    // 2. THE HOLLOW WALL & ENCLOSED GATES
     for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
-            let isEdge = (x >= startX && x < startX + wallThick) || 
-                         (x <= endX && x > endX - wallThick) || 
-                         (y >= startY && y < startY + wallThick) || 
-                         (y <= endY && y > endY - wallThick);
+            let isEdge = (x >= startX && x < startX + wallThick) || (x <= endX && x > endX - wallThick) || 
+                         (y >= startY && y < startY + wallThick) || (y <= endY && y > endY - wallThick);
             
             if (!isEdge) continue;
 
-            let isGate = ((y >= startY && y < startY + wallThick) || 
-                          (y <= endY && y > endY - wallThick)) && 
-                          Math.abs(x - midX) <= gateRadius;
+            let isGateZone = Math.abs(x - midX) <= gateRadius;
+            let isVerticalGate = (y >= startY && y < startY + wallThick) || (y <= endY && y > endY - wallThick);
             
-            if (isGate) continue; 
+if (isGateZone && isVerticalGate) {
+    const gate = (y < startY + wallThick)
+        ? overheadCityGates.find(g => g.side === "north")
+        : overheadCityGates.find(g => g.side === "south");
 
-            grid[x][y] = 6; 
-            ctx.fillRect(x * CITY_TILE_SIZE, y * CITY_TILE_SIZE, CITY_TILE_SIZE, CITY_TILE_SIZE);
+    if (gate && !gateDrawn[gate.side]) {
+        drawCityGateBlock(ctx, grid, gate, arch, midX, gateRadius, startY, endY, wallThick);
+        gateDrawn[gate.side] = true;
+    }
 
-            // --- EPIC TOWER INJECTION ---
-            // Check for corners OR interval points along the X and Y axes
-            let isCorner = (x === startX || x === endX - wallThick + 1) && (y === startY || y === endY - wallThick + 1);
-            let isIntervalX = (y === startY || y === endY - wallThick + 1) && (x % towerInterval === 0);
-            let isIntervalY = (x === startX || x === endX - wallThick + 1) && (y % towerInterval === 0);
+    continue;
+}
 
-            if (isCorner || isIntervalX || isIntervalY) {
-                towers.push({x: x, y: y});
+// --- INACCESSIBLE PARAPETS & WALKABLE FLOORS ---
+            else {
+                // Calculate this tile's distance to the nearest outer city boundary
+                let distFromLeft = x - startX;
+                let distFromRight = endX - x;
+                let distFromTop = y - startY;
+                let distFromBottom = endY - y;
+                
+                let minDistToEdge = Math.min(distFromLeft, distFromRight, distFromTop, distFromBottom);
+
+                // Creates perfect concentric rings based on distance from the edge
+                // 0 to 1 tiles from edge = Outer Parapet
+                // 2 to 3 tiles from edge = Walkable Floor
+                // 4 to 5 tiles from edge = Inner Parapet
+                let isOuterParapet = (minDistToEdge < 2);
+                let isInnerParapet = (minDistToEdge >= wallThick - 2); 
+
+                let px = x * CITY_TILE_SIZE;
+                let py = y * CITY_TILE_SIZE;
+
+                if (isOuterParapet || isInnerParapet) {
+                    grid[x][y] = 6; // Set to impassable obstacle
+                    ctx.fillStyle = baseColor;
+                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+
+                    // --- DIAGNOSTIC TINT: Dark Grey for Outer, Lighter Grey for Inner ---
+                  if (isOuterParapet) ctx.fillStyle = "rgba(40, 40, 40, 0.45)";
+                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+
+                    if (isOuterParapet) {
+                        ctx.fillStyle = "#1a1a1a"; 
+                        if ((y === startY || y === endY) && x % 3 === 0) {
+                            ctx.fillRect(px + CITY_TILE_SIZE/2 - 2, py + (y===startY?0:CITY_TILE_SIZE-6), 4, 6);
+                        } else if ((x === startX || x === endX) && y % 3 === 0) {
+                            ctx.fillRect(px + (x===startX?0:CITY_TILE_SIZE-6), py + CITY_TILE_SIZE/2 - 2, 6, 4);
+                        }
+                    }
+                } else {
+                    // This is the walkable floor ring
+                    grid[x][y] = 1; // Unblocks the collision grid so units can path through!
+ 
+                    // Changed from jade (#4a6b4a) to a greyish-white (#e0e0e0)
+                    ctx.fillStyle = "#b8b5ad"; 
+                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    
+                    // Update stone floor pattern to be subtle against the white
+                    // Using a light grey stroke and a very faint overlay
+                    ctx.strokeStyle = "rgba(0,0,0,0.1)"; 
+                    ctx.strokeRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    
+                    ctx.fillStyle = "rgba(255,255,255,0.3)"; // Adds a slight highlight/texture
+                    ctx.fillRect(px + 1, py + 1, CITY_TILE_SIZE - 2, CITY_TILE_SIZE - 2);
+                }
+            }
+
+  
+
+            // --- GATHER INNER-FACING TOWER LOCATIONS ---
+            if (!isGateZone) {
+                let distToStartX = Math.abs(x - startX);
+                let distToEndX = Math.abs(x - endX);
+                let distToStartY = Math.abs(y - startY);
+                let distToEndY = Math.abs(y - endY);
+
+                let isCornerArea = (distToStartX < cornerBuffer || distToEndX < cornerBuffer) &&
+                                   (distToStartY < cornerBuffer || distToEndY < cornerBuffer);
+
+                if (!isCornerArea) {
+                    if (y === startY + wallThick - 1 && x % towerInterval === 0) towers.push({ x: x, y: y + 1, side: 'N' });
+                    else if (y === endY - wallThick + 1 && x % towerInterval === 0) towers.push({ x: x, y: y - 1, side: 'S' });
+                    else if (x === startX + wallThick - 1 && y % towerInterval === 0) towers.push({ x: x + 1, y: y, side: 'W' });
+                    else if (x === endX - wallThick + 1 && y % towerInterval === 0) towers.push({ x: x - 1, y: y, side: 'E' });
+                }
+            }
+			
+			
+			
+        }
+    }
+
+    // 3. RENDER INNER TOWERS & BIG WALKABLE LADDER BRIDGES
+    for (let t of towers) {
+        let towerSize = 10;
+        let overlap = 4; 
+        let rx, ry;
+
+        // Determine orientation
+        if (t.side === 'N') {
+            rx = t.x - Math.floor(towerSize / 2); ry = t.y - overlap; 
+        } else if (t.side === 'S') {
+            rx = t.x - Math.floor(towerSize / 2); ry = t.y - towerSize + overlap; 
+        } else if (t.side === 'W') {
+            rx = t.x - overlap; ry = t.y - Math.floor(towerSize / 2);
+        } else if (t.side === 'E') {
+            rx = t.x - towerSize + overlap; ry = t.y - Math.floor(towerSize / 2);
+        }
+
+        // Mark Entire Tower Collision on grid (Impossible to walk through)
+        for (let ix = rx; ix < rx + towerSize; ix++) {
+            for (let iy = ry; iy < ry + towerSize; iy++) {
+                if (grid[ix] && grid[ix][iy] !== undefined) grid[ix][iy] = 7; 
             }
         }
-    }
 
-    // DRAWING: Render All Towers with a "Shadow" Offset for Depth
-    for (let t of towers) {
-        // Draw Shadow/Base
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillRect((t.x - 2) * CITY_TILE_SIZE, (t.y - 2) * CITY_TILE_SIZE, (wallThick + 4) * CITY_TILE_SIZE, (wallThick + 4) * CITY_TILE_SIZE);
-        
-        // Draw Tower Top
-        ctx.fillStyle = arch.walls[0]; 
-        ctx.fillRect((t.x - 1) * CITY_TILE_SIZE, (t.y - 1) * CITY_TILE_SIZE, (wallThick + 2) * CITY_TILE_SIZE, (wallThick + 2) * CITY_TILE_SIZE);
-        
-           }
+        // Render Tower Base
+        ctx.fillStyle = "rgba(0,0,0,0.6)"; 
+        ctx.fillRect(rx * CITY_TILE_SIZE, ry * CITY_TILE_SIZE, towerSize * CITY_TILE_SIZE, towerSize * CITY_TILE_SIZE);
+        ctx.fillStyle = arch.walls[0];
+        ctx.fillRect((rx + 1) * CITY_TILE_SIZE, (ry + 1) * CITY_TILE_SIZE, (towerSize - 2) * CITY_TILE_SIZE, (towerSize - 2) * CITY_TILE_SIZE);
 
-    // 3. COLLISION FIX: Block absolute map exits at gates
-    for (let g of overheadCityGates) {
-        for (let i = -gateRadius; i <= gateRadius; i++) {
-            if (g.y === startY) grid[g.x + i][g.y] = 6;
-            if (g.y === endY) grid[g.x + i][g.y + (wallThick-1)] = 6;
+        // Draw the 3D 'X' Roof
+        ctx.strokeStyle = "rgba(0,0,0,0.4)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(rx * CITY_TILE_SIZE, ry * CITY_TILE_SIZE);
+        ctx.lineTo((rx + towerSize) * CITY_TILE_SIZE, (ry + towerSize) * CITY_TILE_SIZE);
+        ctx.moveTo((rx + towerSize) * CITY_TILE_SIZE, ry * CITY_TILE_SIZE);
+        ctx.lineTo(rx * CITY_TILE_SIZE, (ry + towerSize) * CITY_TILE_SIZE);
+        ctx.stroke();
+
+// --- NEW: WIDER PHYSICAL LADDER BRIDGES ALONG THE INNER WALL ---
+        let ladderGridX, ladderGridY, ladW, ladH;
+        let ladderOffset = 12; // Place it next to the tower to give room
+        
+        // Ladders now span 5 tiles to bridge over the 2-tile inner parapet
+        if (t.side === 'N') {
+            ladderGridX = t.x + ladderOffset; 
+            ladderGridY = startY + wallThick - 3; // Starts on walkable floor, spans down to ground
+            ladW = 6; ladH = 5;
+        } else if (t.side === 'S') {
+            ladderGridX = t.x + ladderOffset; 
+            ladderGridY = endY - wallThick - 1;   // Starts on ground, spans up to walkable floor
+            ladW = 6; ladH = 5;
+        } else if (t.side === 'W') {
+            ladderGridX = startX + wallThick - 3; 
+            ladderGridY = t.y + ladderOffset; 
+            ladW = 5; ladH = 6;
+        } else if (t.side === 'E') {
+            ladderGridX = endX - wallThick - 1; 
+            ladderGridY = t.y + ladderOffset; 
+            ladW = 5; ladH = 6;
         }
-    }
 
-    // 4. SPAWN TROOPS (5x Increase: 0.005 density)
+        // FIX: Mark Ladder as Tile 9 AND push its exact center coordinates to cityLadders array
+        for (let ix = ladderGridX; ix < ladderGridX + ladW; ix++) {
+            for (let iy = ladderGridY; iy < ladderGridY + ladH; iy++) {
+                if (grid[ix] && grid[ix][iy] !== undefined) grid[ix][iy] = 9; // 9 = Ladder Bridge
+            }
+        }
+        
+        cityLadders.push({
+            x: (ladderGridX + ladW / 2) * CITY_TILE_SIZE,
+            y: (ladderGridY + ladH / 2) * CITY_TILE_SIZE
+        });
+
+        // Render 2x Size Larger Ladder (Keep your existing drawing code here)
+     
+        // Render 2x Size Larger Ladder
+        let px = ladderGridX * CITY_TILE_SIZE;
+        let py = ladderGridY * CITY_TILE_SIZE;
+        let pW = ladW * CITY_TILE_SIZE;
+        let pH = ladH * CITY_TILE_SIZE;
+
+        ctx.fillStyle = "rgba(0,0,0,0.3)"; // Subtle shadow beneath ladder
+        ctx.fillRect(px, py, pW, pH);
+
+        ctx.strokeStyle = "#5d4037"; // Wood Brown
+        ctx.lineWidth = 3; // Thicker for visibility
+        ctx.beginPath();
+        
+        if (t.side === 'N' || t.side === 'S') {
+            // Vertical Ladder
+            ctx.moveTo(px + 4, py); ctx.lineTo(px + 4, py + pH);
+            ctx.moveTo(px + pW - 4, py); ctx.lineTo(px + pW - 4, py + pH);
+            for (let i = 4; i < pH; i += 6) {
+                ctx.moveTo(px + 4, py + i); ctx.lineTo(px + pW - 4, py + i);
+            }
+        } else {
+            // Horizontal Ladder
+            ctx.moveTo(px, py + 4); ctx.lineTo(px + pW, py + 4);
+            ctx.moveTo(px, py + pH - 4); ctx.lineTo(px + pW, py + pH - 4);
+            for (let i = 4; i < pW; i += 6) {
+                ctx.moveTo(px + i, py + 4); ctx.lineTo(px + i, py + pH - 4);
+            }
+        }
+        ctx.stroke();
+    }
+   // 4. SPAWN TROOPS 
     if (factionName) {
         fortificationTroops[factionName] = [];
-        // Gunpowder completely removed. Added cavalry and poison crossbows.
-const weaponPool = [
-    "spearman", 
-    "sword_shield", 
-    "archer", 
-    "crossbow", 
-    "shortsword", 
-    "Poison Crossbowman"
-];
+        const weaponPool = ["spearman", "sword_shield"];
+        const wallWeaponPool = ["archer", "crossbow"];
+        
+        // Use +5 / -5 margin so we don't accidentally spawn them inside the parapet limits
         for (let x = startX + 5; x <= endX - 5; x++) {
             for (let y = startY + 5; y <= endY - 5; y++) {
-                // This creates a "Central Zone" that stays at least 10 tiles away from the walls 
-// and fills everything all the way to the dead center.
-let nearWall = (x > startX + 10) && (x < endX - 10) && (y > startY + 10) && (y < endY - 10);
-                let px = x * CITY_TILE_SIZE;
-let py = y * CITY_TILE_SIZE;
-               // INCREASED: 80px radius ensures they don't spawn on top of each other
-                let tooClose = fortificationTroops[factionName].some(t =>
-                   Math.hypot(t.x - px, t.y - py) < 80 
-                );
+                
+                let tile = grid[x][y];
+                // Massive spawn rate boost for the walls so they actively populate
+                let spawnChance = (tile === 8) ? 0.02 : (tile === 0 ? 0.001 : 0);
 
-                if (!tooClose && nearWall && grid[x][y] === 0 && Math.random() < 0.0009) {
-                    let chosenWeapon = weaponPool[Math.floor(Math.random() * weaponPool.length)];
-                    let isCavalry = chosenWeapon.startsWith("cavalry");
+                if (spawnChance > 0 && Math.random() < spawnChance) {
+                    let px = x * CITY_TILE_SIZE;
+                    let py = y * CITY_TILE_SIZE;
                     
-                    // Base their initial patrol speed on their unit type
-let startSpeed = isCavalry ? 0.6 : 0.3; // Doubled spawn speed
-                    
-                    fortificationTroops[factionName].push({
-                        x: px, y: py,
-                        vx: (Math.random() - 0.5) * startSpeed,
-                        vy: (Math.random() - 0.5) * startSpeed,
-                        animOffset: Math.random() * 100,
-                        weapon: chosenWeapon,
-                        isCavalry: isCavalry,
-                        dir: Math.random() > 0.5 ? 1 : -1,
-                        unitName: isCavalry ? "Mounted Patrol" : "City Guard"
-                    });
+                    let tooClose = fortificationTroops[factionName].some(troop => Math.hypot(troop.x - px, troop.y - py) < 60);
+
+                    if (!tooClose) {
+                        let chosenWeapon = (tile === 8) 
+                            ? wallWeaponPool[Math.floor(Math.random() * wallWeaponPool.length)]
+                            : weaponPool[Math.floor(Math.random() * weaponPool.length)];
+                        
+                        fortificationTroops[factionName].push({
+                            x: px, y: py,
+                            vx: (Math.random() - 0.5) * 0.3,
+                            vy: (Math.random() - 0.5) * 0.3,
+                            animOffset: Math.random() * 100,
+                            weapon: chosenWeapon,
+                            isCavalry: false, 
+                            dir: Math.random() > 0.5 ? 1 : -1,
+                            onWall: tile === 8, 
+                            unitName: tile === 8 ? "Wall Defender" : "City Guard"
+                        });
+                    }
                 }
             }
         }
     }
 }
+
+
+
+function handleEntityGateTeleport(entity, grid) {
+return;
+}
+
 // Add these two guard variables at the very top of your fortification_system.js file
 let lastFortificationTick = 0;
 let lastFortifyRenderTime = 0; 
@@ -143,8 +438,6 @@ function fortification_system_renderDynamic(ctx, factionName, playerObj, allNPCs
     let now = Date.now();
 
     // --- 1. THE STACKING GUARD (Fixes "Bold/Stacked" look) ---
-    // If the function is called multiple times in the SAME frame (same millisecond), 
-    // we exit early so it doesn't draw 5 times on top of itself.
     if (now === lastFortifyRenderTime) return;
     lastFortifyRenderTime = now;
 
@@ -180,8 +473,18 @@ function fortification_system_renderDynamic(ctx, factionName, playerObj, allNPCs
         let dy = t.y - playerObj.y;
         if (dx*dx + dy*dy > 1200*1200) continue;
 
-        // --- POSITION UPDATE (Only runs 60 times per second) ---
+// --- POSITION UPDATE (Only runs 60 times per second) ---
         if (shouldUpdateLogic) {
+            
+            // FIX: Auto-transition Troops between ground and wall using ladders
+            let tx = Math.floor(t.x / CITY_TILE_SIZE);
+            let ty = Math.floor(t.y / CITY_TILE_SIZE);
+            if (typeof cityDimensions !== 'undefined' && cityDimensions[factionName]) {
+                let currentTile = cityDimensions[factionName].grid[tx] ? cityDimensions[factionName].grid[tx][ty] : 0;
+                if (currentTile === 9) t.onWall = true; // Stepped on ladder, climb up!
+                else if (currentTile === 0 || currentTile === 1 || currentTile === 5) t.onWall = false; // Back to ground!
+            }
+
             let nx = t.x + t.vx;
             let ny = t.y + t.vy;
 
@@ -194,7 +497,8 @@ function fortification_system_renderDynamic(ctx, factionName, playerObj, allNPCs
                 }
             }
 
-            if (typeof isCityCollision === 'function' && isCityCollision(nx, ny, factionName) || hitEntity) {
+            // FIX: Pass 't.onWall' to the collision engine!
+            if (typeof isCityCollision === 'function' && isCityCollision(nx, ny, factionName, t.onWall) || hitEntity) {
                 let bounceSpeed = t.isCavalry ? 0.4 : 0.2; 
                 t.vx = (Math.random() - 0.5) * bounceSpeed;
                 t.vy = (Math.random() - 0.5) * bounceSpeed; 
@@ -290,5 +594,96 @@ function fortification_system_renderDynamic(ctx, factionName, playerObj, allNPCs
         }
         
         ctx.restore();
+    }
+}
+
+function spawnFortificationTroops(factionName, grid, arch) {
+    if (!factionName || !grid) return;
+
+    // Recalculate margins to match the wall boundaries
+    const margin = 45; 
+    const startX = margin;
+    const endX = CITY_COLS - margin;
+    const startY = margin;
+    const endY = (typeof CITY_LOGICAL_ROWS !== 'undefined' ? CITY_LOGICAL_ROWS : CITY_ROWS) - margin;
+
+    fortificationTroops[factionName] = [];
+    const weaponPool = ["spearman", "sword_shield"];
+    const wallWeaponPool = ["archer", "crossbow"];
+
+    for (let x = startX + 5; x <= endX - 5; x++) {
+        for (let y = startY + 5; y <= endY - 5; y++) {
+            let tile = grid[x][y];
+            
+            // 8 = Walkable Wall floor, 0 = Ground
+let spawnChance = (tile === 8) ? 0.002 : (tile === 0 ? 0.0002 : 0);
+
+            if (spawnChance > 0 && Math.random() < spawnChance) {
+                let px = x * CITY_TILE_SIZE;
+                let py = y * CITY_TILE_SIZE;
+                
+                let tooClose = fortificationTroops[factionName].some(t => Math.hypot(t.x - px, t.y - py) < 60);
+
+                if (!tooClose) {
+                    let chosenWeapon = (tile === 8) 
+                        ? wallWeaponPool[Math.floor(Math.random() * wallWeaponPool.length)]
+                        : weaponPool[Math.floor(Math.random() * weaponPool.length)];
+                    
+                    fortificationTroops[factionName].push({
+                        x: px, y: py,
+                        vx: (Math.random() - 0.5) * 0.3,
+                        vy: (Math.random() - 0.5) * 0.3,
+                        animOffset: Math.random() * 100,
+                        weapon: chosenWeapon,
+                        isCavalry: false, 
+                        dir: Math.random() > 0.5 ? 1 : -1,
+                        onWall: tile === 8, 
+                        unitName: tile === 8 ? "Wall Defender" : "City Guard"
+                    });
+                }
+			 
+            }
+        }
+    }
+}
+
+function updateCityGates(grid) {
+    if (!overheadCityGates || !grid) return;
+
+    const margin = 45;
+    const wallThick = 12;
+    const midX = Math.floor(CITY_COLS / 2);
+    const gateRadius = 6;
+
+    const startY = margin;
+    const endY = (typeof CITY_LOGICAL_ROWS !== 'undefined' ? CITY_LOGICAL_ROWS : CITY_ROWS) - margin;
+
+    for (let gate of overheadCityGates) {
+
+        // --- AUTO STATE LOGIC ---
+        if (gate.gateHP <= 0) {
+            gate.isOpen = true; // destroyed = open
+        }
+
+        let yStart = (gate.side === "north") ? startY : endY - wallThick + 1;
+        let yEnd   = (gate.side === "north") ? startY + wallThick - 1 : endY;
+
+        for (let x = midX - gateRadius; x <= midX + gateRadius; x++) {
+            for (let y = yStart; y <= yEnd; y++) {
+
+                let isEdgePillar = Math.abs(x - midX) === gateRadius;
+
+                if (isEdgePillar) {
+                    grid[x][y] = 6; // always solid pillar
+                    continue;
+                }
+
+                if (gate.isOpen) {
+                    grid[x][y] = 1; // passable
+                } else {
+                    grid[x][y] = (gate.gateHP <= 0) ? 1 : 6;
+                }
+            }
+        }
     }
 }

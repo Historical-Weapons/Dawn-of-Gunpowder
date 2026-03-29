@@ -158,13 +158,13 @@ if (typeof initDiplomacy === 'function') {initDiplomacy(FACTIONS);}
 	
 
     // --- WORLD SCALE ---
-const WORLD_WIDTH = 15000; 
-const WORLD_HEIGHT = 11000;
+const WORLD_WIDTH = 4000; //15K 
+const WORLD_HEIGHT = 3000; //11K
 	// Padding as ratio of world size (e.g., 5% from edges)
 const PADDING_X = WORLD_WIDTH * 0.05;   // 5% of width
 const PADDING_Y = WORLD_HEIGHT * 0.05;  // 5% of height
 
-    const TILE_SIZE = 8;
+    const TILE_SIZE = 8; //
     const COLS = Math.floor(WORLD_WIDTH / TILE_SIZE);
     const ROWS = Math.floor(WORLD_HEIGHT / TILE_SIZE);
 

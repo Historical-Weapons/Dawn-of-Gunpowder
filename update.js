@@ -233,15 +233,13 @@ let economyTick = 0;
         }
     }
 
-    // ------------------------------------------------
-
-    // SURGICAL FIX: Freeze the entire game loop if the Diplomacy screen is open
+ 
     if (typeof inParleMode !== 'undefined' && inParleMode) {
         return; 
     }
     
     if (inBattleMode) {
-        // --- 1. BATTLEFIELD MODE ---
+ 
         calculateMovement(player.baseSpeed / 7, null, BATTLE_TILE_SIZE, null, null, true); 
         updateBattleUnits();
 		
@@ -251,8 +249,7 @@ let economyTick = 0;
             const isPlayerDead = player.hp <= 0;
 
             if (isPlayerDead || aliveEnemies === 0) {
-                // Exit the battle mode as normal
-                // (This automatically handles the siege UI and summary screens!)
+ 
                 leaveBattlefield(player);
             } else {
                 console.log("Cannot retreat while enemies remain!");
@@ -288,42 +285,72 @@ let economyTick = 0;
             ctx.restore();
         }
     } 
-    else if (inCityMode) {
-        // --- 2. LOCAL CITY MODE ---
-        calculateMovement(player.baseSpeed / 9, null, TILE_SIZE, null, null, true);
+else if (inCityMode) {
+    // --- 1. LADDER & HEIGHT CHECK ---
+    // Check if player is touching a ladder to toggle 'onWall'
+    let onLadder = false;
+    if (typeof cityLadders !== 'undefined') {
+        onLadder = cityLadders.some(ladder => 
+            Math.hypot(player.x - ladder.x, player.y - ladder.y) < 25
+        );
+    }
 
-        if (typeof updateCityCosmeticNPCs === 'function') {
-            updateCityCosmeticNPCs(currentActiveCityFaction);
+    // Toggle wall mode: If on a ladder, we are 'on the wall' layer
+    if (onLadder) {
+        player.onWall = true;
+    } else {
+        // If not on a ladder, check if we are standing on a parapet tile (8)
+        const city = cityDimensions[currentActiveCityFaction];
+        if (city) {
+            let tx = Math.floor(player.x / CITY_TILE_SIZE);
+            let ty = Math.floor(player.y / CITY_TILE_SIZE);
+            let currentTile = city.grid[tx] ? city.grid[tx][ty] : 0;
+            
+            // If we walked off the wall onto ground (tile 0), reset state
+            if (currentTile === 0) player.onWall = false;
         }
-        if (player.y > CITY_WORLD_HEIGHT - 20 || keys['p']) {
-            leaveCity(player);
-            keys['p'] = false; 
-        }
-    } 
+    }
+
+    // --- 2. MOVEMENT WITH LAYER DATA ---
+    // Pass player.onWall to your movement function so it can forward it to isCityCollision
+    calculateMovement(player.baseSpeed / 9, null, TILE_SIZE, null, null, true, player.onWall);
+
+    // --- 3. TELEPORTATION & NPCs ---
+    if (cityDimensions[currentActiveCityFaction]) {
+        handleEntityGateTeleport(player, cityDimensions[currentActiveCityFaction].grid);
+    }
+
+    if (typeof updateCityCosmeticNPCs === 'function') {
+        updateCityCosmeticNPCs(currentActiveCityFaction);
+    }
+    
+    // --- 4. EXIT LOGIC ---
+    if (player.y > CITY_WORLD_HEIGHT - 20 || keys['p']) {
+        player.onWall = false; // Reset wall state when leaving city
+        leaveCity(player);
+        keys['p'] = false; 
+    }
+}
+	
+	
     else {
-        // --- 3. WORLD MAP MODE ---
-        // Your existing World Map logic continues here...
-// --- 3. WORLD MAP MODE ---
+ 
         economyTick++;
         if (economyTick > 300) { 
             updateCityEconomies(cities);
             economyTick = 0;
         }
 
-// --- SURGERY: REFRESH DIPLOMACY DATA ---
-        // Process the diplomacy logic (war/peace rolls)
+ 
         if (typeof updateDiplomacy === 'function') {
             updateDiplomacy();
         }
-        // Note: renderDiplomacyMatrix() is already called inside updateDiplomacy() 
-        // when changes happen, so we don't need to render it 60 times a second here!
+ 
         if (typeof updateSieges === 'function') updateSieges();
-		
-// --- PRO MODE: PLAYER FOOD & ATTRITION ---
+ 
         let oldX = player.x;
         let oldY = player.y;
-
-        // Starvation Penalty: 40% speed reduction if food is empty
+ 
         player.speed = player.food > 0 ? player.baseSpeed : player.baseSpeed * 0.6; 
         
         calculateMovement(player.speed / 4, worldMap, TILE_SIZE, COLS, ROWS, false);
