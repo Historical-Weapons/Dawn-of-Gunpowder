@@ -17,7 +17,8 @@ class AudioManagerSystem {
         // Playlist state
         this.currentPlaylist = [];
         this.isPlaylistMode = false;
-        
+        this.mp3Volume = 0.2; // Default volume for MP3 tracks
+this.fadeInterval = null; // Used for smooth transitions
         // Sequencer state
         this.currentTrack = null;
         this.isPlaying = false;
@@ -148,50 +149,71 @@ class AudioManagerSystem {
         this._playNextInList();
     }
     
-    _playNextInList(previousTrack = null) {
-        if (!this.isPlaylistMode || this.currentPlaylist.length === 0) return;
-        
-        // Pick a random track that isn't the one that just played
-        let nextTrack;
-        if (this.currentPlaylist.length > 1) {
-            do {
-                nextTrack = this.currentPlaylist[Math.floor(Math.random() * this.currentPlaylist.length)];
-            } while (nextTrack === previousTrack);
-        } else {
-            nextTrack = this.currentPlaylist[0];
-        }
-        
-        console.log("Playlist playing:", nextTrack);
-        
-        this.currentMp3 = new Audio(nextTrack);
-        this.currentMp3.volume = 0; // Start at 0 for fade in
-        
-        this.currentMp3.play().then(() => {
-            this._fadeMP3(this.currentMp3, this.mp3Volume, 2000); // 2 sec fade in
-        }).catch(err => {
-            console.warn("Playlist error:", err);
-            // If it fails, try the next one after a delay
-            setTimeout(() => this._playNextInList(), 2000);
-            return;
-        });
-        
-        // When the song gets close to ending, start the next one
-        this.currentMp3.addEventListener('timeupdate', () => {
-            // If we are within 2 seconds of the end, fade out and trigger next
-            if (this.currentMp3 && this.currentMp3.duration - this.currentMp3.currentTime < 2.0) {
-                // Prevent this listener from firing multiple times
-                this.currentMp3.removeEventListener('timeupdate', arguments.callee);
-                
-                let fadingTrack = this.currentMp3;
-                this._fadeMP3(fadingTrack, 0, 1900, () => {
-                    fadingTrack.pause();
-                });
-                
-                // Start the next song
-                this._playNextInList(nextTrack);
-            }
-        });
+_playNextInList(previousTrack = null) {
+    if (!this.isPlaylistMode || this.currentPlaylist.length === 0) return;
+
+    // Pick a random track that isn't the one that just played
+    let nextTrack;
+    if (this.currentPlaylist.length > 1) {
+        do {
+            nextTrack = this.currentPlaylist[Math.floor(Math.random() * this.currentPlaylist.length)];
+        } while (nextTrack === previousTrack);
+    } else {
+        nextTrack = this.currentPlaylist[0];
     }
+
+    console.log("Playlist playing:", nextTrack);
+
+    const currentAudio = new Audio(nextTrack);
+    this.currentMp3 = currentAudio;
+    currentAudio.volume = 0;
+    currentAudio.loop = false;
+
+    currentAudio.play().then(() => {
+        this._fadeMP3(currentAudio, this.mp3Volume, 2000);
+    }).catch(err => {
+        console.warn("Playlist error:", err);
+        if (this.isPlaylistMode) {
+            this.playlistTimeout = setTimeout(() => this._playNextInList(previousTrack), 2000);
+        }
+        return;
+    });
+
+    const MIN_PLAY_MS = 120000; // 1 minute minimum before switching
+    const startedAt = Date.now();
+    let advanced = false;
+
+    const advanceToNext = () => {
+        if (advanced || !this.isPlaylistMode) return;
+        advanced = true;
+
+        if (this.playlistTimeout) {
+            clearTimeout(this.playlistTimeout);
+            this.playlistTimeout = null;
+        }
+
+        const fadingTrack = currentAudio;
+        this._fadeMP3(fadingTrack, 0, 1900, () => {
+            fadingTrack.pause();
+            if (this.currentMp3 === fadingTrack) this.currentMp3 = null;
+        });
+
+        this.playlistTimeout = setTimeout(() => {
+            if (this.isPlaylistMode) this._playNextInList(nextTrack);
+        }, 2000);
+    };
+
+    this.playlistTimeout = setTimeout(advanceToNext, MIN_PLAY_MS);
+
+    currentAudio.addEventListener('ended', () => {
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= MIN_PLAY_MS) {
+            advanceToNext();
+        }
+        // If it ends before 1 minute, do nothing.
+        // The timeout above will handle the next switch.
+    }, { once: true });
+}
     
     // Internal helper to handle smooth volume fading
     _fadeMP3(audioObj, targetVolume, duration, callback = null) {
