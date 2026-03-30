@@ -412,6 +412,24 @@ for (let i = 0; i < numBuildingAttempts; i++) {
 generateOrganicFeatures(grid, 3, 40, 18);
 generateOrganicFeatures(grid, 4, 12, 12);
 
+// =========================================================
+    // START ADDITION: HORIZONTAL PARTITION WALL (Yellow Block)
+    // =========================================================
+    const partitionY = Math.floor(CITY_LOGICAL_ROWS * 0.35); // Adjust height here
+    const wallStartX = 65; 
+    const wallEndX = CITY_COLS - 65;
+    for (let x = wallStartX; x <= wallEndX; x++) {
+        for (let y = partitionY; y < partitionY + 3; y++) { // 3 tiles thick
+            if (grid[x] && grid[x][y] !== undefined) {
+                // We leave the central road (1) and plaza (5) open for travel
+                if (grid[x][y] !== 1 && grid[x][y] !== 5) {
+                    grid[x][y] = 8; 
+                }
+            }
+        }
+    }
+    // =========================================================
+	
     // --- Render Canvas with Texture Noise --- 
     const canvas = document.createElement('canvas');
     canvas.width = CITY_WORLD_WIDTH;  // FIX: Use full pixel width

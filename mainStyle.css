@@ -7,10 +7,10 @@ canvas {
     left: 0; 
     z-index: 1; /* Ensure it is below #ui (z-index 10) */
 }
-        #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #d4b886; font-size: 24px; font-weight: bold; text-transform: uppercase; letter-spacing: 4px;
-            text-shadow: 2px 2px 5px #000; z-index: 100;
+#loading {
+            position: fixed; bottom: 20px; left: 0; width: 100%; text-align: center;
+            color: #d4b886; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;
+            text-shadow: 1px 1px 3px #000; z-index: 10001; pointer-events: none;
         }
         /* Player Stats UI */
         #ui {
@@ -284,4 +284,24 @@ canvas {
 #event-log-container::-webkit-scrollbar-thumb {
     background: #5d4037;
     border-radius: 0;
+}
+
+@media (max-width: 800px) {
+  #units-guide-modal > div {
+    flex-direction: column !important; /* Stack Left over Right */
+    width: 90% !important;
+    height: 90% !important;
+  }
+  
+  #units-guide-left {
+    width: 100% !important;
+    height: 35% !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(212,184,134,0.28) !important;
+  }
+
+  #units-guide-right {
+    width: 100% !important;
+    height: 65% !important;
+  }
 }

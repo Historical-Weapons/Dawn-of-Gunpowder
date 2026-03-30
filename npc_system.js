@@ -224,9 +224,9 @@ function initializeCityData(city, worldWidth, worldHeight) {
      
     city.color = FACTIONS[controllingFaction].color;
     city.name = generateFactionCityName(controllingFaction); 
-    city.pop = Math.floor(city.pop * 0.15);//population factor
+    city.pop = Math.floor(city.pop * 1);//population factor
     
-    city.conscriptionRate = 0.02 + (Math.random() * 0.05);
+    city.conscriptionRate = 0.04 + (Math.random() * 0.08);
     city.militaryPop = Math.floor(city.pop * city.conscriptionRate);
     city.civilianPop = city.pop - city.militaryPop;
     city.troops = city.militaryPop; 
@@ -328,7 +328,7 @@ function updateCityEconomies(cities) {
 
         // Caps
         let maxFood = 1000;
-        let maxGold = city.pop * 5;
+        let maxGold = city.pop ;
 
         if (city.food > maxFood) city.food = maxFood;
         if (city.gold > maxGold) city.gold = maxGold;
@@ -381,7 +381,7 @@ if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
     let target = null; 
     let targetX = city.x; 
     let targetY = city.y;
-    let speed = 0.5, count = 0;
+    let speed = 0.5, count = 0; //default speed is 0.5
     let carriedGold = 0, carriedFood = 0;
     let travelDist = 0;
 
@@ -433,9 +433,9 @@ else if (role === "Patrol") {
     city.food -= carriedFood;
 } 
     else if (role === "Military") {
-// Generates <150 ish troops, capped by the city's actual military population
-    count = Math.min(Math.floor(Math.random() * 80) + 60, city.militaryPop);
-    if (count < 50) return;
+ 
+    count = Math.min(Math.floor(Math.random() * 180) + 20, city.militaryPop);
+    if (count < 20) return;     //military number count
     speed = 0.5;
         target = getEnemyCity(city, citiesArr);
         if (!target) target = getRandomTargetCity(citiesArr, city, city.faction);
@@ -900,10 +900,10 @@ function updateNPCs(cities) {
                     npc.targetY = npc.y + (Math.random() - 0.5) * 200;
                 }
                 if (npc.role === "Civilian") npc.speed = 0.45;
-                else if (npc.role === "Commerce") npc.speed = 0.55;
+                else if (npc.role === "Commerce") npc.speed = 0.75;
                 else if (npc.role === "Military") npc.speed = 0.4;
-                else if (npc.role === "Bandit") npc.speed = 0.95;
-                else if (npc.role === "Patrol") npc.speed = 0.55;
+                else if (npc.role === "Bandit") npc.speed = 0.85;
+                else if (npc.role === "Patrol") npc.speed = 0.85;
             }
         }
 
@@ -947,9 +947,9 @@ function updateNPCs(cities) {
                             npc.waitTimer = 100;
                             tc.pop -= (typeof siegeDamage !== 'undefined') ? siegeDamage : Math.floor(npc.count * 0.1) + 10;
                         }
-                        if (tc.militaryPop <= 0) {
+                        if (tc.militaryPop <= 10) {
                             tc.faction = npc.faction; tc.color = npc.color;
-                            tc.militaryPop = Math.max(10, Math.floor(npc.count * 0.5)); 
+                            tc.militaryPop = Math.max(10, Math.floor(npc.count * 0.5)); //you expend half your troops for garrison
                             tc.troops = tc.militaryPop; tc.pop += tc.militaryPop;
                             npc.count -= tc.militaryPop; npc.targetCity = null; 
                         }
@@ -1039,7 +1039,7 @@ if (npc.role === "Bandit") {
         if (Math.random() < 0.3 && rc.civilianPop > 20) spawnNPCFromCity(rc, "Commerce", cities);
         else if (Math.random() < 0.2 && rc.civilianPop > 50) spawnNPCFromCity(rc, "Civilian", cities);
    else if (Math.random() < 0.3 && rc.militaryPop > 30) spawnNPCFromCity(rc, "Patrol", cities);
-else if (rc.pop > 6000 && rc.militaryPop > 80 && Math.random() < 0.10) spawnNPCFromCity(rc, "Military", cities);
+else if (rc.pop > 500 && rc.militaryPop > 50 && Math.random() < 0.10) spawnNPCFromCity(rc, "Military", cities); //military spawn requirement
     }
     if (Math.random() < 0.005 && globalNPCs.filter(n => n.role === "Bandit").length < cities.length * 1.5) {
         if (typeof spawnBandit === 'function') spawnBandit(0, 0); 

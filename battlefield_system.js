@@ -31,6 +31,7 @@ let savedWorldPlayerState_Battle = { x: 0, y: 0 };
 
 let battleEnvironment = {
     bgCanvas: null,
+	fgCanvas: null, // <--- ADD THIS LINE
     grid: [],
     units: [],
     projectiles: [], // For arrows and fire lances
@@ -50,17 +51,21 @@ function isExitAllowed() {
     return (playerDead || enemyCount === 0);
 }
 
-// --- GENERATE ORGANIC BATTLEFIELD TERRAIN ---
 function generateBattleOrganicFeatures(grid, typeValue, count, maxSize) {
     for (let i = 0; i < count; i++) {
-        let startX = Math.floor(Math.random() * (BATTLE_COLS - maxSize));
-        let startY = Math.floor(Math.random() * (BATTLE_ROWS - maxSize));
+        // Pick a center point anywhere in the grid
+        let centerX = Math.floor(Math.random() * BATTLE_COLS);
+        let centerY = Math.floor(Math.random() * BATTLE_ROWS);
         
-        for (let j = 0; j < maxSize * 2; j++) {
-            let cx = startX + Math.floor((Math.random() - 0.5) * maxSize);
-            let cy = startY + Math.floor((Math.random() - 0.5) * maxSize);
+        // Spread the tiles around that center point
+        let spread = maxSize; 
+        for (let j = 0; j < spread * 5; j++) {
+            let cx = centerX + Math.floor((Math.random() - 0.5) * spread);
+            let cy = centerY + Math.floor((Math.random() - 0.5) * spread);
             
-            if (cx > 0 && cx < BATTLE_COLS && cy > 0 && cy < BATTLE_ROWS) {
+            // Bounds check
+            if (cx >= 0 && cx < BATTLE_COLS && cy >= 0 && cy < BATTLE_ROWS) {
+                // Priority: Don't overwrite existing mountain peaks (Type 8)
                 if (grid[cx][cy] === 0) grid[cx][cy] = typeValue; 
             }
         }
@@ -74,35 +79,125 @@ function generateBattlefield(worldTerrainType) {
     let treeColorPool = ["#2e4a1f", "#3a5f27", "#1f3315"];
     let rockColor = "#5c5c5c";
 
-    // --- YOUR ORIGINAL TERRAIN LOGIC (DO NOT DELETE) ---
-    if (worldTerrainType.includes("Forest")) {
-        groundColor = "#425232";
-        generateBattleOrganicFeatures(grid, 3, 150, 20); 
-        generateBattleOrganicFeatures(grid, 7, 60, 15);  
-    } else if (worldTerrainType.includes("Desert") || worldTerrainType.includes("Dunes")) {
+// Dense Forest (more trees than regular Forest)
+if (worldTerrainType.includes("Dense Forest")) {
+    groundColor = "#3a4228"; // Slightly darker green
+    generateBattleOrganicFeatures(grid, 3, 40, 25); // Dense trees
+    generateBattleOrganicFeatures(grid, 7, 20, 12); // More undergrowth
+} 
+// Sparse Forest
+else if (worldTerrainType.includes("Forest")) {
+    groundColor = "#425232";
+    generateBattleOrganicFeatures(grid, 3, 18, 20); // Sparse trees
+    generateBattleOrganicFeatures(grid, 7, 12, 10); // Sparse brush
+}
+// NEW SURGERY: STEPPE (Dry, Yellow, No Trees)
+else if (worldTerrainType.includes("Steppe")) {
+    groundColor = "#a3a073"; // Parched yellow-green
+    // No trees (Type 3 removed)
+    generateBattleOrganicFeatures(grid, 10, 60, 10); // Heavy dry grass texture
+    generateBattleOrganicFeatures(grid, 7, 30, 8);   // Dry dirt/mud patches
+} 
+// NEW SURGERY: PLAINS (Green, Occasional Rocks)
+else if (worldTerrainType.includes("Plains")) {
+    groundColor = "#8ca66f"; // Soft plains green
+    treeColorPool = ["#4e6b3e", "#3a522d"]; 
+    rockColor = "#969696"; 
+    
+    generateBattleOrganicFeatures(grid, 10, 40, 12); // Lush grass texture
+    generateBattleOrganicFeatures(grid, 6, 2, 10);   // Occasional rocks
+ 
+}
+	
+
+else if (worldTerrainType.includes("Desert") || worldTerrainType.includes("Dunes")) {
         groundColor = "#cfae7e";
         treeColorPool = ["#8b7e71", "#a68a5c"]; 
-        generateBattleOrganicFeatures(grid, 6, 70, 12);  
-        generateBattleOrganicFeatures(grid, 7, 40, 25);  
-    } else if (worldTerrainType.includes("Mountain") || worldTerrainType.includes("Highlands") || worldTerrainType.includes("Snowy")) {
-        groundColor = worldTerrainType.includes("Snowy") ? "#d8d3c5" : "#826b52";
-        rockColor = worldTerrainType.includes("Snowy") ? "#b0b0b0" : "#5c5c5c";
-        generateBattleOrganicFeatures(grid, 6, 120, 20);  
-        generateBattleOrganicFeatures(grid, 3, 30, 10);  
-    } else {
+        // REVISED: Lowered count from 20 to 2, lowered maxSize from 250 to 15
+        generateBattleOrganicFeatures(grid, 6, 2, 15);  
+        generateBattleOrganicFeatures(grid, 7, 40, 10);  
+    } 
+	
+// 1. HIGHLANDS: Rocky and brown, sparse vegetation
+else if (worldTerrainType.includes("Highlands")) {
+    groundColor = "#7d664b"; // Rocky brown
+    treeColorPool = ["#5a5a3a", "#4a4a2a"]; // Desaturated, dry greens
+    
+    // Lower rock density for clusters
+    generateBattleOrganicFeatures(grid, 6, 1, 12); // Fewer, smaller rock clusters
+    generateBattleOrganicFeatures(grid, 3, 6, 10);  // Very few trees
+}
+
+
+
+else if (worldTerrainType.includes("Large Mountains")) {
+    groundColor = "#d8d3c5"; // Pure white snow-covered ground
+    rockColor = "#2a2a2a";   // Dark grey for exposed rock faces
+    
+    // --- SURGERY: MOUNTAIN RANGE CLUSTERING ---
+    
+    // 1. The Main Summit (Massive Peak)
+    // We keep this at 1 to serve as the "centerpiece" of the map
+    generateBattleOrganicFeatures(grid, 8, 1, 120); 
+
+    // 2. Subsidiary Peaks (Smaller surrounding mountains)
+    // This creates the "Range" effect so the main peak isn't lonely
+    // Tile Type 8, Count 3, MaxSize 40
+    generateBattleOrganicFeatures(grid, 8, 2, 40);
+
+    // 3. Exposed Rock Formations (Large Boulders/Cliffs)
+    // Increased count and size to represent rocky outcrops in the snow
+    generateBattleOrganicFeatures(grid, 6, 3, 25); 
+
+    // 4. Textured Snow Drifts
+    // Using Type 7 (Mud/Brush logic) but it will render as soft shadows on white ground
+    generateBattleOrganicFeatures(grid, 7, 10, 12); 
+}
+	
+// 2. TROPICAL HIGHLANDS (Jungle Karst): Steep, mossy, and humid
+else if (worldTerrainType.includes("Mountain") && !worldTerrainType.includes("Snowy")) {
+    groundColor = "#3e4d26"; // Deep mossy/clay earth
+    // Tropical Palette: Bright Limes, Deep Ferns, and Jungle Teals
+    treeColorPool = ["#2d5a27", "#4a7c38", "#1e3d1a", "#5c913c"]; 
+    rockColor = "#7a7a7a"; // Limestone grey
+    
+    // --- CLUSTERING LOGIC ---
+    // Tile Type 9: New Tropical Karst Peak (We'll define the draw logic below)
+    // We use a higher count (5) but smaller maxSize (35) to create many "Pillars"
+    generateBattleOrganicFeatures(grid, 9, 3, 35); 
+
+    // Dense Jungle Foliage
+    generateBattleOrganicFeatures(grid, 3, 25, 15); 
+
+    // Limestone Outcrops (Vertical rocks)
+    generateBattleOrganicFeatures(grid, 6, 3, 12); 
+    
+    // Muddy patches/Dense undergrowth
+    generateBattleOrganicFeatures(grid, 7, 15, 10);
+}
+	
+	else {
         generateBattleOrganicFeatures(grid, 3, 60, 15);  
         generateBattleOrganicFeatures(grid, 4, 20, 12);  
         generateBattleOrganicFeatures(grid, 7, 30, 10);  
     }
 
     // --- SURGERY: CANVAS EXPANSION ---
-    const VISUAL_PADDING = 4000; // The size of the "Outer Bound" area
-    const canvas = document.createElement('canvas');
-    // We make the canvas significantly larger than the gameplay area
-    canvas.width = BATTLE_WORLD_WIDTH + (VISUAL_PADDING * 2);
-    canvas.height = BATTLE_WORLD_HEIGHT + (VISUAL_PADDING * 2);
-    const ctx = canvas.getContext('2d');
+    const VISUAL_PADDING = 1000; // The size of the "Outer Bound" area
+	
+	// 1. Existing Background Canvas
+const canvas = document.createElement('canvas');
+canvas.width = BATTLE_WORLD_WIDTH + (VISUAL_PADDING * 2);
+canvas.height = BATTLE_WORLD_HEIGHT + (VISUAL_PADDING * 2);
+const ctx = canvas.getContext('2d');
 
+// 2. NEW: Foreground Canvas
+const fgCanvas = document.createElement('canvas');
+fgCanvas.width = BATTLE_WORLD_WIDTH + (VISUAL_PADDING * 2);
+fgCanvas.height = BATTLE_WORLD_HEIGHT + (VISUAL_PADDING * 2);
+const fgCtx = fgCanvas.getContext('2d'); // We will use this to draw trees!
+	
+ 
     // 1. Paint the "Infinite" Floor
     ctx.fillStyle = groundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -116,19 +211,19 @@ function generateBattlefield(worldTerrainType) {
                 j < VISUAL_PADDING || j > BATTLE_WORLD_HEIGHT + VISUAL_PADDING) {
                 
                 let rand = Math.random();
-                if (rand > 0.98) { // Decorative Trees
-                    ctx.fillStyle = treeColorPool[Math.floor(Math.random() * treeColorPool.length)];
-                    ctx.beginPath();
-                    ctx.arc(i, j, 5 + (Math.random() * 8), 0, Math.PI * 2);
-                    ctx.fill();
-                } else if (rand > 0.97) { // Decorative Rocks
-                    ctx.fillStyle = rockColor;
-                    ctx.beginPath();
-                    ctx.moveTo(i, j + 10);
-                    ctx.lineTo(i + 5, j);
-                    ctx.lineTo(i + 10, j + 10);
-                    ctx.fill();
-                }
+              if (rand > 0.98) { // Decorative Trees
+					fgCtx.fillStyle = treeColorPool[Math.floor(Math.random() * treeColorPool.length)];
+					fgCtx.beginPath();
+					fgCtx.arc(i, j, 5 + (Math.random() * 8), 0, Math.PI * 2);
+					fgCtx.fill();
+				} else if (rand > 0.97) { // Decorative Rocks
+					fgCtx.fillStyle = rockColor;
+					fgCtx.beginPath();
+					fgCtx.moveTo(i, j + 10);
+					fgCtx.lineTo(i + 5, j);
+					fgCtx.lineTo(i + 10, j + 10);
+					fgCtx.fill();
+				}
             }
         }
     }
@@ -136,35 +231,275 @@ function generateBattlefield(worldTerrainType) {
     // 3. Shift the context so your original grid logic draws in the center
     ctx.save();
     ctx.translate(VISUAL_PADDING, VISUAL_PADDING);
+	fgCtx.save();
+	fgCtx.translate(VISUAL_PADDING, VISUAL_PADDING);
 
     // --- YOUR ORIGINAL GRID DRAWING LOOP (DO NOT DELETE) ---
     for (let i = 0; i < BATTLE_COLS; i++) {
         for (let j = 0; j < BATTLE_ROWS; j++) {
-            let px = i * BATTLE_TILE_SIZE;
-            let py = j * BATTLE_TILE_SIZE;
+							let px = i * BATTLE_TILE_SIZE;
+							let py = j * BATTLE_TILE_SIZE;
 
-            if (grid[i][j] === 0 && Math.random() > 0.95) {
-                ctx.fillStyle = "rgba(0,0,0,0.1)";
-                ctx.fillRect(px + Math.random() * 4, py + Math.random() * 4, 3, 3);
-            } else if (grid[i][j] === 3) { // Trees
-                ctx.fillStyle = treeColorPool[Math.floor(Math.random() * treeColorPool.length)];
-                ctx.beginPath();
-                ctx.arc(px + 4, py + 4, 6 + (Math.random() * 5), 0, Math.PI * 2);
-                ctx.fill();
-            } else if (grid[i][j] === 4) { // Water
-                ctx.fillStyle = "#3ba3ab";
-                ctx.fillRect(px, py, BATTLE_TILE_SIZE, BATTLE_TILE_SIZE);
-            } else if (grid[i][j] === 6) { // Rocks
-                ctx.fillStyle = rockColor;
-                ctx.beginPath();
-                ctx.moveTo(px, py + BATTLE_TILE_SIZE);
-                ctx.lineTo(px + BATTLE_TILE_SIZE/2, py);
-                ctx.lineTo(px + BATTLE_TILE_SIZE, py + BATTLE_TILE_SIZE);
-                ctx.fill();
-            } else if (grid[i][j] === 7) { // Mud/Brush
-                ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-                ctx.fillRect(px, py, BATTLE_TILE_SIZE, BATTLE_TILE_SIZE);
-            }
+							if (grid[i][j] === 0 && Math.random() > 0.95) {
+								ctx.fillStyle = "rgba(0,0,0,0.1)";
+								ctx.fillRect(px + Math.random() * 4, py + Math.random() * 4, 3, 3);
+							} 
+							
+ 							else if (grid[i][j] === 3) { // Trees
+									// 1. Deterministic Seed
+									const treeSeed = (i * 1337 + j * 7331);
+									const randomVisual = (n) => ((Math.abs(Math.sin(treeSeed * n)) * 1000) % 1);
+
+									// 2. Constants
+									const sizeMult = 2 + (randomVisual(1) * 12); 
+									const radius = (BATTLE_TILE_SIZE / 2) * sizeMult;
+									const cx = px + BATTLE_TILE_SIZE / 2;
+									const cy = py + BATTLE_TILE_SIZE / 2;
+									
+									// 3. Selection & Biome Logic
+									const treeColor = treeColorPool[Math.floor(randomVisual(2) * treeColorPool.length)];
+									const isSnowyConifer = worldTerrainType.includes("Snowy") || (worldTerrainType.includes("Mountain") && worldTerrainType.includes("North"));
+									const isHighland = worldTerrainType.includes("Mountain") && !worldTerrainType.includes("Snowy");
+
+									const drawCtx = fgCtx; 
+									drawCtx.fillStyle = treeColor;
+
+									if (isSnowyConifer) {
+										// --- ORIGINAL CONIFER LOGIC (Jurchen Forests / Alpine) ---
+										drawCtx.beginPath();
+										// Top Tier
+										drawCtx.moveTo(cx, cy - radius * 1.8);
+										drawCtx.lineTo(cx - radius * 0.7, cy - radius * 0.5);
+										drawCtx.lineTo(cx + radius * 0.7, cy - radius * 0.5);
+										drawCtx.fill();
+										// Bottom Tier
+										drawCtx.beginPath();
+										drawCtx.moveTo(cx, cy - radius * 0.8);
+										drawCtx.lineTo(cx - radius, cy + radius);
+										drawCtx.lineTo(cx + radius, cy + radius);
+										drawCtx.fill();
+										// Depth Shadow
+										drawCtx.fillStyle = "rgba(0,0,0,0.15)";
+										drawCtx.beginPath();
+										drawCtx.moveTo(cx, cy - radius * 1.8);
+										drawCtx.lineTo(cx, cy + radius);
+										drawCtx.lineTo(cx + radius, cy + radius);
+										drawCtx.fill();
+
+									} else if (isHighland) {
+										// --- NEW SURGERY: TROPICAL CLOUD FOREST (Hmong Highlands) ---
+										// Wide, umbrella-like banyan/tropical canopy
+										drawCtx.beginPath();
+										drawCtx.ellipse(cx, cy, radius, radius * 0.6, 0, 0, Math.PI * 2);
+										drawCtx.ellipse(cx, cy - radius * 0.4, radius * 0.7, radius * 0.4, 0, 0, Math.PI * 2);
+										drawCtx.fill();
+										// Leaf Cluster Texturing
+										drawCtx.fillStyle = "rgba(0,0,0,0.12)";
+										drawCtx.beginPath();
+										drawCtx.arc(cx + radius * 0.3, cy + radius * 0.1, radius * 0.3, 0, Math.PI * 2);
+										drawCtx.arc(cx - radius * 0.4, cy, radius * 0.25, 0, Math.PI * 2);
+										drawCtx.fill();
+
+									} else {
+										// --- ORIGINAL TEMPERATE LOGIC (Organic Blobs) ---
+										drawCtx.beginPath();
+										drawCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+										drawCtx.arc(cx - radius * 0.4, cy - radius * 0.2, radius * 0.6, 0, Math.PI * 2);
+										drawCtx.arc(cx + radius * 0.3, cy + radius * 0.1, radius * 0.5, 0, Math.PI * 2);
+										drawCtx.fill();
+										// Highlight
+										drawCtx.fillStyle = "rgba(255,255,255,0.12)";
+										drawCtx.beginPath();
+										drawCtx.arc(cx - radius * 0.2, cy - radius * 0.3, radius * 0.5, 0, Math.PI * 2);
+										drawCtx.fill();
+									}
+								}
+							
+							
+							else if (grid[i][j] === 4) { // Water
+								ctx.fillStyle = "#3ba3ab";
+								ctx.fillRect(px, py, BATTLE_TILE_SIZE, BATTLE_TILE_SIZE);
+				} 
+
+else if (grid[i][j] === 6) { // Rocks / Boulders
+    const centerX = px + BATTLE_TILE_SIZE / 2;
+    const centerY = py + BATTLE_TILE_SIZE / 2;
+    
+    // Use the seed to make the rock jagged, not a circle
+    const rockSeed = (i * 1337 + j * 7331);
+    const rRand = (n) => ((Math.abs(Math.sin(rockSeed * n)) * 100) % 1);
+    
+  // NEW SURGERY: High-Quality Small Crags
+// Scaled down significantly (from 4-10 tiles down to 1-3 tiles)
+const bW = BATTLE_TILE_SIZE * (1.2 + rRand(1) * 2.5);
+const bH = BATTLE_TILE_SIZE * (0.8 + rRand(2) * 1.5);
+
+// 1. Shadow Base (Deepened)
+ctx.fillStyle = "rgba(0,0,0,0.3)";
+ctx.beginPath();
+ctx.moveTo(centerX - bW/1.8, centerY + bH/1.8);
+ctx.lineTo(centerX + bW/1.8, centerY + bH/1.8);
+ctx.lineTo(centerX, centerY - bH/4);
+ctx.fill();
+
+// 2. Main Rock Body
+ctx.fillStyle = rockColor;
+ctx.beginPath();
+ctx.moveTo(centerX - bW/2, centerY + bH/2);
+ctx.lineTo(centerX - bW/4, centerY - bH/2); // Sharp top left
+ctx.lineTo(centerX + bW/3, centerY - bH/3); // Jagged ridge
+ctx.lineTo(centerX + bW/2, centerY + bH/2);
+ctx.closePath();
+ctx.fill();
+
+// 3. High-Quality Highlight (Top-left edge lighting)
+ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+ctx.lineWidth = 0.5;
+ctx.beginPath();
+ctx.moveTo(centerX - bW/2.5, centerY + bH/4);
+ctx.lineTo(centerX - bW/5, centerY - bH/2.5);
+ctx.stroke();
+}
+							
+else if (grid[i][j] === 7) { // Mud/Brush
+    // 1. Deterministic Seed for consistent ground noise
+    const brushSeed = (i * 1337 + j * 7331);
+    const bRand = (n) => ((Math.abs(Math.sin(brushSeed * n)) * 1000) % 1);
+
+    // 2. Muddy Base (Slightly smaller than tile to avoid grid lines)
+    ctx.fillStyle = "rgba(40, 30, 20, 0.12)"; 
+    ctx.beginPath();
+    ctx.arc(px + BATTLE_TILE_SIZE/2, py + BATTLE_TILE_SIZE/2, BATTLE_TILE_SIZE * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 3. "Speckle" Detail (Small organic clumps)
+    ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+    for (let s = 0; s < 2; s++) {
+        const ox = bRand(s + 1) * BATTLE_TILE_SIZE;
+        const oy = bRand(s + 2) * BATTLE_TILE_SIZE;
+        const r = 0.5 + bRand(s + 3) * 1.5; // Very small radius
+        
+        ctx.beginPath();
+        ctx.arc(px + ox, py + oy, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+else if (grid[i][j] === 8) { // Massive Snowy Peak (Reduced Height)
+    const peakSeed = (i * 1337 + j * 7331);
+    const rand = (n) => ((Math.abs(Math.sin(peakSeed * n)) * 1000) % 1);
+    
+    const width = BATTLE_TILE_SIZE * (30 + rand(1) * 20); 
+    
+    // REDUCED HEIGHT BY 70%: Original (0.8 + rand * 0.5) -> New (0.24 + rand * 0.15)
+    const height = width * (0.24 + rand(2) * 0.15);
+    
+    const cx = px + BATTLE_TILE_SIZE / 2;
+    const cy = py + BATTLE_TILE_SIZE / 2;
+
+    // Use ctx to render UNDER units
+    ctx.save(); 
+    
+    // 1. The Shadow/Base Body
+    ctx.fillStyle = "#cbd5e0"; 
+    ctx.beginPath();
+    ctx.moveTo(cx - width, cy + BATTLE_TILE_SIZE);
+    ctx.quadraticCurveTo(cx - width * 0.5, cy - height * 0.2, cx, cy - height);
+    ctx.quadraticCurveTo(cx + width * 0.5, cy - height * 0.2, cx + width, cy + BATTLE_TILE_SIZE);
+    ctx.fill();
+
+    // 2. The Bright Snow Cap
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - height);
+    ctx.lineTo(cx - width * 0.2, cy - height * 0.6);
+    ctx.lineTo(cx - width * 0.1, cy - height * 0.55);
+    ctx.lineTo(cx + width * 0.05, cy - height * 0.65);
+    ctx.lineTo(cx + width * 0.2, cy - height * 0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+}
+
+else if (grid[i][j] === 9) { // Tropical Karst Pillars (Hmong Highland Style)
+    const peakSeed = (i * 1337 + j * 7331);
+    const rand = (n) => ((Math.abs(Math.sin(peakSeed * n)) * 1000) % 1);
+    
+    // Draw 2-3 tightly packed pillars per tile
+    for (let p = 0; p < 2; p++) {
+        const xOffset = (rand(p + 5) - 0.5) * (BATTLE_TILE_SIZE * 8);
+        const pWidth = BATTLE_TILE_SIZE * (15 + rand(p + 10) * 15); 
+        
+        // REDUCED HEIGHT BY 60%: Original (1.2 + rand * 0.8) -> New (0.48 + rand * 0.32)
+        const pHeight = pWidth * (0.48 + rand(p + 15) * 0.32); 
+        
+        const cx = px + (BATTLE_TILE_SIZE / 2) + xOffset;
+        const cy = py + BATTLE_TILE_SIZE / 2;
+
+        ctx.save();
+        
+        // 1. The Pillar Body (Mossy Limestone)
+        ctx.fillStyle = "#5c6350"; 
+        ctx.beginPath();
+        ctx.moveTo(cx - pWidth * 0.5, cy + BATTLE_TILE_SIZE);
+        
+        // Steep sides with a rounded "dome" top
+        ctx.lineTo(cx - pWidth * 0.4, cy - pHeight * 0.6); // Steep wall
+        ctx.quadraticCurveTo(cx, cy - pHeight, cx + pWidth * 0.4, cy - pHeight * 0.6); // Rounded summit
+        ctx.lineTo(cx + pWidth * 0.5, cy + BATTLE_TILE_SIZE);
+        ctx.fill();
+
+        // 2. The Vegetation "Cap" (Lush Greenery on top)
+        // Selecting from your treeColorPool for biome consistency
+        ctx.fillStyle = treeColorPool[Math.floor(rand(p + 20) * treeColorPool.length)];
+        ctx.beginPath();
+        ctx.moveTo(cx - pWidth * 0.35, cy - pHeight * 0.7);
+        ctx.quadraticCurveTo(cx, cy - pHeight - 5, cx + pWidth * 0.35, cy - pHeight * 0.7);
+        ctx.lineTo(cx + pWidth * 0.2, cy - pHeight * 0.5);
+        ctx.lineTo(cx - pWidth * 0.2, cy - pHeight * 0.5);
+        ctx.fill();
+
+        // 3. Humidity/Mist Shadow
+        // Using a soft green-grey to simulate jungle mist at the base
+        const mistGrad = ctx.createLinearGradient(cx, cy + BATTLE_TILE_SIZE, cx, cy - pHeight);
+        mistGrad.addColorStop(0, "rgba(60, 80, 60, 0.2)");
+        mistGrad.addColorStop(0.5, "rgba(0,0,0,0)");
+        
+        ctx.fillStyle = mistGrad;
+        ctx.fillRect(cx - pWidth, cy - pHeight, pWidth * 2, pHeight + BATTLE_TILE_SIZE);
+
+        ctx.restore();
+    }
+}
+
+else if (grid[i][j] === 10) { // GRASS TEXTURE
+    const grassSeed = (i * 1337 + j * 7331);
+    const gRand = (n) => ((Math.abs(Math.sin(grassSeed * n)) * 1000) % 1);
+
+    // Pick a color slightly darker than the ground for contrast
+    ctx.strokeStyle = worldTerrainType.includes("Steppe") ? "rgba(100, 80, 20, 0.15)" : "rgba(40, 60, 20, 0.15)";
+    ctx.lineWidth = 1;
+
+    const cx = px + BATTLE_TILE_SIZE / 2;
+    const cy = py + BATTLE_TILE_SIZE / 2;
+
+    // Draw 2-3 small blades of grass
+    for (let g = 0; g < 2; g++) {
+        const offX = (gRand(g) - 0.5) * BATTLE_TILE_SIZE;
+        const offY = (gRand(g + 1) - 0.5) * BATTLE_TILE_SIZE;
+        const gH = 2 + gRand(g + 2) * 3; // Blade height
+
+        ctx.beginPath();
+        // Simple "V" shape for grass
+        ctx.moveTo(cx + offX - 1, cy + offY);
+        ctx.lineTo(cx + offX, cy + offY - gH);
+        ctx.lineTo(cx + offX + 1, cy + offY);
+        ctx.stroke();
+    }
+}
+			
+				
         }
     }
 
@@ -179,10 +514,16 @@ function generateBattlefield(worldTerrainType) {
 
     // Store state
     battleEnvironment.bgCanvas = canvas;
+	battleEnvironment.fgCanvas = fgCanvas; // <--- ADD THIS LINE
     battleEnvironment.grid = grid;
     battleEnvironment.groundColor = groundColor;
     battleEnvironment.visualPadding = VISUAL_PADDING; // Store this for the camera!
 }
+
+
+
+
+
 // --- ENTER BATTLE LOGIC ---
 function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
 	
@@ -572,1183 +913,4 @@ composition.forEach(comp => {
 	
 	
 	
-}
-// --- Damage Logic ---
-
-function isFlanked(attacker, defender) {
-    if (!attacker || !defender) return false;
-    if (attacker.hp <= 0 || defender.hp <= 0) return false;
-    if (attacker.isDummy || defender.isDummy) return false;
-
-    // If the defender is not actively engaging someone, we cannot infer facing safely.
-    const facingTarget = defender.target;
-    if (!facingTarget || facingTarget.hp <= 0 || facingTarget.isDummy) return false;
-
-    // Vector from defender -> defender's current target (the way defender is "facing")
-    const fx = facingTarget.x - defender.x;
-    const fy = facingTarget.y - defender.y;
-
-    // Vector from defender -> attacker
-    const ax = attacker.x - defender.x;
-    const ay = attacker.y - defender.y;
-
-    const fMag = Math.hypot(fx, fy);
-    const aMag = Math.hypot(ax, ay);
-
-    if (fMag < 0.001 || aMag < 0.001) return false;
-
-    let cosTheta = (fx * ax + fy * ay) / (fMag * aMag);
-
-    // Clamp for numerical safety
-    cosTheta = Math.max(-1, Math.min(1, cosTheta));
-
-    const angleDeg = Math.acos(cosTheta) * (180 / Math.PI);
-
-    // 120°+ means side/rear attack.
-    // Higher number = safer, fewer false positives.
-    return angleDeg >= 120;
-}
-
-
-function calculateDamageReceived(attacker, defender, stateString) {
-
-    const states = stateString.split(" ");
-
-    let totalDamage = 0;
-
-    
-
-    // Check if the attacker is FORCED into melee by their current stance
-
-    const isActuallyRangedAttacking = states.includes("ranged_attack") && attacker.currentStance === "statusrange";
-
-
-
-    let attackValue = attacker.meleeAttack;
-
-    let defenseValue = defender.meleeDefense;
-
-// SURGERY: Add fallback to 0 to prevent NaN damage if a unit has no experience value
-    attackValue += ((attacker.experienceLevel || 0) * 2); 
-    defenseValue += ((defender.experienceLevel || 0) * 2);
-    
-
-    if (states.includes("flanked")) defenseValue *= 0.5;
-
-    if (states.includes("charging")) attackValue += 15;
-
-
-
-    if (isActuallyRangedAttacking) {
-
-        // Ranged Damage Calculation
-
-        if (states.includes("shielded_front") && Math.random() * 100 < defender.shieldBlockChance) return 0;
-
-        
-
-        let effectiveArmor = Math.max(0, defender.armor - attacker.missileAPDamage);
-
-        let baseDamageDealt = Math.max(0, attacker.missileBaseDamage - (effectiveArmor * 0.5));
-
-        totalDamage = baseDamageDealt + attacker.missileAPDamage;
-
-			// Add this:
-		if (attacker.name === "Bomb") {
-			totalDamage *= 3.5; // Bombs should be devastating on direct hit
-		}
-
-        if (defender.isLarge && attacker.name.toLowerCase().includes("rocket")) totalDamage += 30;
-
-        
-
-        // Optional: consume ammo when firing
-
-        // attacker.ammo -= 1; 
-
-
-
-} else {
-        // Melee Damage Calculation
-        let hitChance = Math.max(10, Math.min(90, 40 + (attackValue - defenseValue)));
-        
-        if (Math.random() * 100 < hitChance) {
-            // FIX: Replace hardcoded 20 with the attacker's actual melee stat
-            let weaponDamage = attacker.meleeAttack + (defender.isLarge ? attacker.bonusVsLarge : 0);
-            
-         
-            totalDamage = Math.max(1, weaponDamage - (defender.armor * 0.3));
-        }
-    }
-
-    
-
-    if (attacker.stamina < 30) totalDamage *= 0.7;
-
-
-
-let finalDamage = Math.floor(totalDamage);
-    // If formatNumbersWithCommas is true, we still return a Number for calculations, 
-    // but you can format it later in the UI.
-    return finalDamage; 
-}// Always return a pure number for math operations
- 
-/* --- TACTICAL AI UPDATE LOOP --- */
-function updateBattleUnits() {
-	
-	// Add to the top of updateBattleUnits():
-if (typeof processSiegeEngines === 'function') processSiegeEngines();
-
-
-const now = Date.now();
-
-    if (typeof processTacticalOrders === 'function') {
-        processTacticalOrders();
-    }
-
-    // --- REVISED SURGERY: Keep dead units for 10 seconds ---
-   battleEnvironment.units = battleEnvironment.units.filter(u => {
-    if (u.removeFromBattle) return false;
-
-    if (u.hp <= 0) {
-        if (!u.deathTime) handleUnitDeath(u);
-        return (now - u.deathTime) < 10000;
-    }
-
-    return true;
-});
-
-    let units = battleEnvironment.units;
-    
-    /* Clean dead units and initialize global battle trackers */
-    //battleEnvironment.units = units.filter(u => u.hp > 0);
-    //units = battleEnvironment.units;
-
-    if (!currentBattleData.fledCounts) {
-        currentBattleData.fledCounts = { player: 0, enemy: 0 };
-    }
-    if (!currentBattleData.frames) {
-        currentBattleData.frames = 0;
-    }
-    currentBattleData.frames++;
-
-    const pCount = units.filter(u => u.side === 'player').length;
-    const eCount = units.filter(u => u.side === 'enemy').length;
-
-    /* Process Units */
-units.forEach(unit => {
-        
-		// --- DEATH HOOK ---
-				if (unit.hp <= 0) {
-					handleUnitDeath(unit);
-					return; // Skip normal AI/Movement for dead units
-				}
-
-				/* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
-				/* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
-				if (!unit.isCommander) {
-					let hpPct = unit.hp / unit.stats.health;
-					let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
-					
-					// Base drain only starts if they are actually hurt (below 80% HP)
-					let baseTick = (hpPct <= 0.1) ? 0.12 : (hpPct <= 0.8 ? 0.04 : 0);
-
-					/* REVISED OUTNUMBERING: Confidence Boost */
-					// If our side has more units than the enemy, we don't lose morale from "combat stress"
-					const weOutnumberEnemy = (unit.side === 'player' && pCount > eCount) || (unit.side === 'enemy' && eCount > pCount);
-					
-					if (weOutnumberEnemy) {
-						baseTick = 0; 
-					} else if ((unit.side === 'player' && eCount >= pCount * 5) || 
-							   (unit.side === 'enemy' && pCount >= eCount * 5)) {
-						/* Severe Cowardice: Only triggers if heavily outnumbered 5-to-1 */
-						baseTick = 0.2; 
-					}
-
-					/* Armor check: Brave veterans (30+ armor) rarely flee early on */
-					if (unit.stats.armor >= 30 && currentBattleData.frames < 18000) {
-						baseTick *= 0.01; 
-					}
-
-					/* REVISED TRASH MOB LOGIC: Only drain if they are zero-armor AND losing/hurt */
-					if (unit.stats.armor < 5 && unit.target && hpPct < 0.9 && !weOutnumberEnemy) {
-						baseTick += 0.02;
-					}
-
-					// Apply the drain or the recovery
-					if (baseTick > 0) {
-						unit.stats.morale -= baseTick * Math.max(0.1, (1.1 - armorEffect));
-					} else if (unit.stats.morale < 20) { 
-						// Recovery: If winning or safe, slowly regain morale (up to max of 20)
-						unit.stats.morale += 0.005; 
-					}
-
-					/* FLEEING MECHANICS (TWO-STAGE) */
-/* STAGE 2: Broken (Run Off Map) */
-if (unit.stats.morale <= 0) {
-    unit.state = "FLEEING";
-    
-    if (!unit.escapePoint || unit.escapeType !== "OUTER") {
-        unit.escapeType = "OUTER";
-        unit.fleeTimer = 0;
-
-        // --- PHASE 3: COWARDS OPEN THE NORTH GATE AND FLEE ---
-        if (inSiegeBattle && unit.side === "enemy" && typeof overheadCityGates !== 'undefined') {
-            let northGate = overheadCityGates.find(g => g.side === "north");
-            if (northGate) {
-                // Set escape point far north, directly through the gate
-                unit.escapePoint = { x: northGate.x * BATTLE_TILE_SIZE, y: -500 }; 
-            }
-        } else {
-            // Standard battle flee logic
-            let distToLeft = unit.x;
-            let distToRight = BATTLE_WORLD_WIDTH - unit.x;
-            let distToTop = unit.y;
-            let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
-            let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
-            
-            let outerPadding = -2000; 
-            if (minDist === distToLeft) unit.escapePoint = { x: outerPadding, y: unit.y };
-            else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - outerPadding, y: unit.y };
-            else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: outerPadding };
-            else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - outerPadding };
-        }
-    }
-
-    // If a fleeing enemy reaches the North Gate, they throw it open in panic
-    if (inSiegeBattle && unit.side === "enemy") {
-        let northGate = overheadCityGates.find(g => g.side === "north");
-        if (northGate && !northGate.isOpen) {
-            let distToGate = Math.hypot(unit.x - (northGate.x * BATTLE_TILE_SIZE), unit.y - (northGate.y * BATTLE_TILE_SIZE));
-            if (distToGate < 100) {
-                northGate.isOpen = true;
-                northGate.gateHP = 0;
-                if (typeof updateCityGates === 'function') updateCityGates(battleEnvironment.grid);
-                console.log("Defenders have thrown open the North Gate to escape!");
-            }
-        }
-    }
-
-    let dx = unit.escapePoint.x - unit.x;
-    let dy = unit.escapePoint.y - unit.y;
-    let dist = Math.hypot(dx, dy);
-
-    if (dist > 8) {
-        unit.x += (dx / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
-        unit.y += (dy / dist + (Math.random() - 0.5) * 0.3) * (unit.stats.speed * 2.5);
-    }
-
-						// Check if they have officially crossed the red boundary line
-						let isOutsideBorder = unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT;
-						
-						if (isOutsideBorder) {
-							unit.fleeTimer = (unit.fleeTimer || 0) + 1;
-							
-							if (unit.fleeTimer >= 300) { 
-								unit.state = "retreated";
-								unit.removeFromBattle = true;
-								unit.target = null;
-								unit.cooldown = 0;
-
-								let sideTotal = currentBattleData.initialCounts[unit.side] || 0;
-								let scale = sideTotal > 300 ? 5 : 1;
-								currentBattleData.fledCounts[unit.side] += scale;
-								return;
-							}
-						}
-						return; 
-					}
-					
-					/* STAGE 1: Wavering (Linger at Inner Border until Morale hits 0 or restores) */
-					else if (unit.stats.morale <= 3) {
-						unit.state = "WAVERING";
-						
-						if (!unit.escapePoint || unit.escapeType !== "INNER") {
-							let distToLeft = unit.x;
-							let distToRight = BATTLE_WORLD_WIDTH - unit.x;
-							let distToTop = unit.y;
-							let distToBottom = BATTLE_WORLD_HEIGHT - unit.y;
-							let minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
-							
-							let innerPadding = 20;
-							
-							if (minDist === distToLeft) unit.escapePoint = { x: innerPadding, y: unit.y };
-							else if (minDist === distToRight) unit.escapePoint = { x: BATTLE_WORLD_WIDTH - innerPadding, y: unit.y };
-							else if (minDist === distToTop) unit.escapePoint = { x: unit.x, y: innerPadding };
-							else unit.escapePoint = { x: unit.x, y: BATTLE_WORLD_HEIGHT - innerPadding };
-							
-							unit.escapeType = "INNER";
-						}
-
-						let dx = unit.escapePoint.x - unit.x;
-						let dy = unit.escapePoint.y - unit.y;
-						let dist = Math.hypot(dx, dy);
-
-						if (dist > 8) {
-							unit.x += (dx / dist) * (unit.stats.speed * 1.5);
-							unit.y += (dy / dist) * (unit.stats.speed * 1.5);
-						} else {
-							unit.state = "idle";
-						}
-						return;
-					}
-
-					unit.escapePoint = null;
-					unit.escapeType = null;
-				}
-				/* 3. COMBAT & TARGETING LOGIC */
-				if (!unit.target || unit.target.hp <= 0) {
-					let nearestDist = Infinity;
-					let nearestEnemy = null;
-					units.forEach(other => {
-			if (other.side !== unit.side && other.hp > 0) {
-							let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
-							if (dist < nearestDist) {
-								nearestDist = dist;
-								nearestEnemy = other;
-							}
-						}
-					});
-					unit.target = nearestEnemy;
-				}
-			  // --- TRACK POSITION BEFORE MOVEMENT ---
-			let oldX = unit.x;
-			let oldY = unit.y;
-			
-			if (unit.target) 
-			{
-			let dx = unit.target.x - unit.x;
-			let dy = unit.target.y - unit.y;
-			let dist = Math.hypot(dx, dy);
-
-			unit.stats.updateStance(dist);
-			let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
-
-		  
-
-			if (dist > effectiveRange * 0.8) {
-				// Only AI units auto-move
-			   // --- INSIDE YOUR if (dist > effectiveRange * 0.8) BLOCK ---
-
-		// Only AI units auto-move
-				if (!unit.isCommander) {
-					
-					// --- NEW: HOLD POSITION & PANIC LOGIC ---
-					let shouldHold = false;
-					
-					// Only apply holding logic to allied units that haven't received explicit player orders
-					if (unit.side === "player" && !unit.hasOrders) {
-						if (unit.stats.isRanged) {
-							// Ranged units stay put and let enemies walk into their killzone
-							shouldHold = true; 
-						} else if (dist > 50) {
-							// Melee units hold the shield wall UNTIL enemies breach 50px (Panic Charge)
-							shouldHold = true;
-						}
-					}
-				
-// =========================================================
-// --- SURGERY: SIEGE DEFENDER AI OVERRIDE ---
-// =========================================================
-if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && unit.side === "enemy") {
-    let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
-    
-    // PHASE 1: Gate is intact. Hold positions.
-    if (southGate && (!southGate.isOpen && southGate.gateHP > 0)) {
-        shouldHold = true; 
-    } 
-    // PHASE 2: Gate Breached! Fall back to Plaza Last Stand.
-    else {
-        let plazaX = BATTLE_WORLD_WIDTH / 2;
-        let plazaY = (typeof CITY_LOGICAL_HEIGHT !== 'undefined' ? CITY_LOGICAL_HEIGHT : 3200) / 2;
-        let distToPlaza = Math.hypot(plazaX - unit.x, plazaY - unit.y);
-        
-        if (distToPlaza > 150) {
-            shouldHold = false;
-            
-            // If they are trapped on the wall, steer them toward the closest ladder first
-            if (unit.onWall && typeof cityLadders !== 'undefined' && cityLadders.length > 0) {
-                let closestLadder = cityLadders.reduce((prev, curr) => 
-                    Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
-                );
-                dx = closestLadder.x - unit.x;
-                dy = closestLadder.y - unit.y;
-                dist = Math.hypot(dx, dy);
-            } else {
-                // Ground pathing to plaza
-                dx = plazaX - unit.x;
-                dy = plazaY - unit.y;
-                dist = distToPlaza; 
-            }
-        } else {
-            // Phase 2b: Formed up at the plaza
-            shouldHold = true; 
-        }
-    }
-}
-// =========================================================
-
-
-					// Execute movement or hold ground
-					if (shouldHold) {
-						// Bypass movement coordinates entirely
-						unit.state = "idle";
-						if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
-					} else {
-						// --- EXISTING TARGET PURSUIT LOGIC ---
-						if (Math.random() > 0.9) unit.stats.stamina = Math.max(0, unit.stats.stamina - 1);
-
-						let speedMod = 1.0;
-						let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-						let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-
-						if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4) speedMod = 0.4; // Forest/Mud
-						if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 7) speedMod = 0.6; // Broken Ground
-
-						if (unit.stats.morale > 3 && unit.stats.morale < 10) {
-							// Skirmishing/Retreating logic
-							let dir = unit.side === "player" ? 1 : -1;
-							let safeEdge = unit.side === "player" ? BATTLE_WORLD_HEIGHT - 100 : 100;
-							let notAtEdge = unit.side === "player" ? unit.y < safeEdge : unit.y > safeEdge;
-
-								if (notAtEdge) {
-									unit.y += (unit.stats.speed * speedMod * 0.5) * dir;
-									unit.x += (Math.random() - 0.5);
-								}
-							
-							} else {
-								// Standard Aggressive Movement
-								let moveVector = { dx: dx, dy: dy, dist: dist };
-								
-											// OVERRIDE: Only call the siege logic if we are actually in a siege battle
-								if (inSiegeBattle && typeof getSiegePathfindingVector === 'function') {
-									moveVector = getSiegePathfindingVector(unit, unit.target, dx, dy, dist);
-								}
-
-								unit.x += (moveVector.dx / moveVector.dist) * (unit.stats.speed * speedMod);
-								unit.y += (moveVector.dy / moveVector.dist) * (unit.stats.speed * speedMod);
-							}
-					}
-
-					// --- DYNAMIC STATE DETECTION ---
-					let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
-					if (hasMoved) { unit.state = "moving"; } 
-					else if (unit.state !== "attacking") { unit.state = "idle"; } 
-				}
-				//commander doesn't need else for commands and attack logic is later
-
-		} // end if (dist > effectiveRange * 0.8) {
-			else { //attack logic
-				
-				// ---> SURGERY: STAND DOWN IF TARGET IS A WAYPOINT <---
-				if (unit.target.isDummy) {
-					// We reached our formation spot. Stand idle and recover stamina.
-					if (!unit.isCommander) {
-						unit.state = "idle";
-					}
-					if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
-				} 
-				else {
-					// ---> NORMAL COMBAT EXECUTION <---
-					// FIX: Only set state to "attacking" if this isn't the Commander OR if the Commander isn't moving
-					if (!unit.isCommander || !player.isMoving) {
-						unit.state = "attacking";
-					}
-						 
-					if (unit.cooldown <= 0) {
-							if (unit.stats.currentStance === "statusrange") {
-								
-									/* Ranged Combat */
-									let isRepeater = unit.unitType === "Repeater Crossbowman";
-									
-									if (isRepeater && unit.stats.magazine > 0) { 
-									//repeater burst 
-										unit.cooldown = 30; //0.5 sec a shot
-										unit.stats.magazine--; 
-									} else {
-									//reload
-										unit.cooldown = getReloadTime(unit);
-										if (isRepeater) unit.stats.magazine = 10;
-									}
-									unit.stats.ammo--; 
-									
-								// 1. Amplified Spread Math (0.6 -> 2.5) for true visual scatter
-								let spread = (100 - unit.stats.accuracy) * 2.5;
-								let targetX = unit.target.x + (Math.random() - 0.5) * spread;
-								let targetY = unit.target.y + (Math.random() - 0.5) * spread;
-								
-								// 2. Calculate continuous velocity vector
-								let angle = Math.atan2(targetY - unit.y, targetX - unit.x);
-								let speed = 8; // Projectile flight speed
-
-								battleEnvironment.projectiles.push({
-									x: unit.x, y: unit.y, 
-									vx: Math.cos(angle) * speed, // Velocity X
-									vy: Math.sin(angle) * speed, // Velocity Y
-									startX: unit.x, startY: unit.y,
-									maxRange: unit.stats.range + 50, // Fly slightly past max range
-									attackerStats: unit.stats,
-									side: unit.side, // Track side to prevent friendly fire
-									projectileType: (unit.unitType === "Rocket") ? "Archer" : unit.unitType,
-									isFire: unit.unitType === "Firelance" || unit.unitType === "Bomb" || unit.unitType === "Rocket"
-								});
-								/* Ranged Audio */
-								if (unit.unitType === "Bomb" || unit.unitType === "Camel Cannon") {
-									AudioManager.playSound('bomb');
-								} else if (unit.unitType === "Firelance" || unit.unitType === "Hand Cannoneer" || unit.unitType === "Rocket") {
-									AudioManager.playSound('firelance');
-								} else {
-									AudioManager.playSound('arrow');
-								}
-								
-							} else {
-								
-								/* Melee Combat */
-						   unit.cooldown = getReloadTime(unit);
-								
-								let stateStr = "melee_attack";
-
-									if (unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
-
-									if (isFlanked(unit, unit.target)) {
-										stateStr += " flanked";
-									}
-
-								let dmg = calculateDamageReceived(unit.stats, unit.target.stats, stateStr);
-								unit.target.hp -= dmg;
-								
-								// --- EXP GAIN SURGERY (MELEE) ---
-								if (unit.side === "player" && unit.stats.gainExperience) {
-									// Commander gets 80% less (0.05), Ally troops gain much faster (0.35)
-									let baseExp = unit.isCommander ? 0.05 : 0.35; 
-									if (unit.target.hp <= 0) baseExp *= 3; // Triple EXP for a kill
-									unit.stats.gainExperience(baseExp);
-									
-									// 2. SURGERY: If it's the Commander, also update the Global Persistent Player
-									if (unit.isCommander) {
-										gainPlayerExperience(baseExp);
-									}
-								}
-								// --------------------------------
-								
-								if (dmg > (unit.target.stats.health * 0.25)) {
-									unit.target.stats.morale -= 5;
-								}
-								
-								/* Melee Audio */
-								if (unit.unitType === "War Elephant") {
-									AudioManager.playSound('elephant');
-								} else {
-									AudioManager.playSound('sword_clash');
-								}
-								if (dmg > 0) {
-									AudioManager.playSound('hit');
-								} else {
-									AudioManager.playSound('shield_block');
-								}
-								
-								/* Knockback */
-								unit.target.x += (dx / dist) * 5;
-								unit.target.y += (dy / dist) * 5;
-							}
-						}
-					}
-			}
-		} else {
-		// Make sure we don't accidentally freeze the Commander here either
-			if (!unit.isCommander) {
-				unit.state = "idle";
-			}
-			if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
-		}
-
-		if (unit.cooldown > 0) unit.cooldown--;
-});//end for loop in beginning
-
-// ---> collison<---
-applyUnitCollisions(units);
-
-// ---> 30 SECOND CLEANUP LOGIC <---
-    const THIRTY_SECONDS = 30000;
-    const nowTime = Date.now();
-    
-    if (battleEnvironment.groundEffects) {
-        battleEnvironment.groundEffects = battleEnvironment.groundEffects.filter(g => (nowTime - g.timestamp) < THIRTY_SECONDS);
-    }
-    
-    battleEnvironment.units.forEach(u => {
-        if (u.stuckProjectiles) {
-            u.stuckProjectiles = u.stuckProjectiles.filter(sp => (nowTime - sp.timestamp) < THIRTY_SECONDS);
-        }
-    });
-
-/* 4. UPDATE PROJECTILES (PHYSICS BASED COLLISION) */
-    for (let i = battleEnvironment.projectiles.length - 1; i >= 0; i--) {
-        let p = battleEnvironment.projectiles[i];
-        
-        // 1. Move projectile along its vector
-        p.x += p.vx;
-        p.y += p.vy;
-        
-        let role = p.attackerStats ? p.attackerStats.role : "";
-        let name = p.attackerStats ? p.attackerStats.name : "";
-        
-        let isJavelin = name === "Javelinier";
-        let isBolt = role === "crossbow" || role === "crossbowman";
-        let isArrow = role === "archer" || role === "horse_archer";
-        let isSlinger = name === "Slinger";
-        let isRocket = (p.projectileType === "rocket") || (p.attackerStats && p.attackerStats.name.includes("Rocket"));
-        let isBomb = role === "bomb" || name === "Bomb";
-        
-// 2. Range & Bounds Check (Hit the Ground)
-let distFlown = Math.hypot(p.x - p.startX, p.y - p.startY);
-if (distFlown > p.maxRange || 
-    p.x < -200 || p.x > BATTLE_WORLD_WIDTH + 200 || 
-    p.y < -200 || p.y > BATTLE_WORLD_HEIGHT + 200) {
-
-    if (isJavelin || isBolt || isArrow || isSlinger || isRocket || isBomb) {
-        if (!battleEnvironment.groundEffects) battleEnvironment.groundEffects = [];
-        if (battleEnvironment.groundEffects.length < 400) {
-
-            let effectType = isJavelin ? "javelin"
-                : (isBolt ? "bolt"
-                : (isSlinger ? "stone"
-                : (isRocket ? "rocket"
-                : (isBomb ? "bomb_crater" : "arrow"))));
-
-            const bounceChance = 0.30;
-            const landedX = p.x + (Math.random() - 0.5) * 18;
-            const landedY = p.y + (Math.random() - 0.5) * 18;
-
-            let landedAngle = Math.atan2(p.vy, p.vx) + (Math.random() - 0.5) * 0.9;
-
-            // 30% of the time, add a stronger "bounce" style angle shift
-            if (Math.random() < bounceChance) {
-                landedAngle += (Math.random() > 0.5 ? 1 : -1) * (0.6 + Math.random() * 0.7);
-            }
-
-            battleEnvironment.groundEffects.push({
-                type: effectType,
-                x: landedX,
-                y: landedY,
-                angle: landedAngle,
-                timestamp: Date.now()
-            });
-        }
-    }
-
-    battleEnvironment.projectiles.splice(i, 1);
-    continue;
-}
-
-        // 3. Physical Hitbox Collision
-        let hitMade = false;
-        
-        for (let j = 0; j < units.length; j++) {
-            let u = units[j];
-            
-            // Only check living enemies
-            if (u.hp > 0 && u.side !== p.side) {
-                let hitbox = u.stats.isLarge ? 16 : 8; 
-                let distToUnit = Math.hypot(p.x - u.x, p.y - u.y);
-                
-                if (distToUnit < hitbox) {
-                    hitMade = true;
-                    let dmg = calculateDamageReceived(p.attackerStats, u.stats, "ranged_attack");
-                    u.hp -= dmg;
-
-                    // Stick to Unit Bodies
-                    if (isJavelin || isBolt || isArrow || isSlinger || isRocket) {
-                        if (!u.stuckProjectiles) u.stuckProjectiles = [];
-                        if (u.stuckProjectiles.length < 4) {
-                            let effectType = isJavelin ? "javelin" : (isBolt ? "bolt" : (isSlinger ? "stone" : (isRocket ? "rocket" : "arrow")));
-                            u.stuckProjectiles.push({
-                                type: effectType,
-                                offsetX: p.x - u.x, 
-                                offsetY: p.y - u.y,
-                                angle: Math.atan2(p.vy, p.vx),
-                                timestamp: Date.now()
-                            });
-                        }
-                    }
-                    
-                    // Bomb direct hits create craters directly under the unit
-                    if (isBomb) {
-                        if (!battleEnvironment.groundEffects) battleEnvironment.groundEffects = [];
-                        battleEnvironment.groundEffects.push({
-                            type: "bomb_crater",
-                            x: p.x, y: p.y, angle: 0, timestamp: Date.now()
-                        });
-                    }
-                    
-                    // EXP and Audio Logic
-                    let attackerUnit = battleEnvironment.units.find(a => a.stats === p.attackerStats);
-                    if (attackerUnit && attackerUnit.side === "player" && p.attackerStats.gainExperience) {
-                        let baseExp = attackerUnit.isCommander ? 0.05 : 0.35; 
-                        if (u.hp <= 0) baseExp *= 3; 
-                        p.attackerStats.gainExperience(baseExp);
-                        if (attackerUnit.isCommander) gainPlayerExperience(baseExp);
-                    }
-                    
-                    if (dmg > 0) AudioManager.playSound('hit');
-                    else AudioManager.playSound('shield_block');
-                    
-                    break; 
-                }
-            }
-        }
-        
-        if (hitMade) battleEnvironment.projectiles.splice(i, 1);
-    }
-    }
-	
-	
-	
-
-// --- DYNAMIC TIERED COLLISION ENGINE ---
-function applyUnitCollisions(units) {
-    for (let i = 0; i < units.length; i++) {
-        let u1 = units[i];
-        if (u1.hp <= 0 || u1.state === "FLEEING") continue; 
-
-        for (let j = i + 1; j < units.length; j++) {
-            let u2 = units[j];
-            if (u2.hp <= 0 || u2.state === "FLEEING") continue;
-
-// REVISION: Multiply the combined radius by 0.6 to shrink the collision bubble.
-            // If both units have radius 10, minDistance becomes 12 instead of 20.
-            // 12 is less than the 16-pixel attack threshold. Perfect.
-            let minDistance = (u1.stats.radius + u2.stats.radius) * 0.6;
-            let dx = u2.x - u1.x;
-            let dy = u2.y - u1.y;
-            let distSq = dx * dx + dy * dy;
-
-            if (distSq < minDistance * minDistance && distSq > 0) {
-                let dist = Math.sqrt(distSq);
-                let overlap = minDistance - dist;
-
-                let nx = dx / dist;
-                let ny = dy / dist;
-
-                let push1 = 0;
-                let push2 = 0;
-
-                // --- THE HIERARCHY RULE ---
-                if (u1.stats.weightTier > u2.stats.weightTier) {
-                    // u1 is heavier. u2 takes 100% of the displacement.
-                    push2 = overlap; 
-                    push1 = 0;       
-                } 
-                else if (u2.stats.weightTier > u1.stats.weightTier) {
-                    // u2 is heavier. u1 takes 100% of the displacement.
-                    push1 = overlap; 
-                    push2 = 0;       
-                } 
-                else {
-                    // Same Tier? Distribute the push based on exact mass.
-                    let totalMass = u1.stats.mass + u2.stats.mass;
-                    push1 = (u2.stats.mass / totalMass) * overlap;
-                    push2 = (u1.stats.mass / totalMass) * overlap;
-                }
-
-                // Apply physical separation
-                u1.x -= nx * push1;
-                u1.y -= ny * push1;
-                u2.x += nx * push2;
-                u2.y += ny * push2;
-            }
-        }
-    }
-}
-
-function isBattleCollision(x, y, onWall = false) {
-    let tx = Math.floor(x / BATTLE_TILE_SIZE);
-    let ty = Math.floor(y / BATTLE_TILE_SIZE);
-
-    if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) return true;
-
-    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
-        let tile = battleEnvironment.grid[tx][ty];
-        if (tile === 9) return false; // Ladders always walkable
-        if (onWall) {
-            return !(tile === 8 || tile === 10); // Must stay on parapet
-        } else {
-            // Player and troops CANNOT walk on buildings (2), trees (3), water (4), solid walls (6), tower bases (7)
-            return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7; 
-        }
-    }
-
-    if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 6) return true;
-    return false;
-}
-
-
-// Shared function to draw stuck projectiles and bomb marks
-function drawStuckProjectileOrEffect(ctx, type) {
-    if (type === "javelin") {
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(8, 0); ctx.stroke();
-        ctx.fillStyle = "#bdbdbd"; ctx.beginPath();
-        ctx.moveTo(8, 0); ctx.lineTo(6, -2.5); ctx.lineTo(16, 0); ctx.lineTo(6, 2.5); ctx.fill();
-    } else if (type === "bolt") {
-        ctx.fillStyle = "#5d4037"; ctx.fillRect(-4, -1, 8, 2);
-        ctx.fillStyle = "#757575"; ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(9, 0); ctx.lineTo(4, 2); ctx.fill();
-        ctx.fillStyle = "#8d6e63"; ctx.fillRect(-5, -1.5, 3, 3);
-    } else if (type === "stone") {
-        ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
-    } else if (type === "rocket") {
-        ctx.scale(0.5, 0.5); // Scaled down for sticking
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(12, 0); ctx.stroke();
-         ctx.fillStyle = "#4e342e"; ctx.fillRect(-6, 0.5, 14, 2.2);
-        ctx.fillStyle = "#424242"; ctx.beginPath(); ctx.moveTo(12, -1.2); ctx.lineTo(20, 0); ctx.lineTo(12, 1.2); ctx.fill();
-        ctx.scale(2, 2); // Reset scale
-    } else if (type === "bomb_crater") {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.6)"; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#424242"; // Shrapnel fragments
-        ctx.fillRect(3, -5, 2, 2); ctx.fillRect(-6, 4, 1.5, 1.5); ctx.fillRect(5, 6, 2.5, 2.5); ctx.fillRect(-7, -3, 2, 2);
-    } else { // arrow
-        ctx.fillStyle = "#8d6e63"; ctx.fillRect(-6, -0.5, 12, 1);
-        ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.moveTo(6, -1.5); ctx.lineTo(11, 0); ctx.lineTo(6, 1.5); ctx.fill();
-        ctx.fillStyle = "#4caf50"; ctx.fillRect(-7, -1.5, 4, 1); ctx.fillRect(-7, 0.5, 4, 1);
-    }
-}
-
-function leaveBattlefield(playerObj) {
-    console.log("Leaving battlefield. Restoring overworld state...");
-
- 
-    // --- 1. THE MODE SWITCH (CRITICAL FIX) ---
-    inBattleMode = false; 
-    if (typeof inSiegeBattle !== 'undefined') inSiegeBattle = false; // Reset Siege state
-
-    // --- 2. EMERGENCY COORDINATE & CAMERA RESTORATION ---
-    if (playerObj && savedWorldPlayerState_Battle) {
-        if (savedWorldPlayerState_Battle.x !== 0 && savedWorldPlayerState_Battle.y !== 0) {
-            playerObj.x = savedWorldPlayerState_Battle.x;
-            playerObj.y = savedWorldPlayerState_Battle.y;
-        }
-    }
-
-    // Update camera immediately so the map isn't showing 0,0 for one frame
-    if (typeof camera !== 'undefined') {
-        camera.x = playerObj.x - canvas.width / 2;
-        camera.y = playerObj.y - canvas.height / 2;
-    }
-
-    // --- 3. CALCULATE BATTLE RESULTS (Keep your existing logic) ---
-    let pUnitsAlive = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0).length;
-    let eUnitsAlive = battleEnvironment.units.filter(u => u.side === "enemy" && !u.isCommander && u.hp > 0).length; 
-
-    let scale = (currentBattleData && currentBattleData.initialCounts.player > 300) ? 5 : 1; 
-    let playerLost = currentBattleData.initialCounts.player - (pUnitsAlive * scale);
-    let enemyLost = currentBattleData.initialCounts.enemy - (eUnitsAlive * scale);
-
-    let isFleeing = eUnitsAlive > 0;
-    let didPlayerWin = !isFleeing;
-
-    // Apply Overworld Consequences
-    playerObj.troops = Math.max(0, (playerObj.troops || 0) - playerLost);
-
-    if (currentBattleData.enemyRef) {
-        let overworldNPC = currentBattleData.enemyRef;
-        overworldNPC.count -= enemyLost;
-        if (overworldNPC.count <= 0 || !isFleeing) {
-            overworldNPC.count = 0; 
-            overworldNPC.isDead = true; 
-        } else {
-            let escapeAngle = Math.random() * Math.PI * 2;
-            overworldNPC.x += Math.cos(escapeAngle) * 50; 
-            overworldNPC.y += Math.sin(escapeAngle) * 50;
-            overworldNPC.waitTimer = 0;
-            overworldNPC.isMoving = true;
-            overworldNPC.targetX = overworldNPC.x + Math.cos(escapeAngle) * 200;
-            overworldNPC.targetY = overworldNPC.y + Math.sin(escapeAngle) * 200;
-        }
-    }
-
-    if (playerObj.hp <= 0) {
-        playerObj.hp = playerObj.maxHealth; 
-    }
-
-    // --- 4. CONDITIONAL UI BRANCH (THE SIEGE FIX) ---
-    // Instead of always showing the summary, we check if you were in a siege
-    if (playerObj.isSieging && typeof restoreSiegeAfterBattle === 'function') {
-        // This triggers the specific Siege Pause GUI we built
-        restoreSiegeAfterBattle(didPlayerWin);
-    } else if (typeof createBattleSummaryUI === 'function') {
-        // Standard battle summary for non-siege fights
-        createBattleSummaryUI(isFleeing ? "Retreat!" : "Victory!", playerLost, enemyLost);
-    }
-
-    // --- 5. CLEANUP ---
-    currentBattleData = null; 
-    battleEnvironment.units = []; 
-    battleEnvironment.projectiles = [];
-    lastBattleTime = Date.now();
-    
-    console.log("World Map Resumed at: ", playerObj.x, playerObj.y);
-}
-
-function createBattleSummaryUI(title, pLost, eLost) {
-    const summaryDiv = document.createElement('div');
-	
-	// ---> PASTE HERE <---
-    if (title === "Victory!") {
-        AudioManager.playMusic("Victory");
-    } else {
-        AudioManager.playMusic("Defeat");
-    }
-	
-    summaryDiv.id = 'battle-summary';
-    summaryDiv.style.cssText = `
-        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        background: linear-gradient(to bottom, rgba(50, 10, 10, 0.95), rgba(20, 5, 5, 0.98));
-        color: #f5d76e; padding: 30px; border: 2px solid #b71c1c; border-radius: 8px;
-        text-align: center; z-index: 1000; font-family: 'Georgia', serif; min-width: 300px;
-        box-shadow: 0 10px 40px rgba(0,0,0,1);
-    `;
-    
-    summaryDiv.innerHTML = `
-        <h2 style="color: ${title === "Victory!" ? "#ffca28" : "#d32f2f"}; font-size: 2.5rem; margin: 0 0 15px 0; text-shadow: 2px 2px 4px #000;">${title}</h2>
-        <div style="font-size: 1.2rem; color: #fff; margin-bottom: 10px;">Our Casualties: <span style="color: #f44336;">${Math.max(0, pLost)}</span></div>
-        <div style="font-size: 1.2rem; color: #fff; margin-bottom: 25px;">Enemy Casualties: <span style="color: #4caf50;">${Math.max(0, eLost)}</span></div>
-        <button id="close-summary-btn" style="
-            background: linear-gradient(to bottom, #7b1a1a, #4a0a0a); color: #f5d76e; 
-            border: 1px solid #d4b886; padding: 10px 20px; font-weight: bold; cursor: pointer; text-transform: uppercase;">
-            Return to World Map
-        </button>
-    `;
-    
-    document.body.appendChild(summaryDiv);
-    document.getElementById('close-summary-btn').onclick = () => {
-        summaryDiv.remove();
-    };
-}
-
-
-
-
-
-function drawSupplyLines(ctx, x, y, factionColor, camera) {
-    // Spacing increased slightly to account for the more detailed profile
-    for (let i = 0; i < 5; i++) {
-        const spacing = i * 85; 
-        drawDetailedChineseWagon(ctx, x + spacing - camera.x, y - camera.y, factionColor);
-    }
-}
-
-function drawDetailedChineseWagon(ctx, x, y, factionColor) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(1.2, 1.2); // Balanced scale
-
-    // --- 1. THE SHADOW ---
-    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-    ctx.beginPath();
-    ctx.ellipse(0, 18, 35, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // --- 2. THE CHASSIS (Heavy Timber) ---
-    const woodDark = "#3e2723";
-    const woodMid = "#5d4037";
-    
-    // Main base beams
-    ctx.fillStyle = woodDark;
-    ctx.fillRect(-28, 5, 56, 6); // Main floor
-    ctx.fillStyle = woodMid;
-    ctx.fillRect(-28, 5, 56, 2); // Top highlight of beam
-    
-    // Front shafts (The "Tongue" for the horse/ox)
-    ctx.strokeStyle = woodDark;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(-28, 8);
-    ctx.lineTo(-45, 12);
-    ctx.stroke();
-
-    // --- 3. THE CANVAS COVER (Barrel Vault) ---
-    const canvasBase = "#d7ccc8"; // Aged parchment/canvas color
-    const canvasShadow = "#bcaaa4";
-    
-    // Draw the main cloth body
-    ctx.fillStyle = canvasBase;
-    ctx.beginPath();
-    ctx.moveTo(-25, 5);
-    // The "Barrel" arch
-    ctx.bezierCurveTo(-25, -35, 25, -35, 25, 5);
-    ctx.fill();
-
-    // DRAW THE "LINES" (Structural Ribs/Folds)
-    // This gives it the realistic bamboo-frame look instead of a flat "salt" texture
-    ctx.save();
-ctx.beginPath();
-ctx.moveTo(-25, 5);
-ctx.bezierCurveTo(-25, -35, 25, -35, 25, 5);
-ctx.closePath();
-ctx.clip();
-
-ctx.strokeStyle = "rgba(0,0,0,0.12)";
-ctx.lineWidth = 1;
-
-for (let i = -20; i <= 20; i += 8) {
-    ctx.beginPath();
-    ctx.moveTo(i, 5);
-    ctx.lineTo(i, -30);
-    ctx.stroke();
-}
-
-ctx.restore();
-
-    // Front/Back Openings (The dark interior look)
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.beginPath();
-    ctx.moveTo(-25, 5);
-    ctx.quadraticCurveTo(-25, -28, -18, -20);
-    ctx.lineTo(-18, 5);
-    ctx.fill();
-
-    // --- 4. THE FACTION FLAG (Small & Detailed) ---
-    ctx.strokeStyle = "#212121";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(15, -15);
-    ctx.lineTo(15, -35); // Flag pole
-    ctx.stroke();
-
-    ctx.fillStyle = factionColor || "#cc0000";
-    ctx.beginPath();
-    ctx.moveTo(15, -35);
-    ctx.lineTo(28, -30);
-    ctx.lineTo(15, -25);
-    ctx.fill();
-    // Tiny flag detail
-    ctx.strokeStyle = "rgba(0,0,0,0.3)";
-    ctx.stroke();
-
-    // --- 5. THE WHEELS (Large Chinese Spoked Wheels) ---
-    // We draw two wheels, one slightly offset for 2.5D depth
-    drawSpokedWheel(ctx, -16, 12, 10); // Front wheel
-    drawSpokedWheel(ctx, 18, 12, 10);  // Back wheel
-
-    ctx.restore();
-}
-
-function drawSpokedWheel(ctx, x, y, radius) {
-    ctx.save();
-    ctx.translate(x, y);
-    
-    // Outer Rim (Tire)
-    ctx.strokeStyle = "#1a1a1a"; // Iron/Dark Wood rim
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Inner Wood Rim
-    ctx.strokeStyle = "#5d4037";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius - 2, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // The Hub (Center)
-    ctx.fillStyle = "#212121";
-    ctx.beginPath();
-    ctx.arc(0, 0, 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // The Spokes (12 Spokes for 13th Century style)
-    ctx.strokeStyle = "#3e2723";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 12; i++) {
-        ctx.rotate(Math.PI / 6);
-        ctx.beginPath();
-        ctx.moveTo(0, 2);
-        ctx.lineTo(0, radius - 2);
-        ctx.stroke();
-    }
-
-    ctx.restore();
-}
-
-function gainPlayerExperience(amount) {
-    // 1. Safety check for Level Cap
-    if ((player.experienceLevel || 1) >= 20) return;
-
-    // 2. Add XP with safety check for undefined
-    player.experience = (player.experience || 0) + (amount*20);
-    
-    // 3. Calculate dynamic requirement
-    let expNeeded = (player.experienceLevel || 1) * 10.0; 
-
-    // 4. The Loop (Handles multi-leveling and carry-over)
-    while (player.experience >= expNeeded && (player.experienceLevel || 1) < 20) {
-        player.experience -= expNeeded;
-        player.experienceLevel = (player.experienceLevel || 1) + 1;
-        
-        // Permanent stat boosts
-        player.meleeAttack = (player.meleeAttack || 10) + 3;
-        player.meleeDefense = (player.meleeDefense || 10) + 3;
-        player.maxHealth = (player.maxHealth || 100) + 15;
-        player.hp = player.maxHealth; // Full heal reward
-        
-        console.log(`%c LEVEL UP: You are now Level ${player.experienceLevel}!`, "color: #ffca28; font-weight: bold;");
-        
-        // Update requirement for the NEXT level in the loop
-        expNeeded = player.experienceLevel * 10.0;
-    }
-}
-
-
-function handleUnitDeath(unit) {
-    if (unit.isDeadProcessed) return;
-
-    unit.isDeadProcessed = true;
-    unit.deathTime = Date.now();
-    unit.state = "dead";
-    unit.target = null;
-    unit.hasOrders = false;
-    
-    // 1. Randomize body position & rotation
-    unit.deathRotation = Math.random() * Math.PI * 2; 
-    unit.deathFlip = Math.random() > 0.5 ? 1 : -1;
-
-    // Add a slight "tumble" offset so they don't land perfectly on the grid
-    unit.deathXOffset = (Math.random() - 0.5) * 8; 
-    unit.deathYOffset = (Math.random() - 0.5) * 8;
-
-    // 2. Pre-calculate unique blood pool stats
-    // This prevents the blood from "flickering" or changing shape every frame
-    unit.bloodStats = {
-        radiusX: 8 + Math.random() * 8,   // Random width
-        radiusY: 4 + Math.random() * 4,   // Random "flatness"
-        rotation: Math.random() * Math.PI, // Random splatter angle
-        opacity: 0.4 + Math.random() * 0.3 // Random thickness of blood
-    };
-}
-
-function drawBloodPool(ctx, unit) {
-    if (!unit.bloodStats) return;
-
-    const stats = unit.bloodStats;
-    ctx.save();
-    
-    // Position blood under the slightly offset body
-    ctx.translate(unit.x + unit.deathXOffset, unit.y + unit.deathYOffset);
-    
-    // Use the unique pre-calculated stats for this specific death
-    ctx.fillStyle = `rgba(100, 0, 0, ${stats.opacity})`; 
-    ctx.beginPath();
-    
-    // Draw the randomized ellipse
-    ctx.ellipse(
-        0, 0, 
-        stats.radiusX, 
-        stats.radiusY, 
-        stats.rotation, 
-        0, Math.PI * 2
-    );
-    
-    ctx.fill();
-    ctx.restore();
 }

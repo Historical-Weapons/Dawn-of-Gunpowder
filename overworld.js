@@ -114,7 +114,7 @@ function resizeCanvasAndResetCamera() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    zoom = Math.max(0.1, Math.min(7, zoom));
+    zoom = Math.max(0.1, Math.min(7, zoom));  //default zoom
 }
 
 function logGameEvent(message, type = "general") {
@@ -158,8 +158,8 @@ if (typeof initDiplomacy === 'function') {initDiplomacy(FACTIONS);}
 	
 
     // --- WORLD SCALE ---
-const WORLD_WIDTH = 4000; //15K 
-const WORLD_HEIGHT = 3000; //11K
+const WORLD_WIDTH = 8000; //15K 
+const WORLD_HEIGHT = 6000; //11K
 	// Padding as ratio of world size (e.g., 5% from edges)
 const PADDING_X = WORLD_WIDTH * 0.05;   // 5% of width
 const PADDING_Y = WORLD_HEIGHT * 0.05;  // 5% of height
@@ -402,7 +402,7 @@ function populateCities() {
 				if(!tooClose) {
 					let newCity = {
 						name: "Settlement", // Placeholder
-						pop: Math.floor(Math.random() * 80000) + 5000, // Slightly higher range for 13th c.
+						pop: Math.floor(Math.random() * 10000) + 1000, // Slightly higher range for 13th c.
 						x: cx,
 						y: cy,
 						radius: 25 
@@ -1302,31 +1302,31 @@ let tile = {
 
 // 1. WATER & RIVERS
 if (e < 0.25) {
-    tile.name = "Ocean"; tile.color = PALETTE.ocean; tile.speed = 2.5; 
+    tile.name = "Ocean"; tile.color = PALETTE.ocean; tile.speed = 1.5; 
 } else if (e < 0.35) {
-    tile.name = "Coastal"; tile.color = PALETTE.coastal; tile.speed = 1.8; 
+    tile.name = "Coastal"; tile.color = PALETTE.coastal; tile.speed = 1.1; 
 } else if (isMacroRiver || isProcRiver) {
     tile.name = "River"; 
     tile.color = PALETTE.coastal; // Using your coastal color for rivers
-    tile.speed = 1.9;
+    tile.speed = 1.3;
 } 
 
 // 2. HIGH ALTITUDE (Mountains & Snow)
 else if (e > 0.82) {
     // Roof of the world / Himalayas
-    tile.name = "Dry Mountains"; tile.color = PALETTE.snow; tile.speed = 0.4; tile.impassable = false;
+    tile.name = "Large Mountains"; tile.color = PALETTE.snow; tile.speed = 0.3; tile.impassable = false;
 } else if (e > 0.72) {
     // High Mountains
-    tile.name = "Mountains"; tile.color = PALETTE.mountains; tile.speed = 0.50;
+    tile.name = "Mountains"; tile.color = PALETTE.mountains; tile.speed = 0.3;
 } else if (e > 0.58) {
     // Highlands / Plateaus
     if (m < 0.2) {
-        tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.85;
+        tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.45;
     } else if (m > 0.4) {
         // High moisture in highlands = Jungle (e.g., Yunnan/Taiwan)
-        tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.65;
+        tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.3;
     } else {
-        tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.85;
+        tile.name = "Highlands"; tile.color = PALETTE.highlands; tile.speed = 0.45;
     }
 } 
 
@@ -1335,19 +1335,19 @@ else if (e > 0.82) {
 // 3. LOWLANDS (The moisture-rich biomes)
 else {
     if (m < 0.25) {
-        tile.name = "Desert"; tile.color = PALETTE.desert; tile.speed = 0.90;
+        tile.name = "Desert"; tile.color = PALETTE.desert; tile.speed = 0.4;
     } else if (m < 0.35) {
-        tile.name = "Dunes"; tile.color = PALETTE.dune; tile.speed = 0.95;
+        tile.name = "Dunes"; tile.color = PALETTE.dune; tile.speed = 0.45;
     } else if (m > 0.75) {
       //  tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.24;
-	          tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.77;
+	          tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.4;
     } else if (m > 0.55) {
-        tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.77;
+        tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.4;
     } else if (m > 0.42) {
-        tile.name = "Plains"; tile.color = PALETTE.meadow; tile.speed = 1.3;
+        tile.name = "Plains"; tile.color = PALETTE.meadow; tile.speed = 0.5;
     } else {
         // Default temperate land
-        tile.name = "Steppes"; tile.color = PALETTE.plains; tile.speed = 1.2;
+        tile.name = "Steppes"; tile.color = PALETTE.plains; tile.speed = 0.49;
     }
 }
 
@@ -1590,10 +1590,10 @@ if(tile.name.includes("Forest")) {
     }
 }
   // --- MOUNTAIN ICONS & TIMBERLINES (SPARSE PEAKS, DENSE TREES) ---
-if (tile.name.includes("Mountain") || tile.name.includes("Dry Mountains")) {
+if (tile.name.includes("Mountain") || tile.name.includes("Large Mountains")) {
     
-    let isDryMountains = tile.name.includes("Dry Mountains");
-    let isExtremePeak = tile.name === "Dry Mountains"; // Differentiate between pure white and icy blue
+    let isDryMountains = tile.name.includes("Large Mountains");
+    let isExtremePeak = tile.name === "Large Mountains"; // Differentiate between pure white and icy blue
 
     // ==========================================
     // 1. PEAK GENERATION (Drastically Reduced)
@@ -1748,8 +1748,14 @@ if (tile.name.includes("Mountain") || tile.name.includes("Dry Mountains")) {
             player.y = WORLD_HEIGHT / 2;
         }
 
-        document.getElementById('ui').style.display = 'block';
+		document.getElementById('ui').style.display = 'block';
         document.getElementById('loading').style.display = 'none';
+
+        // SURGERY: Hide the Units Guide automatically when loading finishes
+        const guideModal = document.getElementById('units-guide-modal');
+        if (guideModal) {
+            guideModal.style.display = 'none';
+        }
 
         AudioManager.playMusic("WorldMap_Calm");
     }
@@ -1913,35 +1919,59 @@ function drawMountain(ctx, x, y, width, height, tileSize) {
 
 function drawSnowyPeak(ctx, x, y, width, height, isExtremePeak, tileSize) {
     const alpha = getMountainAlpha(height, tileSize);
+    if (alpha <= 0) return;
 
-    // Same mountain body, but still slightly translucent
-    ctx.fillStyle = `rgba(62, 52, 42, ${alpha})`;
+    // 1. THE JAGGED BASE (Sharp silhouette)
+    // Using a cold, deep blue-grey for the base to represent thin atmosphere/shadow
+    ctx.fillStyle = `rgba(100, 115, 140, ${alpha})`; 
     ctx.beginPath();
-    ctx.moveTo(x - width / 2, y + tileSize);
-    ctx.quadraticCurveTo(x, y + tileSize - (height * 1.4), x + width / 2, y + tileSize);
+    ctx.moveTo(x - width / 2, y + tileSize); // Bottom Left
+    
+    // Create a jagged ascent
+    ctx.lineTo(x - width * 0.25, y + tileSize - height * 0.4); 
+    ctx.lineTo(x, y + tileSize - height * 1.4); // Sharp Summit
+    ctx.lineTo(x + width * 0.25, y + tileSize - height * 0.4);
+    ctx.lineTo(x + width / 2, y + tileSize); // Bottom Right
     ctx.fill();
 
-    // Whitish backfill for dry/snowy mountains
-    ctx.fillStyle = isExtremePeak
-        ? `rgba(255, 255, 255, ${Math.min(0.98, alpha + 0.02)})`
-        : `rgba(212, 222, 226, ${Math.min(0.96, alpha + 0.01)})`;
+    // 2. THE SNOW CAP (Upper 50% of the peak)
+    // Bright white with a slight jagged bottom edge
+    ctx.fillStyle = isExtremePeak 
+        ? `rgba(255, 255, 255, ${Math.min(1, alpha + 0.1)})` 
+        : `rgba(220, 235, 245, ${alpha})`;
+        
+    ctx.beginPath();
+    ctx.moveTo(x, y + tileSize - height * 1.4); // Summit
+    ctx.lineTo(x - width * 0.15, y + tileSize - height * 0.7); // Left snow line
+    
+    // Jagged "Frozen" transition line
+    ctx.lineTo(x - width * 0.05, y + tileSize - height * 0.8);
+    ctx.lineTo(x + width * 0.08, y + tileSize - height * 0.65);
+    
+    ctx.lineTo(x + width * 0.15, y + tileSize - height * 0.7); // Right snow line
+    ctx.closePath();
+    ctx.fill();
 
-    for (let b = 0; b < 2; b++) {
-        let shift = (b - 0.5) * (width * 0.3);
-        let bWidth = width * 0.6;
-        let bHeight = height * 0.7;
+    // 3. THE COLD SHADOW (Depth logic)
+    // Applying a subtle vertical shadow on the right side to give it 3D mass
+    ctx.fillStyle = `rgba(0, 20, 50, ${alpha * 0.15})`;
+    ctx.beginPath();
+    ctx.moveTo(x, y + tileSize - height * 1.4); // Summit
+    ctx.lineTo(x + width * 0.25, y + tileSize - height * 0.4);
+    ctx.lineTo(x + width / 2, y + tileSize);
+    ctx.lineTo(x, y + tileSize); // Center bottom
+    ctx.fill();
 
-        ctx.beginPath();
-        ctx.moveTo(x + shift - bWidth / 2, y + tileSize);
-        ctx.quadraticCurveTo(x + shift, y + tileSize - bHeight, x + shift + bWidth / 2, y + tileSize);
-        ctx.fill();
-    }
-
-    ctx.strokeStyle = `rgba(0,0,0,${0.10 + Math.random() * 0.06})`;
-    ctx.lineWidth = 1.2;
+    // 4. CRISP OUTLINE
+    // Keeping it very faint to maintain the "distant map" aesthetic
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.3})`;
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
     ctx.moveTo(x - width / 2, y + tileSize);
-    ctx.quadraticCurveTo(x, y + tileSize - (height * 1.4), x + width / 2, y + tileSize);
+    ctx.lineTo(x - width * 0.25, y + tileSize - height * 0.4);
+    ctx.lineTo(x, y + tileSize - height * 1.4);
+    ctx.lineTo(x + width * 0.25, y + tileSize - height * 0.4);
+    ctx.lineTo(x + width / 2, y + tileSize);
     ctx.stroke();
 }
 	

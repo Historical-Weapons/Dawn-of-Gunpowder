@@ -55,7 +55,7 @@ window.onwheel = (e) => {
     if (window.isZoomAnimating) { 
         window.isZoomAnimating = false; 
     }      
-    zoom = Math.max(0.03, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    zoom = Math.max(0.1, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
 };
 
  function drawCaravan(x, y, moving, frame, factionColor = "#d4b886") {
@@ -558,16 +558,15 @@ const cityPanel = document.getElementById('city-panel');
 				// Draw the textured battlefield directly on top
 				if (battleEnvironment.bgCanvas) {
 				   // To this:
-		ctx.drawImage(battleEnvironment.bgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
+					ctx.drawImage(battleEnvironment.bgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
 				}
 
 				drawBattleUnits(ctx);
-					// Option to Draw the broken gates over the battlefield if we are in a siege
-					  //  if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && typeof city_system_renderGateOverlays === 'function') {
-					   //     city_system_renderGateOverlays(ctx);
-						//}
-						
-						// Add to the draw loop in update.js
+				// ADD THIS ENTIRE BLOCK RIGHT HERE:
+				// ---> DRAW FOREGROUND CANOPY (Trees & Rocks on top of units) <---
+				if (battleEnvironment.fgCanvas) {
+					ctx.drawImage(battleEnvironment.fgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
+				}
 				if (typeof renderSiegeEngines === 'function') renderSiegeEngines(ctx);
 		 
 // --- UPDATE UI TEXT: Dynamic Positioning Logic ---

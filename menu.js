@@ -8,16 +8,17 @@ window.showMainMenu = function () {
         if (menuActive) return;
         menuActive = true;
 		
-       // --- REVISED MENU MUSIC LOGIC ---
+     
+
+// --- REVISED MENU MUSIC & MAXIMIZE LOGIC ---
 const startStandaloneMusic = () => {
     if (!menuActive) return;
 
-    // 1. Initialize the global manager (handles browser unlock)
+
+
+    // 1. Initialize the global manager
     if (typeof AudioManager !== 'undefined') {
         AudioManager.init();
-
-        // 2. Play your MP3 file (false = no loop)
-        // Ensure path matches your folder: music/menu_noloop.mp3
         AudioManager.playMP3('music/menu_noloop.mp3', false);
     }
 
@@ -25,6 +26,8 @@ const startStandaloneMusic = () => {
     window.removeEventListener('mousedown', startStandaloneMusic);
     window.removeEventListener('keydown', startStandaloneMusic);
 };
+
+
 
 // --- ADD THESE LINES TO HOOK IT UP ---
 window.addEventListener('mousedown', startStandaloneMusic);
@@ -148,41 +151,93 @@ function destroyMenu() {
         window.isPaused = false; 
     }, 500);
 }
+
+
 const playBtn = createBtn("Enter World", () => {
-    // --- SURGERY: MAXIMIZE BROWSER ---
-    if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().catch(err => {
-            console.warn("Fullscreen blocked or failed:", err.message);
-        });
+    // Show and style loading text to act as a header banner
+    const loadDiv = document.getElementById('loading');
+    if (loadDiv) {
+        loadDiv.style.display = 'block';
+        loadDiv.style.background = "linear-gradient(90deg, rgba(62,39,35,0.98), rgba(123,26,26,0.98), rgba(62,39,35,0.98))";
+        loadDiv.style.borderBottom = "2px solid #d4b886";
+        loadDiv.style.fontSize = "18px";
+        loadDiv.style.padding = "15px 0";
+        loadDiv.style.boxShadow = "0 4px 10px rgba(0,0,0,0.8)";
     }
 
-    if (typeof AudioManager !== 'undefined') AudioManager.init();
+    // SURGERY: Auto-show the Units Guide as the interactive loading screen
+    const guideModal = document.getElementById('units-guide-modal');
+    if (guideModal) {
+        guideModal.style.display = 'flex';
+        setTimeout(() => {
+            if (typeof guideModal.setInitial === "function") guideModal.setInitial();
+        }, 100);
+    }
+ 
+    if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().then(() => {
+            // FIX ZOOM: Force the game to recalculate size after entering fullscreen
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 150);
+        }).catch(err => console.warn(err));
+    }
+
+    if (typeof AudioManager !== 'undefined') {
+        AudioManager.init();
+    }
+
     destroyMenu();
-    startGameSafe();
+
+    setTimeout(() => {
+        if (typeof startGameSafe === 'function') startGameSafe();
+    }, 100); 
 });
+// Ensure it starts hidden
+playBtn.style.display = "none";
+
+// --- ENHANCED START ENGINE WRAPPER ---
+function startGameSafe() {
+    // Prevent double-starts if the user double-clicks the button
+    if (window.__gameStarted) return;
+    window.__gameStarted = true;
+
+    console.log("Handoff successful: Starting Game Engine...");
+
+    if (typeof initGame === "function") {
+        initGame();
+    } else {
+        // Fallback for debugging if the main script isn't ready
+        console.error("Critical Error: initGame() not found. Ensure index.html scripts are loaded.");
+        alert("Game Engine failed to initialize. Please refresh.");
+    }
+}
         
         // HIDDEN BY DEFAULT
         playBtn.style.display = "none";
-		
-		const instrBtn = createBtn("Manual", () => {
 
-            // MAKE PLAY BUTTON VISIBLE ON CLICK
-            playBtn.style.display = "block";
-            
-            // Optional: Give the user feedback that they "unlocked" the game
-            instrBtn.innerText = "Manual";
-            instrBtn.style.opacity = "0.7";
-
-            // SHOW THE IN-GAME MODAL INSTEAD OF ALERT
-            manualModal.style.display = "flex";
-            uiContainer.style.display = "none"; // Hide main UI while reading
-			
-						// Inject Units button ONLY after manual is opened
-if (typeof window.injectUnitsGuide === "function") {
-    window.injectUnitsGuide();
-}
-
+const instrBtn = createBtn("Manual", () => {
+    // 1. Instantly unlock the other hidden buttons
+    playBtn.style.display = "block";
+	
+	    // --- NEW: FORCE FULLSCREEN ON FIRST GESTURE ---
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.warn(`Fullscreen blocked or failed: ${err.message}`);
         });
+    }
+	
+    const unitsBtn = document.getElementById("units-guide-btn");
+    if (unitsBtn) unitsBtn.style.display = "block";
+
+    // 2. Open the manual immediately (No fullscreen conflict)
+    manualModal.style.display = "flex";
+    uiContainer.style.display = "none";
+    
+    // 3. Keep this to ensure the layout snaps to the current window size
+    window.dispatchEvent(new Event('resize'));
+});
+
 
         // --- CUSTOM SCROLLBAR CSS ---
         const style = document.createElement('style');
@@ -259,14 +314,22 @@ manualModal.style.maxHeight = "90vh";
         credits.style.opacity = "0.7";
         credits.style.letterSpacing = "1px";
 
-        uiContainer.appendChild(title);
+uiContainer.appendChild(title);
         uiContainer.appendChild(instrBtn);
         uiContainer.appendChild(playBtn); 
         
         menu.appendChild(uiContainer);
+
         menu.appendChild(manualModal); // Append Modal to menu
         menu.appendChild(credits);     // Append Credits to menu
+        
+        // CRITICAL: Append the menu to the webpage FIRST
         document.body.appendChild(menu);
+
+        // NOW inject the units guide, so the script can successfully find the menu and build the data table
+        if (typeof window.injectUnitsGuide === "function") {
+            window.injectUnitsGuide();
+        }
 
         // ==========================================
         // EPIC BACKGROUND ANIMATION LOGIC
@@ -607,13 +670,5 @@ backgroundUnits.push({
         animateMenu();
     };
 
-    function startGameSafe() {
-        if (window.__gameStarted) return;
-        window.__gameStarted = true;
-        if (typeof initGame === "function") {
-            initGame();
-        } else {
-            console.error("initGame not found! Make sure index.html logic is loaded.");
-        }
-    }
+
 })();

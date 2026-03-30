@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="mainStyle.css">
 </head>
 <body>
-    <div id="loading">Initializing... (0%)</div>
+<div id="loading" style="display: none; z-index: 11999;">Initializing... (0%)</div>
 
     <div id="ui">
         <h1>Map</h1>
@@ -125,7 +125,7 @@ if(player.gold >= 20) {
             
         </div>
         <div id="hostile-box" style="display: none; flex-direction: column; gap: 8px; align-items: center; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
-            <span style="color: #ff5252; font-weight: bold; font-style: italic; font-size: 0.95rem;">"We are at war. You will find no quarter here."</span>
+            <span style="color: #ff5252; font-weight: bold; font-style: italic; font-size: 0.95rem;">Move with WASD to leave</span>
             
             <button id="siege-button" class="menu-btn" style="background: linear-gradient(to bottom, #d32f2f, #b71c1c); border-color: #fff; color: #fff; padding: 10px 20px; font-size: 1rem; width: 90%;" onclick="
                 if(activeCity) {
@@ -249,6 +249,7 @@ if(player.gold >= 20) {
 	    <script src="siegebattle.js"></script>
 	
     <script src="battlefield_system.js"></script>
+	    <script src="battlefield_damagelogic.js"></script>
     <script src="troop_system.js"></script>
     <script src="infscript.js"></script>
     <script src="cavscript.js"></script>

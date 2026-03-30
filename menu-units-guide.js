@@ -1,4 +1,4 @@
-// menu-units-guide.js
+// how to shrink all units to fit the screen for a stadard laptop; but still have a scroll bar just in case // menu-units-guide.js
 (function () {
   if (window.__unitsGuideInstalled) return;
   window.__unitsGuideInstalled = true;
@@ -52,7 +52,7 @@
     },
     {
       name: "Camel Cannon",
-      desc: "Small artillery cannon supplied by a Camel based on early 13th century findings of Wuwei. Strong ranged pressure, slow moving.",
+      desc: "Small artillery cannon supplied by a Camel based on early 13th century findings of Wuwei.",
       mounted: true,
       renderMode: "cavalry",
       renderType: "camel_cannon",
@@ -531,53 +531,30 @@
         cost: 60
       }
     },
-    {
-      name: "Horse Archer",
-      desc: "Fast mobile ranged unit. Best for skirmishing, chasing, and hit-and-run tactics.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "horse_archer",
-      stats: {
-        weightClass: "Cavalry",
-        isRanged: true,
-        ammo: 20,
-        health: 40,
-        meleeAttack: 12,
-        meleeDefense: 12,
-        missileBaseDamage: 11,
-        missileAPDamage: 4,
-        accuracy: 60,
-        armor: "Partial Lamellar",
-        speed: 1.6,
-        range: 700,
-        morale: 60,
-        cost: 50
-      }
-    },
-    {
-      name: "Heavy Horse Archer",
-      desc: "Stronger armored mounted archer with better combat stats and survivability.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "horse_archer",
-      stats: {
-        weightClass: "Heavy Cavalry",
-        isRanged: true,
-        ammo: 20,
-        health: 40,
-        meleeAttack: 16,
-        meleeDefense: 18,
-        missileBaseDamage: 11,
-        missileAPDamage: 6,
-        accuracy: 65,
-        armor: "Full Lamellar",
-        speed: 1.4,
-        range: 700,
-        morale: 70,
-        cost: 75
-      }
-    }
-  ].sort((a, b) => a.name.localeCompare(b.name));
+{
+  name: "Horse Archer",
+  desc: "Fast mobile ranged unit. Best for skirmishing, chasing, and hit-and-run tactics.",
+  mounted: true,
+  renderMode: "cavalry",
+  renderType: "horse_archer",
+  stats: {
+    weightClass: "Cavalry",
+    isRanged: true,
+    ammo: 20,
+    health: 40,
+    meleeAttack: 12,
+    meleeDefense: 12,
+    missileBaseDamage: 11,
+    missileAPDamage: 4,
+    accuracy: 60,
+    armor: "Partial Lamellar",
+    speed: 1.6,
+    range: 700,
+    morale: 60,
+    cost: 50
+  }
+}
+].sort((a, b) => a.name.localeCompare(b.name));
 
   const STAT_ORDER = [
     "weightClass",
@@ -928,9 +905,12 @@ function createUnitsGuide() {
   });
   modal.id = "units-guide-modal";
 
-  const panel = create("div", {
-    width: "min(1100px, 96vw)",
-    height: "min(720px, 88vh)",
+const panel = create("div", {
+    position: "relative",
+    /* SURGERY: Reduced from 85vw to 75vw to ensure the Map UI (Player Stats/Log) 
+       is always visible on the sides even in half-screen mode */
+    width: "clamp(320px, 75vw, 1200px)", 
+    height: "clamp(400px, 80vh, 850px)",
     display: "flex",
     flexDirection: "row",
     background: "linear-gradient(180deg, rgba(28, 16, 16, 0.98), rgba(12, 10, 10, 0.98))",
@@ -941,26 +921,31 @@ function createUnitsGuide() {
     color: "#fff",
     fontFamily: "Georgia, serif",
     boxSizing: "border-box"
-  });
+});
 
-  const left = create("div", {
-    width: "38%",
-    minWidth: "300px",
+const left = create("div", {
+    /* SURGERY: Fluid percentage for transitions, 
+       but capped at 400px so the list doesn't get "stretched" on 4K */
+    width: "35%",
+    maxWidth: "400px", 
     display: "flex",
     flexDirection: "column",
     borderRight: "1px solid rgba(212,184,134,0.28)",
     background: "rgba(255,255,255,0.02)"
-  });
+});
+left.id = "units-guide-left";
 
-  const right = create("div", {
-    width: "62%",
+const right = create("div", {
+    width: "65%",
     minWidth: "0",
     display: "flex",
     flexDirection: "column",
     gap: "10px",
     padding: "12px",
-    boxSizing: "border-box"
-  });
+    boxSizing: "border-box",
+    position: "relative" // Anchors the Close Button
+});
+right.id = "units-guide-right";
 
   const leftHeader = create("div", {
     padding: "14px 14px 10px 14px",
@@ -1008,16 +993,16 @@ function createUnitsGuide() {
   renderTag.textContent = "";
   renderTag.style.visibility = "hidden";
 
-  const portraitWrap = create("div", {
-    height: "130px",
-    minHeight: "130px",
+const portraitWrap = create("div", {
+    flex: "0 0 45%",           
+    minHeight: "150px",
     background: "linear-gradient(180deg, #b9e0a7 0%, #7ab260 50%, #3f7f36 100%)",
     border: "1px solid rgba(212,184,134,0.34)",
     borderRadius: "8px",
     overflow: "hidden",
     position: "relative"
   });
-
+  portraitWrap.id = "units-guide-portrait"; // SURGERY: ID to dynamically squish on tiny screens
   const canvas = create("canvas", {
     display: "block",
     width: "100%",
@@ -1057,28 +1042,33 @@ function createUnitsGuide() {
   });
 const closeBtn = document.createElement("button");
 closeBtn.textContent = "Close";
+closeBtn.className = "close-btn"; // SURGERY: Protect this from mobile button overrides
 
 // IMPORTANT: set this BEFORE appending children
 right.style.position = "relative";
 rightTop.style.position = "relative";
 
+// SURGERY: Make close button red, larger, and more prominent
 Object.assign(closeBtn.style, {
   position: "absolute",
-  top: "6px",
-  right: "6px",        // <-- move to right
-  transform: "none",   // <-- remove centering transform
-  zIndex: "10",
-
-  padding: "4px 10px",
-  background: "#3e2723",
-  color: "#f5d76e",
-  border: "1px solid #d4b886",
+  top: "15px",
+  right: "15px",
+  transform: "none",
+  zIndex: "10000",
+  pointerEvents: "auto",
+  
+  // Size and Color Updates
+  padding: "8px 20px",            // Larger padding
+  fontSize: "16px",               // Larger font
+  background: "#b71c1c",          // Red background
+  color: "#ffffff",               // White text for better contrast on red
+  border: "2px solid #ff5252",    // Thicker, lighter red border
+  
   borderRadius: "6px",
   cursor: "pointer",
   fontWeight: "700",
-  fontSize: "13px"
+  boxShadow: "0 2px 10px rgba(0,0,0,0.5)" // Added shadow to make it pop
 });
-
 closeBtn.onclick = () => {
   modal.style.display = "none";
 
@@ -1097,14 +1087,17 @@ right.appendChild(statsPanel);
   statsPanel.appendChild(statsScroll);
 rightTop.appendChild(titleWrap);
 rightTop.appendChild(renderTag);
-rightTop.appendChild(closeBtn); // ✅ HERE
 rightTop.style.position = "relative";
+  
   panel.appendChild(left);
   panel.appendChild(right);
+  panel.appendChild(closeBtn); // Appended to panel so it overlays everything flawlessly
   modal.appendChild(panel);
 
 function selectUnit(unit) {
+modal.currentUnit = unit; // SURGERY: Track current unit for resizing
     const nameEl = modal.querySelector("#units-selected-name");
+	
     const descEl = modal.querySelector("#units-selected-desc");
 
     if (nameEl) nameEl.textContent = unit.name;
@@ -1167,6 +1160,16 @@ function selectUnit(unit) {
   modal.selectUnit = selectUnit;
   modal.setInitial = () => selectUnit(UNIT_DATA[0]);
 
+// SURGERY: Redraw the canvas portrait when the browser window is maximized/minimized
+  window.addEventListener('resize', () => {
+      if (modal.style.display !== 'none' && modal.currentUnit) {
+          // Slight delay allows the flex container to finish snapping before reading canvas dimensions
+          setTimeout(() => {
+              renderPortrait(canvas, modal.currentUnit);
+          }, 50);
+      }
+  });
+  
   return modal;
 }
 
@@ -1184,10 +1187,11 @@ function injectIntoMenu() {
   if (buttonsContainer.__unitsGuideButtonAdded) return;
   buttonsContainer.__unitsGuideButtonAdded = true;
 
-  const unitsBtn = document.createElement("button");
+ const unitsBtn = document.createElement("button");
+  unitsBtn.id = "units-guide-btn";
   unitsBtn.textContent = "Units";
   Object.assign(unitsBtn.style, {
-    display: "block",
+    display: "none", // Hidden until Manual is clicked
     width: "min(280px, 82vw)",
     margin: "10px 0 0 0",
     padding: "15px 40px",
@@ -1218,18 +1222,27 @@ function injectIntoMenu() {
     unitsBtn.style.color = "#f5d76e";
     unitsBtn.style.boxShadow = "0 4px 6px rgba(0,0,0,0.5)";
   };
-
-  unitsBtn.onclick = () => {
+unitsBtn.onclick = () => {
     modal.style.display = "flex";
-menu.style.visibility = "hidden";
-menu.style.pointerEvents = "none";
-    if (typeof modal.setInitial === "function") modal.setInitial();
+    menu.style.visibility = "hidden";
+    menu.style.pointerEvents = "none";
+
+    // FIXED: The delay allows the browser to calculate the width/height 
+    // of the canvas container before we try to render the 3D models.
+    setTimeout(() => {
+      if (typeof modal.setInitial === "function") {
+        modal.setInitial();
+      }
+    }, 100); 
   };
+
+  // Add an ID so menu.js can find it to unlock it
+  unitsBtn.id = "units-guide-btn";
+  unitsBtn.style.display = "none"; 
 
   buttonsContainer.appendChild(unitsBtn);
   menu.__unitsGuideHooked = true;
-  modal.__unitsGuideReady = true;
-}
+modal.__unitsGuideReady = true;}
 
 function addStyles() {
   if (document.getElementById("units-guide-styles")) return;
@@ -1238,6 +1251,21 @@ function addStyles() {
   style.textContent = `
     #units-guide-modal {
       box-sizing: border-box;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      
+/* SURGERY: REVISE ALIGNMENT */
+      justify-content: center !important;
+      align-items: flex-start !important; /* Move from center to top */
+      padding-top: 60px !important;       /* Shift down 60px to clear the top loading bar */
+      
+      background: rgba(0, 0, 0, 0.4);      /* Slight dimming of the menu background */
+      z-index: 10000 !important;           /* Just below the #loading text (10001) */
+      overflow-y: auto;
+      pointer-events: auto;
     }
 
     #units-guide-modal ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -1245,18 +1273,21 @@ function addStyles() {
     #units-guide-modal ::-webkit-scrollbar-thumb { background: #d4b886; border-radius: 8px; }
     #units-guide-modal ::-webkit-scrollbar-thumb:hover { background: #f5d76e; }
 
-#units-guide-modal button:not(.close-btn):hover {
-  background: rgba(212,184,134,0.10) !important;
-}
+    #units-guide-modal button:not(.close-btn):hover {
+      background: rgba(212,184,134,0.10) !important;
+    }
 
     @media (max-width: 900px) {
       #units-guide-modal {
-        padding: 6px !important;
+        padding-top: 50px !important;     /* Slightly tighter for mobile screens */
+        padding-left: 6px !important;
+        padding-right: 6px !important;
       }
 
       #units-guide-modal > div {
         width: 98vw !important;
-        height: 94vh !important;
+        height: auto !important;          /* Allow height to adjust */
+        max-height: 85vh !important;      /* Prevent it from hitting the bottom */
         flex-direction: column !important;
       }
 

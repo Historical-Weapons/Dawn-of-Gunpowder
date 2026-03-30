@@ -6,7 +6,6 @@ let cityTowerDoors = []; // Tracks two-way inner tower doors (ground <-> wall)
 let fortificationTroops = {}; 
  let cityLadders = [];
  
- 
  function drawCityGateBlock(ctx, grid, gate, arch, midX, gateRadius, startY, endY, wallThick) {
     const tile = CITY_TILE_SIZE;
     const isNorth = gate.side === "north";
@@ -25,31 +24,33 @@ let fortificationTroops = {};
     const ph = (gateY1 - gateY0 + 1) * tile;
     const cx = px + pw / 2;
 
-    // Write collision for the whole gate block
+    // 1. Write collision for the whole gate block
     for (let x = gateX0; x <= gateX1; x++) {
         for (let y = gateY0; y <= gateY1; y++) {
             if (!grid[x] || grid[x][y] === undefined) continue;
-
             const isPillar = Math.abs(x - midX) === gateRadius;
             grid[x][y] = isPillar ? 6 : (open ? 1 : 6);
         }
     }
 
-    // Pillars at the outer edges
+    // 2. Pillars at the outer edges
     ctx.fillStyle = "#37474f";
     ctx.fillRect(gateX0 * tile, py, tile, ph);
     ctx.fillRect(gateX1 * tile, py, tile, ph);
 
+    // --- DYNAMIC ROOF CALCULATION ---
+    // North Gate: roof at py (top edge). 
+    // South Gate: roof at bottom edge (py + wall thickness - roof height).
+    const capY = isNorth ? py : (py + ph - 4);
+
     if (open) {
-        // Open gate: clear middle, only swung leaves + frame/shadow
+        // --- OPEN GATE STATE ---
         ctx.fillStyle = arch.road;
         ctx.fillRect(px, py, pw, ph);
 
-        // center seam shadow to imply depth
         ctx.fillStyle = "rgba(0,0,0,0.10)";
         ctx.fillRect(cx - tile * 0.12, py + 1, tile * 0.24, ph - 2);
 
-        // Side leaves swung outward, leaving the center transparent
         const leafIn = tile * 0.55;
         const leafOut = tile * 1.9;
         const topBias = isNorth ? 3 : 8;
@@ -68,13 +69,6 @@ let fortificationTroops = {};
         ctx.fill();
         ctx.stroke();
 
-        // plank lines on left leaf
-        ctx.strokeStyle = "rgba(0,0,0,0.18)";
-        ctx.beginPath();
-        ctx.moveTo(px + leafIn * 0.55, py + 5);
-        ctx.lineTo(px + leafIn * 0.95, py + ph - 5);
-        ctx.stroke();
-
         // Right leaf
         ctx.fillStyle = "#5d4037";
         ctx.strokeStyle = "#2a1b16";
@@ -87,22 +81,14 @@ let fortificationTroops = {};
         ctx.fill();
         ctx.stroke();
 
-        // plank lines on right leaf
-        ctx.strokeStyle = "rgba(0,0,0,0.18)";
-        ctx.beginPath();
-        ctx.moveTo(px + pw - leafIn * 0.55, py + 5);
-        ctx.lineTo(px + pw - leafIn * 0.95, py + ph - 5);
-        ctx.stroke();
-
-        // correct cap band for north vs south
-        ctx.fillStyle = "rgba(0,0,0,0.16)";
-        if (isNorth) ctx.fillRect(px, py, pw, 2);
-        else ctx.fillRect(px, py + ph - 2, pw, 2);
+        // DRAW ROOF
+        ctx.fillStyle = isNorth ? "#8d1f1f" : "#7a1818";
+        ctx.fillRect(px, capY, pw, 4);
 
         return;
     }
 
-    // Closed gate: solid wood door with roof/cap aligned correctly
+    // --- CLOSED GATE STATE ---
     ctx.fillStyle = "#5d4037";
     ctx.fillRect(px, py, pw, ph);
 
@@ -117,10 +103,9 @@ let fortificationTroops = {};
     ctx.fillRect(px, py + 1, pw, 2);
     ctx.fillRect(px, py + ph - 3, pw, 2);
 
-    // roof/cap on the correct edge
+    // DRAW ROOF (Using the same dynamic capY)
     ctx.fillStyle = isNorth ? "#8d1f1f" : "#7a1818";
-    if (isNorth) ctx.fillRect(px, py, pw, 4);
-    else ctx.fillRect(px, py + ph - 4, pw, 4);
+    ctx.fillRect(px, capY, pw, 4);
 
     // wear overlay
     if (wear > 0.25) {
@@ -138,12 +123,10 @@ let fortificationTroops = {};
         ctx.stroke();
     }
 }
-
-
 function buildCityWalls(grid, arch, ctx, factionName) {
-	// CRITICAL FIX: Wipe the old ladders so the player doesn't trigger ghost ladders!
+    // CRITICAL FIX: Wipe the old ladders so the player doesn't trigger ghost ladders!
     cityLadders = [];
-	const gateDrawn = { north: false, south: false };
+    const gateDrawn = { north: false, south: false };
     const margin = 45; 
     const wallThick = 12; 
     const startX = margin;
@@ -157,13 +140,12 @@ function buildCityWalls(grid, arch, ctx, factionName) {
     const towerInterval = 75; 
     const cornerBuffer = 25;  
 
-overheadCityGates = [
-    { x: midX, y: startY, arch: arch, isOpen: false, gateHP: 1000, side: "north" },
-    { x: midX, y: endY, arch: arch, isOpen: false, gateHP: 1000, side: "south" }
-];
+    overheadCityGates = [
+        { x: midX, y: startY, arch: arch, isOpen: false, gateHP: 1000, side: "north" },
+        { x: midX, y: endY, arch: arch, isOpen: false, gateHP: 1000, side: "south" }
+    ];
 
- //1 let
-
+    //1 let
     let towers = [];
     let baseColor = arch.walls[1] || arch.walls[0];
 
@@ -178,20 +160,19 @@ overheadCityGates = [
             let isGateZone = Math.abs(x - midX) <= gateRadius;
             let isVerticalGate = (y >= startY && y < startY + wallThick) || (y <= endY && y > endY - wallThick);
             
-if (isGateZone && isVerticalGate) {
-    const gate = (y < startY + wallThick)
-        ? overheadCityGates.find(g => g.side === "north")
-        : overheadCityGates.find(g => g.side === "south");
+            if (isGateZone && isVerticalGate) {
+                const gate = (y < startY + wallThick)
+                    ? overheadCityGates.find(g => g.side === "north")
+                    : overheadCityGates.find(g => g.side === "south");
 
-    if (gate && !gateDrawn[gate.side]) {
-        drawCityGateBlock(ctx, grid, gate, arch, midX, gateRadius, startY, endY, wallThick);
-        gateDrawn[gate.side] = true;
-    }
+                if (gate && !gateDrawn[gate.side]) {
+                    drawCityGateBlock(ctx, grid, gate, arch, midX, gateRadius, startY, endY, wallThick);
+                    gateDrawn[gate.side] = true;
+                }
+                continue;
+            }
 
-    continue;
-}
-
-// --- INACCESSIBLE PARAPETS & WALKABLE FLOORS ---
+            // --- INACCESSIBLE PARAPETS & WALKABLE FLOORS ---
             else {
                 // Calculate this tile's distance to the nearest outer city boundary
                 let distFromLeft = x - startX;
@@ -217,7 +198,7 @@ if (isGateZone && isVerticalGate) {
                     ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
 
                     // --- DIAGNOSTIC TINT: Dark Grey for Outer, Lighter Grey for Inner ---
-                  if (isOuterParapet) ctx.fillStyle = "rgba(40, 40, 40, 0.45)";
+                    if (isOuterParapet) ctx.fillStyle = "rgba(40, 40, 40, 0.45)";
                     ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
 
                     if (isOuterParapet) {
@@ -246,8 +227,6 @@ if (isGateZone && isVerticalGate) {
                 }
             }
 
-  
-
             // --- GATHER INNER-FACING TOWER LOCATIONS ---
             if (!isGateZone) {
                 let distToStartX = Math.abs(x - startX);
@@ -265,11 +244,63 @@ if (isGateZone && isVerticalGate) {
                     else if (x === endX - wallThick + 1 && y % towerInterval === 0) towers.push({ x: x - 1, y: y, side: 'E' });
                 }
             }
-			
-			
-			
         }
     }
+
+    // =========================================================
+    // CUSTOM SIDE WALL EXTENSIONS (Seamless Match)
+    // =========================================================
+    
+    // Calculate the vertical middle of the map to center the side extensions
+    const logicalRows = typeof CITY_LOGICAL_ROWS !== 'undefined' ? CITY_LOGICAL_ROWS : CITY_ROWS;
+    const extMidY = Math.floor(logicalRows / 2);
+    const extStartY = extMidY - Math.floor(wallThick / 2);
+    const extEndY = extStartY + wallThick - 1;
+
+    for (let x = 0; x < CITY_COLS; x++) {
+        // We ONLY want to draw outside the inner keep area (from edge of map to outer walls)
+        if (x >= startX && x <= endX) continue; 
+
+        for (let y = extStartY; y <= extEndY; y++) {
+            // Distance calculations to render identical outer parapets & walkable core
+            let distFromTop = y - extStartY;
+            let distFromBottom = extEndY - y;
+            let minDistToEdge = Math.min(distFromTop, distFromBottom);
+
+            let isOuterParapet = (minDistToEdge < 2);
+            
+            let px = x * CITY_TILE_SIZE;
+            let py = y * CITY_TILE_SIZE;
+
+            if (isOuterParapet) {
+                grid[x][y] = 6; // Set to impassable obstacle
+                ctx.fillStyle = baseColor;
+                ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                
+                // Keep diagnostic tint identical
+                ctx.fillStyle = "rgba(40, 40, 40, 0.45)"; 
+                ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+
+                // Add the outer wall crenellations (ticks) on the horizontal edges
+                ctx.fillStyle = "#1a1a1a"; 
+                if ((y === extStartY || y === extEndY) && x % 3 === 0) {
+                    ctx.fillRect(px + CITY_TILE_SIZE/2 - 2, py + (y === extStartY ? 0 : CITY_TILE_SIZE - 6), 4, 6);
+                }
+            } else {
+                // Walkable floor ring (Matches main wall)
+                grid[x][y] = 1; 
+                ctx.fillStyle = "#b8b5ad"; 
+                ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                
+                ctx.strokeStyle = "rgba(0,0,0,0.1)"; 
+                ctx.strokeRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                
+                ctx.fillStyle = "rgba(255,255,255,0.3)"; 
+                ctx.fillRect(px + 1, py + 1, CITY_TILE_SIZE - 2, CITY_TILE_SIZE - 2);
+            }
+        }
+    }
+    // =========================================================
 
     // 3. RENDER INNER TOWERS & BIG WALKABLE LADDER BRIDGES
     for (let t of towers) {
@@ -311,7 +342,7 @@ if (isGateZone && isVerticalGate) {
         ctx.lineTo(rx * CITY_TILE_SIZE, (ry + towerSize) * CITY_TILE_SIZE);
         ctx.stroke();
 
-// --- NEW: WIDER PHYSICAL LADDER BRIDGES ALONG THE INNER WALL ---
+        // --- NEW: WIDER PHYSICAL LADDER BRIDGES ALONG THE INNER WALL ---
         let ladderGridX, ladderGridY, ladW, ladH;
         let ladderOffset = 12; // Place it next to the tower to give room
         
@@ -345,8 +376,6 @@ if (isGateZone && isVerticalGate) {
             x: (ladderGridX + ladW / 2) * CITY_TILE_SIZE,
             y: (ladderGridY + ladH / 2) * CITY_TILE_SIZE
         });
-
-        // Render 2x Size Larger Ladder (Keep your existing drawing code here)
      
         // Render 2x Size Larger Ladder
         let px = ladderGridX * CITY_TILE_SIZE;
@@ -377,7 +406,9 @@ if (isGateZone && isVerticalGate) {
             }
         }
         ctx.stroke();
-    }
+    
+}
+	
    // 4. SPAWN TROOPS 
     if (factionName) {
         fortificationTroops[factionName] = [];
