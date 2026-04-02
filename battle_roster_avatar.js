@@ -162,6 +162,7 @@ unitStats.factionColor=factionColor;
     }
 }; 
 
+
 // --- 3. HOOK TACTICAL AI (Logic Only) ---
 const originalUpdateBattleUnits = updateBattleUnits;
 
@@ -205,7 +206,7 @@ drawBattleUnits = function(ctx) {
         ctx.save();
         ctx.resetTransform(); 
         
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillStyle = "rgba(0, 0, 0, 0)";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.textAlign = "center";
@@ -238,12 +239,16 @@ drawBattleUnits = function(ctx) {
         ctx.restore();
     }
 };
-
-// --- 4. HOOK BATTLE EXIT (Fixes Teleportation & UI bugs) ---
+// --- ADD THIS LINE HERE TO SAVE THE ORIGINAL ENGINE LOGIC ---
 const originalLeaveBattlefield = leaveBattlefield;
 leaveBattlefield = function(playerObj) {
-    // A. Capture ONLY living survivors (hp > 0)
-    let pSurvivors = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0);
+    // A. Capture ONLY living survivors belonging to YOUR faction (prevents kidnapping allies)
+    let pSurvivors = battleEnvironment.units.filter(u => 
+        u.side === "player" && 
+        u.faction === playerObj.faction && 
+        !u.isCommander && 
+        u.hp > 0
+    );
     let eSurvivors = battleEnvironment.units.filter(u => u.side === "enemy" && u.hp > 0);
     let enemyRef = currentBattleData.enemyRef;
 
@@ -355,13 +360,12 @@ createBattleSummaryUI = function(...args) {
     let summaryDiv = document.getElementById('battle-summary');
     if (summaryDiv) {
 		let closeBtn = summaryDiv.querySelector('button');
-
-        // ---> SURGERY: Teleport to overworld immediately <---
-        if (player.isSieging || (currentBattleData && currentBattleData.playerDefeatedText)) {
+// ---> SURGERY: Teleport to overworld immediately <---
+        // REMOVED playerDefeatedText so the game doesn't auto-retreat in the background
+        if (player.isSieging) {
             if (closeBtn) {
-                closeBtn.click(); // This calls leaveBattlefield() automatically
+                closeBtn.click(); 
             }
-            // Hide this summary box so it doesn't overlap the Siege GUI
             summaryDiv.style.display = 'none'; 
             return;
         }
@@ -381,10 +385,15 @@ createBattleSummaryUI = function(...args) {
         summaryDiv.style.top = "50%";
         summaryDiv.style.transform = "translate(-50%, -50%)";
 
-        // --- 5. COMBINED CASUALTY & DESERTION REPORT (The Reliable Data) ---
-        let pSurvivors = battleEnvironment.units.filter(u => u.side === "player" && u.hp > 0 && !u.isCommander).length;
-        let eSurvivors = battleEnvironment.units.filter(u => u.side === "enemy" && u.hp > 0).length;
+// --- 5. COMBINED CASUALTY & DESERTION REPORT (The Reliable Data) ---
+        let pSurvivors = battleEnvironment.units.filter(u => 
+            u.side === "player" && 
+            u.faction === player.faction && 
+            !u.isCommander && 
+            u.hp > 0
+        ).length;
         
+        let eSurvivors = battleEnvironment.units.filter(u => u.side === "enemy" && u.hp > 0).length;
         let pInitial = (currentBattleData.initialCounts && currentBattleData.initialCounts.player) ? currentBattleData.initialCounts.player : pSurvivors;
         let eInitial = (currentBattleData.initialCounts && currentBattleData.initialCounts.enemy) ? currentBattleData.initialCounts.enemy : eSurvivors;
 

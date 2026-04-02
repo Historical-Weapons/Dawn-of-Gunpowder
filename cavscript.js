@@ -2,12 +2,20 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
     ctx.save();
     ctx.translate(x, y);
     
-    // --- DYNAMIC ARMOR RETRIEVAL ---
+// --- DYNAMIC ARMOR RETRIEVAL ---
     let armorVal = 2; 
-    if (typeof UnitRoster !== 'undefined' && UnitRoster.allUnits[unitName]) {
+    
+    // 1. BEST METHOD: Read directly from the physical unit on the battlefield
+    if (unit && unit.stats && unit.stats.armor !== undefined) {
+        armorVal = unit.stats.armor;
+    } 
+    // 2. BACKUP: Read from the global roster (Used for UI menu rendering)
+    else if (typeof UnitRoster !== 'undefined' && UnitRoster.allUnits[unitName]) {
         armorVal = UnitRoster.allUnits[unitName].armor;
-    } else if (unitName && (unitName.includes("Heavy") || unitName.includes("Elite") || type === "cataphract")) {
-        armorVal = 40; // High fallback for cavalry
+    } 
+    // 3. EMERGENCY FALLBACK: Name checks (Added Keshig here just in case)
+    else if (unitName && (unitName.includes("Heavy") || unitName.includes("Elite") || unitName.includes("eshig") || type === "cataphract")) {
+        armorVal = 40; 
     }
 
 // This regex catches: "War Elephant", "warelephant", "ELEPHANT_HEAVY", "ArmoredElefant", etc.
@@ -574,9 +582,40 @@ if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
             ctx.beginPath(); ctx.arc(0, -13, 4, Math.PI, 0); ctx.fill(); ctx.stroke(); 
             ctx.fillStyle = "#616161"; ctx.beginPath(); ctx.moveTo(-1, -16); ctx.lineTo(1, -16); ctx.lineTo(0, -20); ctx.fill();
             ctx.fillStyle = "#4e342e"; ctx.fillRect(-4, -13, 2.5, 4); ctx.fillRect(1.5, -13, 2.5, 4);
-        } else if (factionColor === "#00838f") {
-    ctx.fillStyle = factionColor; 
-ctx.fillRect(-4, -13, 8, 2.5); // Neck guard
+} else if (factionColor === "#00838f") {
+            // Dali Kingdom (Hmong) -> Elite High-Crested War Helm
+            
+            // 1. The Heavy Base (Replaces the thin neck guard)
+            ctx.fillStyle = "#5d4037"; // Dark lacquered wood/rattan
+            ctx.fillRect(-6, -14, 12, 3); // Wider base for the helmet
+            
+            // 2. The Tiered Crest (The "Heavy" Elite look)
+            ctx.fillStyle = "#8d6e63"; // Lighter rattan layer
+            ctx.beginPath();
+            ctx.moveTo(-5, -14);
+            ctx.lineTo(-2, -22); // Tall peak left
+            ctx.lineTo(2, -22);  // Tall peak right
+            ctx.lineTo(5, -14);
+            ctx.fill();
+
+            // 3. Silver Status Ornament (The "Elite" indicator)
+            ctx.fillStyle = "#e0e0e0"; 
+            // A silver band across the middle of the helmet
+            ctx.fillRect(-3, -18, 6, 1.5);
+            // A silver "spike" or finial at the very top
+            ctx.beginPath();
+            ctx.moveTo(-1, -22);
+            ctx.lineTo(0, -25);
+            ctx.lineTo(1, -22);
+            ctx.fill();
+
+            // 4. Side "Wings" (Traditional Dali silhouette)
+            ctx.strokeStyle = "#e0e0e0";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-6, -13); ctx.lineTo(-8, -15); // Left wing
+            ctx.moveTo(6, -13); ctx.lineTo(8, -15);   // Right wing
+            ctx.stroke();
 	} else {
 ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill(); ctx.stroke();
     // Fixed Neck Guard: Shorter (1.0 height) so eyes are visible
@@ -591,14 +630,29 @@ ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ct
         } else if (factionColor === "#1976d2" || factionColor === "#455a64") { 
             ctx.fillStyle = "#4e342e"; ctx.beginPath(); ctx.arc(0, -12, 3, Math.PI, 0); ctx.fill();
             ctx.fillStyle = "#795548"; ctx.fillRect(-3.5, -12, 7, 1.5); 
-        } else if (factionColor === "#00838f") {
-            // Iransar (Teal) -> White Turban/Cap
-    ctx.fillStyle = "#eeeeee";
-    // Using Math.PI to 0 ensures only the TOP half is drawn
-    ctx.beginPath(); 
-    ctx.arc(0, -12.5, 3.2, Math.PI, 0); 
-    ctx.fill(); 
-    ctx.stroke(); // Adding a stroke helps define the shape against the head
+} else if (factionColor === "#00838f") {
+// Dali Kingdom (Hmong) -> Light Cavalry Indigo Headwrap
+            ctx.fillStyle = "#1a237e";   // Indigo dyed cloth
+            ctx.strokeStyle = "#0d47a1"; // Slightly lighter blue for fold definition
+            ctx.lineWidth = 0.5;
+
+            // 1. The main horizontal wrap
+            // Dropped from -15.5 to -14 to fully close the 20% gap
+            ctx.fillRect(-3, -14, 6, 2); 
+            
+            // 2. The rounded top (The "bun")
+            // Center lowered to -14 to sit flush with the base
+            ctx.beginPath();
+            ctx.arc(0, -14, 2.5, Math.PI, 0);
+            ctx.fill();
+            ctx.stroke();
+
+            // 3. Simple fold detail 
+            // Adjusted coordinates to match the lower position
+            ctx.beginPath();
+            ctx.moveTo(-2, -15);
+            ctx.lineTo(1.5, -15.5);
+            ctx.stroke();
         } else {
             ctx.fillStyle = "#8d6e63"; 
             ctx.beginPath(); ctx.moveTo(-6, -11); ctx.lineTo(0, -15); ctx.lineTo(6, -11);
@@ -651,6 +705,7 @@ else if (type === "horse_archer") {
 
         // --- OUT OF AMMO: Melee Lance Fallback ---
         if (ammo <= 0) {
+			 		   drawOffhandhorseBow(animFrame);   // keep bow visible
             let meleeCycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 0;
             let thrust = isAttacking ? Math.sin(meleeCycle * Math.PI) * 8 : 0;
 
@@ -677,6 +732,7 @@ else if (type === "horse_archer") {
             ctx.restore();
 
         } else {
+			   drawOffhandhorseBow(animFrame);   // keep bow visible
             // --- RANGED COMBAT: Has Ammo ---
             // 1. Draw Stowed Lance
             ctx.save();
@@ -921,8 +977,45 @@ let gLegSwing = moving ? Math.sin(animFrame * 0.4) * 2 : 0;
     ctx.translate(8.0 + recoil, gunY + (reducedBob || 0) + 8); 
     ctx.rotate(gunAngle); 
 
-    // --- Main Cannon Body ---
-    ctx.fillStyle = "#4e342e"; ctx.fillRect(-6, -1, 14, 3);
+// --- CHINESE WHEELBARROW WAGON CHASSIS ---
+    ctx.save();
+    // Lower the cart slightly relative to the gun so it sits underneath
+    ctx.translate(0, 3);
+    
+    // 1. Wooden Frame/Handles
+    ctx.fillStyle = "#5d4037"; ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-10, 0); // Back handles held by the rider
+    ctx.lineTo(16, 0);  // Front bed
+    ctx.lineTo(16, 3);
+    ctx.lineTo(-10, 3);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // 2. Wheel Strut / Axle Mount
+    ctx.fillRect(6, 3, 4, 8);
+    ctx.strokeRect(6, 3, 4, 8);
+
+    // 3. The Central Wheel
+    let wheelRot = moving ? animFrame * 0.4 : 0;
+    ctx.save();
+    ctx.translate(8, 12); // Center of the wheel
+    ctx.rotate(wheelRot);
+    
+    // Outer rim
+    ctx.fillStyle = "#4e342e"; ctx.strokeStyle = "#212121"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    
+    // Spokes
+    ctx.strokeStyle = "#212121"; ctx.lineWidth = 1;
+    for (let w = 0; w < 4; w++) {
+        ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
+        ctx.rotate(Math.PI / 4);
+    }
+    ctx.restore(); // Restore wheel rotation
+    ctx.restore(); // Restore cart translation
+	
+	
     ctx.fillStyle = "#424242"; ctx.strokeStyle = "#212121"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(20, -1.5); ctx.lineTo(20, 2.5); ctx.lineTo(2, 3); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#616161"; ctx.fillRect(20, -2.5, 3, 6); // Muzzle ring
@@ -1045,3 +1138,8 @@ let gLegSwing = moving ? Math.sin(animFrame * 0.4) * 2 : 0;
     ctx.restore(); // 2. Restores the Rider's 'bob' and elevation layer 
 
 }  
+
+// Fixed: Added 'frame' to the parameters and defined 'b' locally
+function drawOffhandhorseBow(frame) {
+//nevermind THIS RENDERS TWO BOWS IF I DRAW ANOTHER ONE
+}

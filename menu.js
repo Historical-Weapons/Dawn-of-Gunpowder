@@ -152,26 +152,11 @@ function destroyMenu() {
     }, 500);
 }
 
-
 const playBtn = createBtn("Enter World", () => {
-    // Show and style loading text to act as a header banner
-    const loadDiv = document.getElementById('loading');
-    if (loadDiv) {
-        loadDiv.style.display = 'block';
-        loadDiv.style.background = "linear-gradient(90deg, rgba(62,39,35,0.98), rgba(123,26,26,0.98), rgba(62,39,35,0.98))";
-        loadDiv.style.borderBottom = "2px solid #d4b886";
-        loadDiv.style.fontSize = "18px";
-        loadDiv.style.padding = "15px 0";
-        loadDiv.style.boxShadow = "0 4px 10px rgba(0,0,0,0.8)";
-    }
-
-    // SURGERY: Auto-show the Units Guide as the interactive loading screen
-    const guideModal = document.getElementById('units-guide-modal');
-    if (guideModal) {
-        guideModal.style.display = 'flex';
-        setTimeout(() => {
-            if (typeof guideModal.setInitial === "function") guideModal.setInitial();
-        }, 100);
+    
+    // SURGERY: Trigger the new Skyrim-style loading screen
+    if (typeof window.showLoadingScreen === 'function') {
+        window.showLoadingScreen();
     }
  
     if (document.documentElement.requestFullscreen) {
@@ -196,6 +181,21 @@ const playBtn = createBtn("Enter World", () => {
 // Ensure it starts hidden
 playBtn.style.display = "none";
 
+
+// --- NEW CUSTOM BATTLE BUTTON ---
+const customBattleBtn = createBtn("Custom Battle", () => {
+    // This calls the GUI function from the custom_battle_gui.js script
+    if (typeof showCustomBattleMenu === "function") {
+        showCustomBattleMenu();
+        uiContainer.style.display = "none"; // Hide the main menu buttons
+    } else {
+        alert("Custom Battle module not loaded!");
+    }
+});
+// Start hidden to match your "Manual First" flow
+customBattleBtn.style.display = "none";
+
+
 // --- ENHANCED START ENGINE WRAPPER ---
 function startGameSafe() {
     // Prevent double-starts if the user double-clicks the button
@@ -219,7 +219,7 @@ function startGameSafe() {
 const instrBtn = createBtn("Manual", () => {
     // 1. Instantly unlock the other hidden buttons
     playBtn.style.display = "block";
-	
+	customBattleBtn.style.display = "block"; // <--- ADD THIS LINE
 	    // --- NEW: FORCE FULLSCREEN ON FIRST GESTURE ---
     if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(err => {
@@ -317,7 +317,7 @@ manualModal.style.maxHeight = "90vh";
 uiContainer.appendChild(title);
         uiContainer.appendChild(instrBtn);
         uiContainer.appendChild(playBtn); 
-        
+        uiContainer.appendChild(customBattleBtn); // <--- ADD THIS LINE
         menu.appendChild(uiContainer);
 
         menu.appendChild(manualModal); // Append Modal to menu

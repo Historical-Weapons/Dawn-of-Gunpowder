@@ -39,19 +39,23 @@ let battleEnvironment = {
 };
 
  
-	
-// Add this near the top of battlefield_system.js
+// Locate this function in battlefield_system.js
 function isExitAllowed() {
     if (!inBattleMode) return true; 
     
     // Check for remaining enemies (units not on player side with HP > 0)
     const enemyCount = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
-    const playerDead = player.hp <= 0;
+    
+    // Safely check if the player exists before checking HP
+    const playerDead = (typeof player !== 'undefined' && player) ? (player.hp <= 0) : false;
     
     return (playerDead || enemyCount === 0);
 }
 
 function generateBattleOrganicFeatures(grid, typeValue, count, maxSize) {
+    // --- NEW SURGERY: Abort procedural generation if inside a city ---
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) return;
+
     for (let i = 0; i < count; i++) {
         // Pick a center point anywhere in the grid
         let centerX = Math.floor(Math.random() * BATTLE_COLS);
@@ -100,7 +104,7 @@ else if (worldTerrainType.includes("Steppe")) {
 } 
 // NEW SURGERY: PLAINS (Green, Occasional Rocks)
 else if (worldTerrainType.includes("Plains")) {
-    groundColor = "#8ca66f"; // Soft plains green
+    groundColor = "#6b7a4a"; // Soft plains green
     treeColorPool = ["#4e6b3e", "#3a522d"]; 
     rockColor = "#969696"; 
     
@@ -131,7 +135,7 @@ else if (worldTerrainType.includes("Highlands")) {
 
 
 else if (worldTerrainType.includes("Large Mountains")) {
-    groundColor = "#d8d3c5"; // Pure white snow-covered ground
+    groundColor = "#7B5E3F"; // dark ground
     rockColor = "#2a2a2a";   // Dark grey for exposed rock faces
     
     // --- SURGERY: MOUNTAIN RANGE CLUSTERING ---
@@ -183,7 +187,7 @@ else if (worldTerrainType.includes("Mountain") && !worldTerrainType.includes("Sn
     }
 
     // --- SURGERY: CANVAS EXPANSION ---
-    const VISUAL_PADDING = 1000; // The size of the "Outer Bound" area
+    const VISUAL_PADDING = 100; // The size of the "Outer Bound" area
 	
 	// 1. Existing Background Canvas
 const canvas = document.createElement('canvas');
@@ -198,10 +202,12 @@ fgCanvas.height = BATTLE_WORLD_HEIGHT + (VISUAL_PADDING * 2);
 const fgCtx = fgCanvas.getContext('2d'); // We will use this to draw trees!
 	
  
-    // 1. Paint the "Infinite" Floor
+ // 1. Paint the "Infinite" Floor
     ctx.fillStyle = groundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+ 
+	
     // 2. SURGERY: Decorative Outer Bound Textures
     // This populates the "Abyss" so it looks like a real world
     for (let i = 0; i < canvas.width; i += 60) {
@@ -516,7 +522,7 @@ else if (grid[i][j] === 10) { // GRASS TEXTURE
     battleEnvironment.bgCanvas = canvas;
 	battleEnvironment.fgCanvas = fgCanvas; // <--- ADD THIS LINE
     battleEnvironment.grid = grid;
-    battleEnvironment.groundColor = groundColor;
+    battleEnvironment.groundColor = "#000000";
     battleEnvironment.visualPadding = VISUAL_PADDING; // Store this for the camera!
 }
 
@@ -526,26 +532,47 @@ else if (grid[i][j] === 10) { // GRASS TEXTURE
 
 // --- ENTER BATTLE LOGIC ---
 function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
-	
-	
     if (inCityMode) return; 
-	
-	// SAFETY RESET: Ensure dimensions return to standard defaults 
-    // before starting a non-siege battle
-    inSiegeBattle = false; 
-    BATTLE_WORLD_WIDTH = 2400; 
-    BATTLE_WORLD_HEIGHT = 1600;
+
+ 
+
+if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+        // SURGERY: Fallback to 300x200 if city variables are missing
+        let cols = (typeof CITY_COLS !== 'undefined') ? CITY_COLS : 300;
+        let rows = (typeof CITY_ROWS !== 'undefined') ? CITY_ROWS : 200;
+        BATTLE_WORLD_WIDTH = cols * BATTLE_TILE_SIZE; 
+        BATTLE_WORLD_HEIGHT = rows * BATTLE_TILE_SIZE;
+    } else {
+        BATTLE_WORLD_WIDTH = 2400; 
+        BATTLE_WORLD_HEIGHT = 1600;
+    }
+
+    // 2. Recalculate grid columns and rows based on chosen dimensions
     BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
     BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
-    
- 
-	
 
+    // 3. Save state and switch modes
     savedWorldPlayerState_Battle.x = playerObj.x;
     savedWorldPlayerState_Battle.y = playerObj.y;
     
+   
+    closeParleUI();
+
     inBattleMode = true;
-currentBattleData = {
+
+// ---> SURGERY: FLUSH GHOST KEYS <---
+    // Prevents the player from sliding automatically if a key got stuck in a menu
+    if (typeof keys !== 'undefined') {
+        for (let k in keys) keys[k] = false;
+    }
+
+    // Safety: also double-kill visually in case of race conditions
+    // Safety: also double-kill visually in case of race conditions
+    const panel = document.getElementById('parle-panel');
+    if (panel) panel.style.display = 'none';
+
+	
+	currentBattleData = {
         enemyRef: enemyNPC,
         playerFaction: playerObj.faction || "Hong Dynasty",
         enemyFaction: enemyNPC.faction,
@@ -566,15 +593,23 @@ currentBattleData = {
     generateBattlefield(currentWorldMapTile.name || "Plains");
 
 
-    playerObj.x = BATTLE_WORLD_WIDTH / 2;
-    playerObj.y = BATTLE_WORLD_HEIGHT - 100;
-
-// FIX: Pull the real troop count from the player object
-    let playerTroopCount = playerObj.troops || 0; // Use actual troops, or 0 as a fallback
-    let playerUniqueType = playerObj.uniqueUnit || null; // Get the unique unit name (e.g., "Mangudai")
+   // FIX: Pull the real troop count from the player object
+    let playerTroopCount = playerObj.troops || 0; 
+    let playerUniqueType = playerObj.uniqueUnit || null; 
     deployArmy(currentBattleData.playerFaction, playerTroopCount, "player"); 
     deployArmy(enemyNPC.faction, enemyNPC.count, "enemy");
- 
+
+    // ---> SURGERY: SNAP WASD TO COMMANDER <---
+    // Find exactly where the army deployed the commander and move the invisible WASD player there
+    let deployedCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+    if (deployedCmdr) {
+        playerObj.x = deployedCmdr.x;
+        playerObj.y = deployedCmdr.y;
+    } else {
+        playerObj.x = BATTLE_WORLD_WIDTH / 2;
+        playerObj.y = BATTLE_WORLD_HEIGHT - 100;
+    }
+	
     let totalCombatants = playerTroopCount + enemyNPC.count;
     
 
@@ -591,49 +626,7 @@ currentBattleData = {
         triggerEpicZoom(0.1, 1.5, 3500);
     }
 	
-	
-	// --- RENDER TOTAL WAR DRAG LINE ---
-    if (typeof isRightDragging !== 'undefined' && isRightDragging) {
-        ctx.save();
-        
-        // 1. Draw the main dragged line
-        ctx.strokeStyle = "rgba(0, 150, 255, 0.6)"; // Tactical Blue
-        ctx.lineWidth = 3;
-        ctx.setLineDash([5, 5]);
-        ctx.beginPath();
-        ctx.moveTo(dragStartPos.x, dragStartPos.y);
-        ctx.lineTo(dragCurrentPos.x, dragCurrentPos.y);
-        ctx.stroke();
-
-        // 2. Draw ghost markers showing exactly where units will stand
-        const dx = dragCurrentPos.x - dragStartPos.x;
-        const dy = dragCurrentPos.y - dragStartPos.y;
-        const dragDist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        
-        const playerUnits = battleEnvironment.units.filter(u => u.selected && u.hp > 0);
-        const MIN_SPACING = 12; // Must match the value in battlefield_commands.js
-        let spacing = dragDist / Math.max(1, playerUnits.length - 1);
-        if (spacing < MIN_SPACING) spacing = MIN_SPACING;
-
-        const centerX = dragStartPos.x + dx / 2;
-        const centerY = dragStartPos.y + dy / 2;
-
-        ctx.fillStyle = "rgba(0, 150, 255, 0.7)";
-        playerUnits.forEach((u, index) => {
-            const offsetDist = (index - (playerUnits.length - 1) / 2) * spacing;
-            const markerX = centerX + Math.cos(angle) * offsetDist;
-            const markerY = centerY + Math.sin(angle) * offsetDist;
-            
-            // Draw a ghost circle for each unit
-            ctx.beginPath();
-            ctx.arc(markerX, markerY, 4, 0, Math.PI * 2);
-            ctx.fill();
-        });
-
-        ctx.restore();
-    }
-	
+ 
 }
  
 // --- ARMY DEPLOYMENT BASED ON FACTION RACE & ACTUAL ROSTER ---
@@ -649,17 +642,17 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
     let spawnXCenter = BATTLE_WORLD_WIDTH / 2;
     let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[faction]) ? FACTIONS[faction].color : "#ffffff";
     
-	// =========================================================
+// =========================================================
     // --- SURGERY: SIEGE DEFENDER OVERRIDE ---
-    // Forces enemy troops into a horizontal line 100px north of the gate
+    // Forces enemy troops into a horizontal line deep inside the city
     // =========================================================
     if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
         let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
         if (southGate) {
-            // BATTLE_TILE_SIZE is 8. So 100 pixels north (-) of the gate
-            spawnY = (southGate.y * BATTLE_TILE_SIZE) - 100; 
+            // Push them 500 pixels North (deep inside the walls/plaza)
+            spawnY = (southGate.y * BATTLE_TILE_SIZE) - 600; 
         } else {
-            spawnY = BATTLE_WORLD_HEIGHT - 600; // Safe fallback inside walls
+            spawnY = BATTLE_WORLD_HEIGHT - 1000; // Safe fallback deep inside walls
         }
     }
 	
@@ -670,6 +663,8 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
 // =========================================================
     // THE FIX: If it's the player, read EXACTLY what they bought
     // =========================================================
+	
+	
     if (side === "player" && typeof player !== 'undefined' && player.roster && player.roster.length > 0) {
         let counts = {};
         
@@ -703,7 +698,7 @@ if (faction === "Great Khaganate") {
     composition = [
         {type: "Horse Archer", pct: 0.50}, 
         {type: "Heavy Horse Archer", pct: 0.20},
-        {type: "Mangudai", pct: 0.10}, 
+        {type: "Keshig", pct: 0.10}, 
         {type: "Lancer", pct: 0.15}, 
         {type: "Heavy Lancer", pct: 0.05}
     ];
@@ -842,41 +837,68 @@ composition.forEach(comp => {
                     baseTemplate.role.toLowerCase().includes("horse");
 
     let groupWidth = Math.min(count, unitsPerRow) * spacingX;
+// Locate the loop where units are pushed (inside composition.forEach)
+// Replace the calculation for finalX and finalY with this override:
 
-    for (let i = 0; i < count; i++) {
-        let row = Math.floor(i / unitsPerRow);
-        let col = i % unitsPerRow;
+for (let i = 0; i < count; i++) {
+    let row = Math.floor(i / unitsPerRow);
+    let col = i % unitsPerRow;
 
-        // 1. Get Tactical Position (Vertical lines and Flank X)
-        let tacticalX = 0;
-        let tacticalY = 0;
-        if (typeof getTacticalPosition === 'function') {
-            let tPos = getTacticalPosition(baseTemplate.role, side, comp.type);
-            tacticalX = tPos.x;
-            tacticalY = tPos.y;
-        }
+    // 1. Get Tactical Position (Vertical lines and Flank X)
+    let tacticalX = 0;
+    let tacticalY = 0;
+    if (typeof getTacticalPosition === 'function') {
+        let tPos = getTacticalPosition(baseTemplate.role, side, comp.type);
+        tacticalX = tPos.x;
+        tacticalY = tPos.y;
+    }
 
-        // 2. Calculate X/Y based on unit type
-        let finalX, finalY;
+    // 2. Calculate X/Y
+    let finalX, finalY;
+
+    // =========================================================
+    // --- SURGERY: CLUMPED SPAWN FOR SIEGE DEFENDERS ONLY ---
+    // =========================================================
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
         
+        // We ignore the grid and the "currentLineXOffset"
+        // We use spawnXCenter and spawnY as the "Epicenter" of the clump
+        
+        const clumpRadius = 120; // How wide the total blob is
+        const personalSpace = 12; // Minimum distance between units
+        
+        // Use a basic spiral or random-in-circle logic
+        // Angle is based on the unit index for even distribution, plus high randomness
+        let angle = (i * 0.5) + (Math.random() * Math.PI * 2);
+        let dist = (Math.sqrt(i) * personalSpace) + (Math.random() * 20);
+
+        finalX = spawnXCenter + Math.cos(angle) * dist;
+        finalY = spawnY + Math.sin(angle) * dist;
+
+        // Extra jitter to break up any spiral patterns
+        finalX += (Math.random() - 0.5) * 15;
+        finalY += (Math.random() - 0.5) * 15;
+
+    } else {
+        // --- ORIGINAL GRID LOGIC FOR ALL OTHER SCENARIOS ---
         if (isFlank) {
-            // Cavalry uses the tacticalX (far left or far right) and centers its own block
             let internalX = (col * spacingX) - (groupWidth / 2);
             finalX = spawnXCenter + tacticalX + internalX;
         } else {
-            // Line units (Infantry/Archers) use the running horizontal offset
             finalX = spawnXCenter + currentLineXOffset + (col * spacingX);
-            // Move offset to the next rank if necessary is handled by finalY
         }
 
         let gridY = row * spacingY * rankDir;
         finalY = spawnY + tacticalY + gridY;
 
-        // 3. Human Jitter
+        // Original Human Jitter
         finalX += (Math.random() - 0.5) * 3;
         finalY += (Math.random() - 0.5) * 2;
+    }
 
-        // 4. Create Troop and Push
+    // 4. Create Troop and Push... (Rest of the logic remains the same)
+	
+	
         let unitStats = Object.assign(
             new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
             baseTemplate
@@ -891,6 +913,9 @@ composition.forEach(comp => {
             faction: faction,
             color: factionColor,
             unitType: comp.type, 
+			isCommander: isCmdr, // <--- ADD THIS LINE HERE
+			// ADD THIS LINE: Explicitly tag the player's commander
+    isPlayer: (side === 'player' && isCmdr),
             stats: unitStats, 
             hp: unitStats.health,
             x: finalX,

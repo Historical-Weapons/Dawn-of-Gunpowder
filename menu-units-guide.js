@@ -3,559 +3,6 @@
   if (window.__unitsGuideInstalled) return;
   window.__unitsGuideInstalled = true;
 
-  const UNIT_DATA = [
-    {
-      name: "Archer",
-      desc: "Basic long-range support unit. Good for early damage and softening enemies.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "archer",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 20,
-        health: 20,
-        meleeAttack: 8,
-        meleeDefense: 10,
-        missileBaseDamage: 13,
-        missileAPDamage: 4,
-        accuracy: 55,
-        armor: "Leather",
-        speed: 0.85,
-        range: 700,
-        morale: 50,
-        cost: 25
-      }
-    },
-    {
-      name: "Bomb",
-      desc: "Explosive burst unit. Used for strong pressure and clustered targets.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "peasant",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 2,
-        health: 20,
-        meleeAttack: 8,
-        meleeDefense: 8,
-        missileBaseDamage: 30,
-        missileAPDamage: 100,
-        accuracy: 50,
-        armor: "Leather",
-        speed: 0.7,
-        range: 140,
-        morale: 60,
-        cost: 65
-      }
-    },
-    {
-      name: "Camel Cannon",
-      desc: "Small artillery cannon supplied by a Camel based on early 13th century findings of Wuwei.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "camel_cannon",
-      stats: {
-        weightClass: "Cavalry",
-        isRanged: true,
-        ammo: 60,
-        health: 50,
-        meleeAttack: 12,
-        meleeDefense: 14,
-        missileBaseDamage: 35,
-        missileAPDamage: 80,
-        accuracy: 40,
-        armor: "Cloth",
-        speed: 0.75,
-        range: 850,
-        morale: 80,
-        cost: 100
-      }
-    },
-    {
-      name: "Crossbowman",
-      desc: "Core anti-armor ranged unit. Best at punching through armored targets.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "crossbow",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 30,
-        health: 20,
-        meleeAttack: 10,
-        meleeDefense: 5,
-        missileBaseDamage: 12,
-        missileAPDamage: 28,
-        accuracy: 65,
-        armor: "Partial Lamellar",
-        speed: 0.7,
-        range: 700,
-        morale: 50,
-        cost: 35
-      }
-    },
-    {
-      name: "Elite Lancer",
-      desc: "Top-tier cavalry. Very durable and built for decisive charges.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "lancer",
-      stats: {
-        weightClass: "Heavy Cavalry",
-        health: 100,
-        meleeAttack: 28,
-        meleeDefense: 24,
-        armor: "Super Heavy + 5",
-        speed: 1.2,
-        range: 25,
-        morale: 85,
-        cost: 150
-      }
-    },
-    {
-      name: "Firelance",
-      desc: "Short-range shock infantry. Strong burst unit that can punish close targets fast.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "spearman",
-      stats: {
-        weightClass: "Heavy Infantry",
-        isRanged: true,
-        ammo: 1,
-        health: 20,
-        meleeAttack: 16,
-        meleeDefense: 14,
-        missileBaseDamage: 14,
-        missileAPDamage: 45,
-        accuracy: 55,
-        armor: "Partial Lamellar",
-        speed: 0.8,
-        range: 30,
-        morale: 60,
-        cost: 50
-      }
-    },
-    {
-      name: "Glaiveman",
-      desc: "Solid melee fighter with balanced offense and defense.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "two_handed",
-      stats: {
-        weightClass: "Heavy Infantry",
-        health: 30,
-        meleeAttack: 18,
-        meleeDefense: 14,
-        armor: "Partial Lamellar",
-        speed: 0.75,
-        range: 20,
-        morale: 65,
-        cost: 45
-      }
-    },
-    {
-      name: "Hand Cannoneer",
-      desc: "High-damage gunner. Strong ranged burst but not built for melee.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "gun",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 30,
-        health: 20,
-        meleeAttack: 10,
-        meleeDefense: 12,
-        missileBaseDamage: 25,
-        missileAPDamage: 50,
-        accuracy: 65,
-        armor: "Cloth",
-        speed: 0.75,
-        range: 800,
-        morale: 70,
-        cost: 70
-      }
-    },
-    {
-      name: "Heavy Crossbowman",
-      desc: "Durable ranged unit with stronger shots and better staying power.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "crossbow",
-      stats: {
-        weightClass: "Heavy Infantry",
-        isRanged: true,
-        ammo: 25,
-        health: 40,
-        meleeAttack: 14,
-        meleeDefense: 14,
-        missileBaseDamage: 15,
-        missileAPDamage: 30,
-        accuracy: 70,
-        armor: "Full Lamellar",
-        speed: 0.6,
-        range: 800,
-        morale: 65,
-        cost: 50
-      }
-    },
-    {
-      name: "Heavy Firelance",
-      desc: "More durable, stronger version of Firelance with better morale and damage.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "spearman",
-      stats: {
-        weightClass: "Heavy Infantry",
-        isRanged: true,
-        ammo: 2,
-        health: 40,
-        meleeAttack: 20,
-        meleeDefense: 20,
-        missileBaseDamage: 20,
-        missileAPDamage: 60,
-        accuracy: 60,
-        armor: "Full Lamellar",
-        speed: 0.75,
-        range: 30,
-        morale: 70,
-        cost: 80
-      }
-    },
-    {
-      name: "Heavy Horse Archer",
-      desc: "Stronger armored mounted archer with better combat stats and survivability.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "horse_archer",
-      stats: {
-        weightClass: "Heavy Cavalry",
-        isRanged: true,
-        ammo: 20,
-        health: 40,
-        meleeAttack: 16,
-        meleeDefense: 18,
-        missileBaseDamage: 11,
-        missileAPDamage: 6,
-        accuracy: 65,
-        armor: "Full Lamellar",
-        speed: 1.4,
-        range: 700,
-        morale: 70,
-        cost: 75
-      }
-    },
-    {
-      name: "Heavy Lancer",
-      desc: "Stronger cavalry with better armor and melee power.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "lancer",
-      stats: {
-        weightClass: "Heavy Cavalry",
-        health: 50,
-        meleeAttack: 24,
-        meleeDefense: 20,
-        armor: "Full Lamellar",
-        speed: 1.2,
-        range: 25,
-        morale: 75,
-        cost: 90
-      }
-    },
-    {
-      name: "Javelinier",
-      desc: "Throwing skirmisher. Good for ranged pokes before closing into melee.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "throwing",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 4,
-        health: 20,
-        meleeAttack: 10,
-        meleeDefense: 10,
-        missileBaseDamage: 18,
-        missileAPDamage: 15,
-        accuracy: 50,
-        armor: "Leather",
-        speed: 0.85,
-        range: 300,
-        morale: 50,
-        cost: 25
-      }
-    },
-    {
-      name: "Lancer",
-      desc: "Fast charge cavalry unit. Good for flanks, charges, and chasing ranged troops.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "lancer",
-      stats: {
-        weightClass: "Cavalry",
-        health: 25,
-        meleeAttack: 18,
-        meleeDefense: 14,
-        armor: "Partial Lamellar",
-        speed: 1.5,
-        range: 25,
-        morale: 60,
-        cost: 60
-      }
-    },
-    {
-      name: "Light Two Handed",
-      desc: "Fast melee attacker. High damage, but less durable than shield troops.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "two_handed",
-      stats: {
-        weightClass: "Light Infantry",
-        health: 20,
-        meleeAttack: 30,
-        meleeDefense: 12,
-        armor: "Leather",
-        speed: 0.9,
-        range: 20,
-        morale: 65,
-        cost: 35
-      }
-    },
-    {
-      name: "Mangudai",
-      desc: "Elite mounted archer. Fast, deadly, and built for advanced skirmishing.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "horse_archer",
-      stats: {
-        weightClass: "Heavy Cavalry",
-        isRanged: true,
-        ammo: 35,
-        health: 45,
-        meleeAttack: 18,
-        meleeDefense: 16,
-        missileBaseDamage: 14,
-        missileAPDamage: 8,
-        accuracy: 75,
-        armor: "Super Heavy",
-        speed: 1.8,
-        range: 700,
-        morale: 80,
-        cost: 155
-      }
-    },
-    {
-      name: "Militia",
-      desc: "Cheap starter infantry. Good for holding space early, but weak in long fights.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "peasant",
-      stats: {
-        weightClass: "Light Infantry",
-        health: 20,
-        meleeAttack: 12,
-        meleeDefense: 6,
-        armor: "Cloth",
-        speed: 1.1,
-        range: 25,
-        morale: 35,
-        cost: 5
-      }
-    },
-    {
-      name: "Poison Crossbowman",
-      desc: "Accurate ranged unit focused on sustained pressure and reliable damage.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "crossbow",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 30,
-        health: 20,
-        meleeAttack: 12,
-        meleeDefense: 12,
-        missileBaseDamage: 60,
-        missileAPDamage: 1,
-        accuracy: 90,
-        armor: "Leather",
-        speed: 0.8,
-        range: 400,
-        morale: 55,
-        cost: 45
-      }
-    },
-    {
-      name: "Repeater Crossbowman",
-      desc: "Fast-firing ranged unit. Great for steady damage output.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "crossbow",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 40,
-        health: 30,
-        meleeAttack: 8,
-        meleeDefense: 10,
-        missileBaseDamage: 15,
-        missileAPDamage: 2,
-        accuracy: 45,
-        armor: "Partial Lamellar",
-        speed: 0.75,
-        range: 700,
-        morale: 55,
-        cost: 40
-      }
-    },
-    {
-      name: "Rocket",
-      desc: "Long-range pressure unit. Best for area damage and enemy disruption.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "throwing",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 50,
-        health: 30,
-        meleeAttack: 8,
-        meleeDefense: 8,
-        missileBaseDamage: 15,
-        missileAPDamage: 5,
-        accuracy: 55,
-        armor: "Leather",
-        speed: 0.5,
-        range: 520,
-        morale: 55,
-        cost: 55
-      }
-    },
-    {
-      name: "Shielded Infantry",
-      desc: "Defensive frontline unit with shield block. Good for soaking enemy pressure.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "sword_shield",
-      stats: {
-        weightClass: "Heavy Infantry",
-        health: 40,
-        meleeAttack: 10,
-        meleeDefense: 28,
-        armor: "Leather",
-        shieldBlockChance: 25,
-        speed: 0.5,
-        range: 20,
-        morale: 60,
-        cost: 30
-      }
-    },
-    {
-      name: "Slinger",
-      desc: "Cheap harassment unit. Weak individually, useful in early skirmishes.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "throwing",
-      stats: {
-        weightClass: "Light Infantry",
-        isRanged: true,
-        ammo: 30,
-        health: 20,
-        meleeAttack: 6,
-        meleeDefense: 8,
-        missileBaseDamage: 5,
-        missileAPDamage: 7,
-        accuracy: 50,
-        armor: "Cloth",
-        speed: 1.0,
-        range: 650,
-        morale: 40,
-        cost: 15
-      }
-    },
-    {
-      name: "Spearman",
-      desc: "Defensive anti-cavalry infantry. Strong when holding a line.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "spearman",
-      stats: {
-        weightClass: "Heavy Infantry",
-        health: 20,
-        meleeAttack: 14,
-        meleeDefense: 16,
-        armor: "Partial Lamellar",
-        bonusVsLarge: 20,
-        speed: 0.75,
-        range: 30,
-        morale: 55,
-        cost: 10
-      }
-    },
-    {
-      name: "War Elephant",
-      desc: "Massive shock unit. Extremely strong morale and melee presence, but expensive.",
-      mounted: true,
-      renderMode: "cavalry",
-      renderType: "elephant",
-      stats: {
-        weightClass: "Elephant",
-        health: 100,
-        meleeAttack: 35,
-        meleeDefense: 20,
-        armor: "Juggernaut",
-        speed: 0.9,
-        range: 25,
-        morale: 100,
-        cost: 300
-      }
-    },
-    {
-      name: "Heavy Two Handed",
-      desc: "Slow heavy bruiser. Better for breaking enemy lines and finishing fights.",
-      mounted: false,
-      renderMode: "infantry",
-      renderType: "two_handed",
-      stats: {
-        weightClass: "Heavy Infantry",
-        health: 25,
-        meleeAttack: 36,
-        meleeDefense: 16,
-        armor: "Full Lamellar",
-        speed: 0.65,
-        range: 20,
-        morale: 75,
-        cost: 60
-      }
-    },
-{
-  name: "Horse Archer",
-  desc: "Fast mobile ranged unit. Best for skirmishing, chasing, and hit-and-run tactics.",
-  mounted: true,
-  renderMode: "cavalry",
-  renderType: "horse_archer",
-  stats: {
-    weightClass: "Cavalry",
-    isRanged: true,
-    ammo: 20,
-    health: 40,
-    meleeAttack: 12,
-    meleeDefense: 12,
-    missileBaseDamage: 11,
-    missileAPDamage: 4,
-    accuracy: 60,
-    armor: "Partial Lamellar",
-    speed: 1.6,
-    range: 700,
-    morale: 60,
-    cost: 50
-  }
-}
-].sort((a, b) => a.name.localeCompare(b.name));
-
   const STAT_ORDER = [
     "weightClass",
     "isRanged",
@@ -568,7 +15,6 @@
     "accuracy",
     "armor",
     "bonusVsLarge",
-    "shieldBlockChance",
     "speed",
     "range",
     "morale",
@@ -587,9 +33,8 @@
     accuracy: "Accuracy",
     armor: "Armor",
     bonusVsLarge: "Bonus vs Large",
-    shieldBlockChance: "Shield Block",
-    speed: "Speed",
-    range: "Range",
+    speed: "Moving Speed",
+    range: "Range (in feet)",
     morale: "Morale",
     cost: "Cost"
   };
@@ -761,7 +206,7 @@ if (lower.includes("camel cannon")) {
     return { mode: "cavalry", type: "elephant", ammo, zoom: 1.22, xBias: 0.42, yBias: 0.76 };
   }
 
-  if (lower.includes("mangudai") || lower.includes("horse archer")) {
+  if (lower.includes("keshig") || lower.includes("horse archer")) {
     return { mode: "cavalry", type: "horse_archer", ammo, zoom: 1.45, xBias: 0.44, yBias: 0.74 };
   }
 
@@ -891,6 +336,11 @@ function renderPortrait(canvas, unit) {
 function createUnitsGuide() {
   const existing = document.getElementById("units-guide-modal");
   if (existing) return existing;
+  
+  // ---> PULL DYNAMIC DATA HERE <---
+  const liveUnitData = window.getEncyclopediaData();
+
+
 
   const modal = create("div", {
     position: "fixed",
@@ -1046,6 +496,7 @@ closeBtn.className = "close-btn"; // SURGERY: Protect this from mobile button ov
 
 // IMPORTANT: set this BEFORE appending children
 right.style.position = "relative";
+right.style.paddingTop = "50px"; // moves content below the close button
 rightTop.style.position = "relative";
 
 // SURGERY: Make close button red, larger, and more prominent
@@ -1095,6 +546,12 @@ rightTop.style.position = "relative";
   modal.appendChild(panel);
 
 function selectUnit(unit) {
+	
+	if (!unit) {
+    console.warn("Units Guide: Attempted to select an undefined unit.");
+    return;
+  }
+  
 modal.currentUnit = unit; // SURGERY: Track current unit for resizing
     const nameEl = modal.querySelector("#units-selected-name");
 	
@@ -1120,10 +577,12 @@ modal.currentUnit = unit; // SURGERY: Track current unit for resizing
     renderPortrait(canvas, unit);
   }
 
-  const list = UNIT_DATA.map((unit) => {
+ // Change UNIT_DATA.map to liveUnitData.map
+  const list = liveUnitData.map((unit) => {
     const row = document.createElement("button");
     row.type = "button";
     row.dataset.unit = unit.name;
+    // ... keep your styling ...
     row.textContent = unit.name;
     Object.assign(row.style, {
       display: "block",
@@ -1157,8 +616,15 @@ modal.currentUnit = unit; // SURGERY: Track current unit for resizing
   left.appendChild(leftHeader);
   left.appendChild(leftList);
 
-  modal.selectUnit = selectUnit;
-  modal.setInitial = () => selectUnit(UNIT_DATA[0]);
+modal.selectUnit = selectUnit;
+// Change UNIT_DATA[0] to liveUnitData[0]
+  modal.setInitial = () => {
+      if (liveUnitData && liveUnitData.length > 0) {
+          selectUnit(liveUnitData[0]);
+      } else {
+          console.warn("Units Guide: No units found to set as initial.");
+      }
+  };
 
 // SURGERY: Redraw the canvas portrait when the browser window is maximized/minimized
   window.addEventListener('resize', () => {
@@ -1262,7 +728,7 @@ function addStyles() {
       align-items: flex-start !important; /* Move from center to top */
       padding-top: 60px !important;       /* Shift down 60px to clear the top loading bar */
       
-      background: rgba(0, 0, 0, 0.4);      /* Slight dimming of the menu background */
+background: #000000;
       z-index: 10000 !important;           /* Just below the #loading text (10001) */
       overflow-y: auto;
       pointer-events: auto;

@@ -18,63 +18,64 @@ const COMMAND_GROUPS = {
 
 // --- CORE INPUT LISTENER ---
 document.addEventListener("keydown", (event) => {
-    if (!inBattleMode || !event || typeof event.key !== "string") return;
+    // 1. TOP-LEVEL SAFETY CHECK (Must come first to prevent crashes)
+    if (!inBattleMode || !event || !battleEnvironment || !Array.isArray(battleEnvironment.units)) return;
+    
+    const key = (typeof event.key === "string") ? event.key.toLowerCase() : null;
+    if (!key) return;
 
-    const key = event.key.toLowerCase();
-    if (!battleEnvironment || !Array.isArray(battleEnvironment.units)) return;
+    // 2. REVISED CHAIN OF COMMAND CHECK
+    // We look for the unit that is BOTH a commander and on the player's side
+    const activeCommander = battleEnvironment.units.find(u => u.side === 'player' && (u.isCommander || u.isPlayer));
+    
+    if (!activeCommander || activeCommander.hp <= 0) {
+        console.log("Command failed: Player General is fallen or not found!");
+        return; 
+    }
 
-    const playerUnits = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0);
-    const commander = battleEnvironment.units.find(u => u.isCommander);
+    // 3. DEFINE SCOPES
+    const playerUnits = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && !u.isPlayer && u.hp > 0);
+    const commander = activeCommander; // Alias for use in formation math
 
     // =========================
-    // 1-5: UNIT SELECTION (TOGGLE)
+    // 1-5: UNIT SELECTION
     // =========================
     if (["1", "2", "3", "4", "5"].includes(key)) {
         let groupNum = parseInt(key);
         
         if (currentSelectionGroup === groupNum) {
-            // TOGGLE OFF: Deselect current group & lock their formation to the commander's last known coordinate
             currentSelectionGroup = null;
             playerUnits.forEach(u => {
                 if (u.selected) {
                     u.selected = false;
                     if (u.hasOrders && u.orderType === "follow") {
                         u.orderType = "hold_position";
-                        if (commander) {
-                            u.orderTargetPoint = {
-                                x: commander.x + (u.formationOffsetX || 0),
-                                y: commander.y + (u.formationOffsetY || 0)
-                            };
-                        }
-                    }
-                }
-            });
-            if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
-            return;
-        }
-
-        // SWITCHING GROUPS
-        currentSelectionGroup = groupNum;
-        
-        playerUnits.forEach(u => {
-            let willBeSelected = (groupNum === 5) ? true : COMMAND_GROUPS[groupNum].includes(u.stats.role);
-            
-            // If the unit is being implicitly deselected, lock its formation to hold_position
-            if (u.selected && !willBeSelected) {
-                if (u.hasOrders && u.orderType === "follow") {
-                    u.orderType = "hold_position";
-                    if (commander) {
                         u.orderTargetPoint = {
                             x: commander.x + (u.formationOffsetX || 0),
                             y: commander.y + (u.formationOffsetY || 0)
                         };
                     }
                 }
+            });
+            return;
+        }
+
+        currentSelectionGroup = groupNum;
+        playerUnits.forEach(u => {
+            let willBeSelected = (groupNum === 5) ? true : (COMMAND_GROUPS[groupNum] && COMMAND_GROUPS[groupNum].includes(u.stats.role));
+            
+            if (u.selected && !willBeSelected) {
+                if (u.hasOrders && u.orderType === "follow") {
+                    u.orderType = "hold_position";
+                    u.orderTargetPoint = { x: commander.x + (u.formationOffsetX || 0), y: commander.y + (u.formationOffsetY || 0) };
+                }
             }
             u.selected = willBeSelected;
         });
         return;
     }
+
+ 
 
     const selectedUnits = playerUnits.filter(u => u.selected);
     if (selectedUnits.length === 0) return;
@@ -285,7 +286,7 @@ case "circle":
 function processTacticalOrders() {
     if (!inBattleMode || !battleEnvironment.units) return;
     
-    const commander = battleEnvironment.units.find(u => u.isCommander);
+const commander = battleEnvironment.units.find(u => u.isCommander && u.side === 'player');
 
     battleEnvironment.units.forEach(unit => {
         if (unit.side !== "player" || unit.isCommander || unit.hp <= 0) return;

@@ -97,12 +97,35 @@ function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttack
             ctx.beginPath(); ctx.moveTo(-1.5, -18.5); ctx.lineTo(1.5, -18.5); ctx.lineTo(0, -23); ctx.fill(); 
             ctx.fillStyle = "#4e342e"; 
             ctx.fillRect(-5, -14, 3, 5); ctx.fillRect(2, -14, 3, 5);
-        } else if (factionColor === "#00838f") {
-            // Iransar (Teal) -> Heavy Steel Conical Helm with Wrap
-            ctx.fillStyle = "#eeeeee";
-            ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill();
-            ctx.fillStyle = "#9e9e9e"; // Steel tip
-            ctx.beginPath(); ctx.arc(0, -15, 3.5, Math.PI, 0); ctx.fill(); ctx.stroke();
+} else if (factionColor === "#00838f") {
+            // Dali Kingdom (Hmong) -> Heavy Woven Rattan Helmet
+            ctx.fillStyle = "#8d6e63";   // Dark Lacquered Rattan
+            ctx.strokeStyle = "#5d4037"; // Deep brown for the weave lines
+            ctx.lineWidth = 0.5;
+
+            // 1. The main conical structure of the rattan helm
+            ctx.beginPath();
+            ctx.moveTo(-6, -13); // Bottom Left
+            ctx.lineTo(0, -21);  // High Point (Conical peak)
+            ctx.lineTo(6, -13);  // Bottom Right
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 2. Add the Woven Texture (Cross-hatching)
+            // This adds small detail lines to make it look like organic material
+            ctx.beginPath();
+            // Horizontal bands
+            ctx.moveTo(-3, -16); ctx.lineTo(3, -16);
+            ctx.moveTo(-4.5, -14.5); ctx.lineTo(4.5, -14.5);
+            // Vertical supports
+            ctx.moveTo(-2, -13); ctx.lineTo(-0.5, -20);
+            ctx.moveTo(2, -13); ctx.lineTo(0.5, -20);
+            ctx.stroke();
+
+            // 3. The Top Knob (Traditional finish for these hats/helms)
+            ctx.fillStyle = "#5d4037";
+            ctx.fillRect(-1, -22, 2, 2);
 } else {
     // Default (Chinese/Korean) -> Steel Dome with Lamellar Neck Guard
     ctx.fillStyle = "#9e9e9e";
@@ -113,12 +136,23 @@ function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttack
     ctx.fillRect(-4.5, -14, 9, 1.5); 
 }
     } else if (armorVal >= 8) {
-        // --- MEDIUM TIER -> FACTION SPECIFIC LIGHT HATS ---
+  // --- MEDIUM TIER -> FACTION SPECIFIC LIGHT HATS ---
         if (factionColor === "#c2185b") { 
-            // Yamato -> Ashigaru Jingasa (Flat Conical Hat)
-            ctx.fillStyle = "#212121"; ctx.strokeStyle = "#fbc02d"; ctx.lineWidth = 0.5;
-            ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(0, -15); ctx.lineTo(6, -12);
-            ctx.closePath(); ctx.fill(); ctx.stroke();
+            // Yamato -> Ashigaru Jingasa (Peasant Style: Iron/Black Wood)
+            // Removed gold stroke; used a dark grey outline for a worn metal look
+            ctx.fillStyle = "#212121"; 
+            ctx.strokeStyle = "#424242"; 
+            ctx.lineWidth = 0.5;
+
+            // Revised coordinates: Lowered slightly to avoid gaps
+            ctx.beginPath(); 
+            ctx.moveTo(-6, -13); 
+            ctx.lineTo(0, -16); 
+            ctx.lineTo(6, -13);
+            ctx.closePath(); 
+            ctx.fill(); 
+            ctx.stroke();
+        
         } else if (factionColor === "#1976d2" || factionColor === "#455a64") {
 
 			
@@ -155,14 +189,28 @@ if (isMongolFaction) {
     }
 }
         
-		} else if (factionColor === "#00838f") {
-            // Iransar -> Simple Cloth Turban
-ctx.fillStyle = "#eeeeee";
-    // 1. The top dome of the turban (Half-circle)
-    ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.fill();
-    // 2. The cloth wrap wrapping around the forehead
-    ctx.fillRect(-4, -14, 8, 2);
-        } else {
+} else if (factionColor === "#00838f") {
+// Dali Kingdom (Hmong) -> Large Indigo Turban with Silver Highlight
+// Dali Kingdom (Hmong) -> Large Indigo Turban with Silver Highlight
+            ctx.fillStyle = "#1a237e"; // Deep indigo-dyed cloth color
+            
+            // 1. The main bulky wrap (Half size)
+            // Lowered to -14.5 to eliminate the final gap
+            ctx.fillRect(-3, -14.5, 6, 2.5); 
+            
+            // 2. The rounded top layer (Half radius)
+            // Lowered center to match the base at -14.5
+            ctx.beginPath(); 
+            ctx.arc(0, -14.5, 3, Math.PI, 0); 
+            ctx.fill();
+            
+            // 3. The Iconic Silver Clasp/Ornament (Half size)
+            // Positioned centered on the new lower wrap
+            ctx.fillStyle = "#e0e0e0"; 
+            ctx.fillRect(-0.5, -15.5, 1, 1);
+        }
+		
+		else {
             // Default/Chinese/Viet -> Bamboo Rice Hat
             ctx.fillStyle = "#8d6e63"; 
             ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(0, -16); ctx.lineTo(6, -12);
@@ -696,169 +744,173 @@ else if (type === "two_handed") {
         ctx.lineTo(12 * dir, 6);
         ctx.stroke();
     }
-}
-	else if (type === "archer") {
-    let b = (typeof bob !== 'undefined') ? bob : 0; 
-    let ammo = (typeof unitAmmo !== 'undefined') ? unitAmmo : 1; 
+} else if (type === "archer") {
+	    let b = (typeof bob !== 'undefined') ? bob : 0; 
+	    let ammo = (typeof unitAmmo !== 'undefined') ? unitAmmo : 1; 
 
-    ctx.save();
-    ctx.translate(0, b); // Apply global bob to the whole unit
+	    ctx.save();
+	    ctx.translate(0, b); // Apply global bob to the whole unit
 
-    // --- THE QUIVER (On the back, visible in both modes) ---
-    ctx.fillStyle = "#3e2723"; ctx.fillRect(-5, -6, 4, 10);
-    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 0.5;
-    ctx.beginPath(); ctx.moveTo(-3, -6); ctx.lineTo(-1, -12); ctx.stroke(); 
+	    // --- THE QUIVER (On the back, visible in both modes) ---
+	    ctx.fillStyle = "#3e2723"; ctx.fillRect(-5, -6, 4, 10);
+	    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 0.5;
+	    ctx.beginPath(); ctx.moveTo(-3, -6); ctx.lineTo(-1, -12); ctx.stroke(); 
 
-    // --- OUT OF AMMO: Melee Fallback ---
-    if (ammo <= 0) {
-        let meleeCycle = isAttacking ? (Date.now() / 600) % 1.0 : 0;
-        let swingAngle = isAttacking ? Math.sin(meleeCycle * Math.PI) * (Math.PI / 1.5) : 0;
+	    // --- OUT OF AMMO: Melee Fallback ---
+	    if (ammo <= 0) {
+	        let meleeCycle = isAttacking ? (Date.now() / 600) % 1.0 : 0;
+	        let swingAngle = isAttacking ? Math.sin(meleeCycle * Math.PI) * (Math.PI / 1.5) : 0;
 
-        // 1. Draw Stowed Bow on the back
-        ctx.save();
-        ctx.translate(-3, -1);
-        ctx.rotate(Math.PI / 1.2); // Angled diagonally across the back
-        
-        // Bow Limbs
-        ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
-        ctx.beginPath(); 
-        ctx.moveTo(-2, -12); 
-        ctx.quadraticCurveTo(6, -6, 0, 0); // Top recurve
-        ctx.quadraticCurveTo(6, 6, -2, 12);  // Bottom recurve
-        ctx.stroke();
-        
-        // Taut Bowstring
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; ctx.lineWidth = 0.6;
-        ctx.beginPath(); 
-        ctx.moveTo(-2, -12); 
-        ctx.lineTo(-2, 12); 
-        ctx.stroke();
-        ctx.restore();
+	        // 1. Draw Stowed Bow on the back
+	        ctx.save();
+	        ctx.translate(-3, -1);
+	        ctx.rotate(Math.PI / 1.2); 
+	        
+	        // Bow Limbs
+	        ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
+	        ctx.beginPath(); 
+	        ctx.moveTo(-5, -18); 
+	        ctx.quadraticCurveTo(3, -6, -1, 0); 
+	        ctx.quadraticCurveTo(3, 6, -5, 18);  
+	        ctx.stroke();
+	        
+	        // Taut Bowstring
+	        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; ctx.lineWidth = 0.6;
+	        ctx.beginPath(); ctx.moveTo(-5, -18); ctx.lineTo(-5, 18); ctx.stroke();
+	        ctx.restore();
 
-        // 2. Draw Shortsword & Hand
-        ctx.save();
-        ctx.translate(4, -8); // Shoulder/arm position
-        ctx.rotate(swingAngle);
-        
-        // Hand
-        ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI*2); ctx.fill(); 
-        // Sword Blade
-        ctx.fillStyle = "#9e9e9e"; ctx.fillRect(-1.5, -14, 3, 14); 
-        ctx.beginPath(); ctx.moveTo(-1.5, -14); ctx.lineTo(0, -17); ctx.lineTo(1.5, -14); ctx.fill(); // Tip
-        // Sword Hilt & Crossguard
-        ctx.fillStyle = "#5d4037"; ctx.fillRect(-1, 0, 2, 4); 
-        ctx.fillStyle = "#e0e0e0"; ctx.fillRect(-3, -2, 6, 2); 
-        ctx.restore();
+	        // 2. Draw Shortsword & Hand
+	        ctx.save();
+	        ctx.translate(4, -8); 
+	        ctx.rotate(swingAngle);
+	        
+	        ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI*2); ctx.fill(); 
+	        ctx.fillStyle = "#9e9e9e"; ctx.fillRect(-1.5, -14, 3, 14); 
+	        ctx.beginPath(); ctx.moveTo(-1.5, -14); ctx.lineTo(0, -17); ctx.lineTo(1.5, -14); ctx.fill(); 
+	        ctx.fillStyle = "#5d4037"; ctx.fillRect(-1, 0, 2, 4); 
+	        ctx.fillStyle = "#e0e0e0"; ctx.fillRect(-3, -2, 6, 2); 
+	        ctx.restore();
 
-        ctx.restore(); // Restore global unit translate
-        return; // End render here
-    }
+	        ctx.restore(); 
+	        return; 
+	    }
 
-    // --- RANGED COMBAT: Has Ammo ---
-    
-    // --- SURGERY START: Animation Cycle Timing ---
-    // We keep the slightly faster 1.8s cycle, but we shift the release window
-    let archerTime = Date.now() / 1800; 
-    let cycle = isAttacking ? archerTime % 1.0 : 0.95;
-    // --- SURGERY END ---
-    
-    let handX = 6, handY = -8; 
-    let drawHandX = handX, drawHandY = handY;
-    let bowKhatra = 0;
-    let hasArrow = false;
+	   // --- RANGED COMBAT ---
+	
+	// Set your archer's max cooldown (adjust 150 to whatever your engine uses for this unit)
+	let maxCool = (typeof unitMaxCool !== 'undefined') ? unitMaxCool : 150; 
+	let cdown = (typeof cooldown !== 'undefined') ? cooldown : 0;
+	
+	// cycle progresses perfectly from 0.0 (attack starts) to 1.0 (projectile spawns)
+	let cycle = isAttacking ? Math.max(0, Math.min(1.0, 1.0 - (cdown / maxCool))) : 0;
+	
+	let handX = 6, handY = -8; 
+	
+	// Strict Anchor Points
+	let restX = handX - 5; 
+	let restY = handY;
+	let quiverX = -2;
+	let quiverY = -12;
+	let fullDrawX = handX - 16;
+	let fullDrawY = handY;
 
-    // --- SURGERY START: String Anchor Points ---
-    // Initialize string separate from hand to allow for "snapping"
-    let stringX = handX - 1; 
-    let stringY = handY;
-    // --- SURGERY END ---
+	// State Variables
+	let drawHandX = restX;
+	let drawHandY = restY;
+	let stringX = restX;
+	let stringY = restY;
+	let hasArrow = false;
+	let arrowAngle = 0;
+	let bowKhatra = 0;
 
-    // 4-Phase Logic Machine
-    if (cycle < 0.2) { 
-        // Phase 1: REACH - Hand goes to back
-        let p = cycle / 0.2;
-        drawHandX = handX - (p * 10); 
-        drawHandY = handY - (p * 4);
-        hasArrow = true;
-        stringX = handX - 1; // String stays at rest
-    } else if (cycle < 0.4) { 
-        // Phase 2: NOCK - Bring arrow to bow
-        let p = (cycle - 0.2) / 0.2;
-        drawHandX = (handX - 10) + (10 * p); 
-        drawHandY = (handY - 4) + (4 * p);
-        hasArrow = true;
-        stringX = handX - 1; // String stays at rest
-    } 
-    // --- SURGERY START: Extended Draw Phase ---
-    // We moved the end of this phase from 0.75 to 0.95
-    else if (cycle < 0.95) { 
-        let p = (cycle - 0.4) / 0.55; // Now calculated over 55% of the cycle
-        drawHandX = handX - (p * 12);
-        drawHandY = handY;
-        hasArrow = true;
-        stringX = drawHandX; // String follows the hand perfectly
-        stringY = drawHandY;
-    } else { 
-        // Phase 4: RELEASE - Ultra-fast snap (0.95 to 1.0)
-        let p = (cycle - 0.95) / 0.05; // 5% release window
-        bowKhatra = 0.4 * (1 - p);
-        drawHandX = handX - 12 + (p * 4); // Recoil
-        drawHandY = handY;
-        
-        hasArrow = false; // Arrow is gone!
-        stringX = handX - 1; // String snaps back to neutral instantly
-        stringY = handY;
-    }
-    // --- SURGERY END ---
+	// Phase Logic
+	if (!isAttacking) {
+		// Idle resting pose
+		drawHandX = restX; drawHandY = restY;
+		stringX = restX; stringY = restY;
+	} else if (cycle < 0.15) { 
+		// 1. Reach back to quiver
+		let ph = cycle / 0.15;
+		drawHandX = restX + (quiverX - restX) * ph; 
+		drawHandY = restY + (quiverY - restY) * ph;
+	} else if (cycle < 0.35) { 
+		// 2. Pull arrow out and bring to string (Nocking)
+		let ph = (cycle - 0.15) / 0.20;
+		drawHandX = quiverX + (restX - quiverX) * ph; 
+		drawHandY = quiverY + (restY - quiverY) * ph;
+		hasArrow = true;
+		arrowAngle = (-Math.PI / 1.5) * (1 - ph); // Rotate arrow into position
+	} else if (cycle < 0.75) { 
+		// 3. Draw the bow
+		let ph = (cycle - 0.35) / 0.40; 
+		let easeOut = 1 - Math.pow(1 - ph, 3); // Smooth pull
+		drawHandX = restX + (fullDrawX - restX) * easeOut;
+		drawHandY = restY + (fullDrawY - restY) * easeOut;
+		hasArrow = true;
+		stringX = drawHandX; // String follows hand
+		stringY = drawHandY;
+	} else if (cycle < 0.98) { 
+		// 4. Hold full draw 
+		drawHandX = fullDrawX;
+		drawHandY = fullDrawY;
+		hasArrow = true;
+		stringX = fullDrawX; 
+		stringY = fullDrawY;
+	} else { 
+		// 5. Loose / Khatra - Snaps precisely as cooldown hits 0
+		let ph = (cycle - 0.98) / 0.02; 
+		drawHandX = fullDrawX + (restX - fullDrawX) * ph; // Hand drops back to rest
+		drawHandY = fullDrawY + (restY - fullDrawY) * ph;
+		stringX = restX; // String snaps instantly
+		stringY = restY;
+		bowKhatra = 0.3 * Math.sin(ph * Math.PI); // Quick bow twist
+	}
 
-    // Draw Bow
-    ctx.save();
-    ctx.translate(handX, handY); 
-    ctx.rotate(bowKhatra); 
-    ctx.translate(-handX, -handY);
-    
-    ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
-    ctx.beginPath(); 
-    ctx.moveTo(handX - 1, -18); 
-    ctx.quadraticCurveTo(handX + 10, -13, handX, handY); 
-    ctx.quadraticCurveTo(handX + 10, -3, handX - 1, 2); 
-    ctx.stroke();
-    
-    // --- SURGERY: String uses dynamic stringX/Y ---
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; ctx.lineWidth = 0.6;
-    ctx.beginPath(); 
-    ctx.moveTo(handX - 1, -18); 
-    ctx.lineTo(stringX, stringY); 
-    ctx.lineTo(handX - 1, 2); 
-    ctx.stroke();
-    ctx.restore();
+	// --- BOW RENDERING (With dynamic limb tension) ---
+	let tension = (restX - stringX) / (restX - fullDrawX); // 0 at rest, 1 at full draw
+	let tipX = (handX - 5) - (tension * 4); // Limbs bend back up to 4px
+	let dipX = (handX + 4) - (tension * 2); // Belly flattens slightly
 
-    // The Arrow
-    if (hasArrow) {
-        ctx.save();
-        ctx.translate(drawHandX, drawHandY);
-        
-        if (cycle < 0.2) {
-            ctx.rotate(-Math.PI / 3); 
-        } else if (cycle < 0.4) {
-            let p = (cycle - 0.2) / 0.2;
-            ctx.rotate((-Math.PI / 3) * (1 - p));
-        }
-        
-        ctx.fillStyle = "#8d6e63"; ctx.fillRect(-4, -0.5, 14, 1); // Shaft
-        ctx.fillStyle = "#9e9e9e"; ctx.fillRect(10, -1.5, 3, 3); // Head
-        ctx.fillStyle = "#d32f2f"; ctx.fillRect(-4, -1.5, 3, 1); ctx.fillRect(-4, 0.5, 3, 1); // Feathers
-        ctx.restore();
-    }
+	ctx.save();
+	ctx.translate(handX, handY); 
+	ctx.rotate(bowKhatra); 
+	ctx.translate(-handX, -handY);
+	
+	ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2;
+	ctx.beginPath(); 
+	ctx.moveTo(tipX, -23); // Top Tip
+	ctx.quadraticCurveTo(dipX, -13, handX - 1, handY); // Handle dip
+	ctx.quadraticCurveTo(dipX, -3, tipX, 7);      // Bottom Tip
+	ctx.stroke();
+	
+	ctx.strokeStyle = "rgba(255, 255, 255, 0.5)"; ctx.lineWidth = 0.6;
+	ctx.beginPath(); 
+	ctx.moveTo(tipX, -23); 
+	ctx.lineTo(stringX, stringY); 
+	ctx.lineTo(tipX, 7); 
+	ctx.stroke();
+	ctx.restore();
 
-    // Final Touch: Drawing hand
-    ctx.fillStyle = "#ffccbc";
-    ctx.beginPath();
-    ctx.arc(drawHandX, drawHandY, 2, 0, Math.PI * 2);
-    ctx.fill();
+	// --- ARROW RENDERING ---
+	if (hasArrow) {
+		ctx.save();
+		ctx.translate(drawHandX, drawHandY);
+		ctx.rotate(arrowAngle);
+		
+		ctx.fillStyle = "#8d6e63"; ctx.fillRect(0, -0.5, 14, 1); // Shaft
+		ctx.fillStyle = "#9e9e9e"; ctx.fillRect(14, -1.5, 3, 3); // Head
+		ctx.fillStyle = "#d32f2f"; ctx.fillRect(0, -1.5, 3, 1); ctx.fillRect(0, 0.5, 3, 1); // Feathers
+		ctx.restore();
+	}
 
-    ctx.restore(); // Restore global unit translate (for the bob)
-}
+	// --- DRAWING HAND ---
+	ctx.fillStyle = "#ffccbc";
+	ctx.beginPath();
+	ctx.arc(drawHandX, drawHandY, 2, 0, Math.PI * 2);
+	ctx.fill();
+
+	ctx.restore(); // Restore global unit translate (for the bob)
+	}
 else if (type === "throwing") {
         if (unitName === "Slinger") {
             // --- SURGERY START: Synchronized Slinger Timing ---
@@ -1336,24 +1388,76 @@ else {
         let flex = (stringPull * 0.3); 
         
         ctx.beginPath();
-        if (isHeavy) {
-            // HEAVY RECURVE (M-SHAPE)
-            // Starts at top tip
-            ctx.moveTo(anchorX, tY);
-            // Sweeps forward (reduced to 7.5 for smaller M), hits the stock/stirrup junction precisely
-            ctx.bezierCurveTo(anchorX + 7.5 * scale - flex, tY + 2, mountX + 2, -8.5, mountX, -8.5); 
-            // Returns to bottom tip
-            ctx.bezierCurveTo(mountX + 2, -8.5, anchorX + 7.5 * scale - flex, bY - 2, anchorX, bY); 
-        } else {
-            // STANDARD ARC
-            // Unified mounting: Midpoint is now forced to mountX to match the stock/stirrup junction
-            ctx.moveTo(anchorX, tY);
-            ctx.quadraticCurveTo(mountX + (3 * scale) - flex, -8.5, anchorX, bY);
+if (isHeavy) {
+ 
+ 
+
+            // --- 2. HEAVY RECURVE (The Prod) ---
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = "#3e2723"; 
+            ctx.lineCap = "round";
+
+            let cpX = mountX + (3.5 * scale) - flex; 
+            let cpYOffset = 4.0 * scale; 
+
+            ctx.beginPath();
+            ctx.moveTo(anchorX, tY); 
+            ctx.quadraticCurveTo(cpX, -8.5 - cpYOffset, mountX, -8.5);
+            ctx.quadraticCurveTo(cpX, -8.5 + cpYOffset, anchorX, bY);
+            ctx.stroke();
+
+            // --- 3. REINFORCEMENT BINDINGS (Drawn Last - "On Top") ---
+            // These now act as the "seal" to hide the junction
+            ctx.strokeStyle = "#212121";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            for (let i = -1.0; i <= 1.0; i += 1.0) {
+                // Shortened slightly to -10 and -7 so they look like they are 
+                // biting into the wood of the prod rather than floating past it
+                ctx.moveTo(mountX + i, -10);
+                ctx.lineTo(mountX + i, -7);
+            }
+            ctx.stroke();
+        }
+		 else {
+// STANDARD ARC (REVISED)
+// tipOffset adds length to the vertical spread of the bow limbs
+let tipOffset = 1.7 * scale; 
+
+ctx.lineWidth = 1.7;
+ctx.strokeStyle = "#5d4037"; // Dark wood tone
+ctx.lineCap = "round";
+
+ctx.beginPath();
+// Starts at top tip with added length
+ctx.moveTo(anchorX, tY - tipOffset);
+
+// Control point pulled slightly further to accommodate the longer limbs
+// mountX remains the center pivot to maintain stock alignment
+ctx.quadraticCurveTo(
+    mountX + (3.5 * scale) - flex, // Control point
+    -8.5,                          // Center Y
+    anchorX, bY + tipOffset        // End at bottom tip with added length
+);
+ctx.stroke();
+
+// --- REINFORCED BINDINGS ---
+// Adds visual weight to the junction where the prod is lashed to the stock
+ctx.strokeStyle = "#263238"; // Charcoal color for sinew/cord
+ctx.lineWidth = 1.2;
+ctx.beginPath();
+
+// Drawing three distinct wraps for a detailed "lashed" appearance
+for (let i = -1.5; i <= 1.5; i += 1.5) {
+    ctx.moveTo(mountX + i, -11.5);
+    ctx.lineTo(mountX + i, -5.5);
+}
+ctx.stroke();
         }
         ctx.stroke();
         
         // 2. STRING (Anchored to new tip positions)
-        ctx.strokeStyle = "rgba(220, 220, 220, 0.9)"; ctx.lineWidth = 0.7;
+        ctx.strokeStyle = "rgba(220, 220, 220, 0.9)"; ctx.lineWidth = 0.9;
         ctx.beginPath(); 
         ctx.moveTo(anchorX, tY); 
         ctx.lineTo(anchorX - stringPull, -8.5); 

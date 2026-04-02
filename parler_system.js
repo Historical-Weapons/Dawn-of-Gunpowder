@@ -401,3 +401,26 @@ function createDiplomacyButton(text, clickHandler, isAttack = false) {
 
     return btn;
 }
+
+ function closeParleUI() {
+    // Force state reset
+    inParleMode = false;
+    currentParleNPC = null;
+    savedParleTile = null;
+    isDiplomacyProcessing = false;
+
+    // HARD target the correct GUI
+    const panel = document.getElementById('parle-panel');
+    if (panel) {
+        panel.style.display = 'none';
+    }
+
+    // Resume game
+    if (player) player.isMapPaused = false;
+
+    // Optional: clear dialogue so it doesn't "ghost"
+    const dialogue = document.getElementById('parle-dialogue');
+    if (dialogue) dialogue.innerText = "";
+
+    console.log("Parle UI force-closed.");
+}

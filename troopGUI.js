@@ -36,11 +36,11 @@ const troopGUI= {
 // Faction Unique Map
     faction_uniques: {
         "goryun kingdom": "Rocket",          // Was "korean"
-        "great khaganate": "Mangudai",       // Was "mongol"
+        "great khaganate": "Keshig",       // Was "mongol"
         "jinlord confederacy": "Elite Lancer", // Was "jurchen"
         "xiaran dominion": "Camel Cannon",   // Was "xia"
-        "vietan realm": "Poison Crossbowman",// Was "viet"
-        "shahdom of iransar": "War Elephant",// Was "persian"
+        "tran realm": "Poison Crossbowman",// Was "viet"
+        "dali tribes": "War Elephant",// Was "persian"
         "hong dynasty": "Repeater Crossbowman",// Was "hong"
         "high plateau kingdoms": "Slinger",  // Was "tibetan"
         "yamato clans": "Glaiveman"          // Was "japanese"

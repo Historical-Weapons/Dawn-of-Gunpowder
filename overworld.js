@@ -114,7 +114,7 @@ function resizeCanvasAndResetCamera() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    zoom = Math.max(0.1, Math.min(7, zoom));  //default zoom
+    zoom = Math.max(0.3, Math.min(7, zoom));  //default zoom
 }
 
 function logGameEvent(message, type = "general") {
@@ -212,185 +212,52 @@ const PALETTE = {
         desert: "#bfa373", dune: "#cfae7e",
         plains: "#a3a073", meadow: "#6b7a4a",
         forest: "#425232", jungle: "#244222",
-        highlands: "#626b42", mountains: "#58694f", snow: "#d8d3c5"
+        highlands: "#626b42", mountains: "#58694f", snow: "#7B5E3F"
     };
 
     const worldMap = [];
-
-     
-    
     const TARGET_CITIES = 60; // How many cities to scatter across the map
     const cities = [];
-   
+  
+function populateCities() {
+    console.log("Settling the Empire...");
+    let attempts = 0;
+// --- 2. TERRAIN SPEED CALCULATION ---
+    // Strictly prevent NaN from bleeding into the movement math
+    let currentSpeed = (typeof speed === 'number' && !isNaN(speed)) ? speed : 0;
+    if (!inBattleMode && typeof worldMap !== 'undefined' && worldMap.length > 0) {
+        let tx = Math.floor(player.x / TILE_SIZE);
+        let ty = Math.floor(player.y / TILE_SIZE);
 
-     
-function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {//THIS ONE IS ALL MOVEMENT
-    // --- NEW: SIEGE LOCK ---
-    if (player.isSieging && !inBattleMode) {
-        player.isMoving = false;
-        return; // Completely bypass all movement logic
-    }
-    
-	// --- NEW: STUN/TOUCH LOCK ---
-    if (player.stunTimer > 0) {
-        player.stunTimer--;
-        player.isMoving = false;
-        return; // Completely bypass all movement logic while stunned
-    }
-	
-    let dx = 0, dy = 0;
-    player.isMoving = false;
-
-    // --- 1. TERRAIN SPEED CALCULATION (Original Logic) ---
-    let currentSpeed = speed;
-
-    if (!isCity && !inBattleMode) {
-        let tx = Math.floor(player.x / tileSize);
-        let ty = Math.floor(player.y / tileSize);
-        
-        // Ensure we are within map bounds before checking tile speed
-        if (map[tx] && map[tx][ty]) {
-            let tile = map[tx][ty];
-            // Use the tile's speed property; default to 1.0
-            currentSpeed = speed * (tile.speed || 1.0);
-        }
-    }
-	
-	currentSpeed *= 0.5; //player speed modifier
-	
-    // -----------------------------------------------------
-// --- 2. battleINPUT PROCESSING ---
-
-// Check if player is alive before allowing WASD/Arrow movement
-// Check if player is alive before allowing WASD/Arrow movement
-if (player.hp > 0) {
-    if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
-    if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
-    if (keys['a'] || keys['arrowleft']) { dx -= currentSpeed; player.isMoving = true; }
-    if (keys['d'] || keys['arrowright']) { dx += currentSpeed; player.isMoving = true; }
-} else {
-    // If dead, ensure the moving state is killed so animations stop
-    player.isMoving = false;
-}
-
-if (player.isMoving) player.anim++;
-
-			// 1. Calculate Intended Movement
-			let nextX = player.x + dx;
-			let nextY = player.y + dy;
-			
-			
-		// --- 3. SURGERY: MOVEMENT LOGIC & COLLISION ---
-		if (inBattleMode) {
-			let oldX = player.x;
-			let oldY = player.y;
-
-
-
-			// 2. Perform Collision Detection (Independent Axis Check for "Sliding")
-			// This uses the isBattleCollision function we defined in battlefield_system.js
-			
-			// Check X-axis movement
-			if (!isBattleCollision(nextX, player.y, player.onWall)) {
-				player.x = Math.max(0, Math.min(nextX, BATTLE_WORLD_WIDTH));
-			}
-			
-			// Check Y-axis movement
-			if (!isBattleCollision(player.x, nextY, player.onWall)) {
-				player.y = Math.max(0, Math.min(nextY, BATTLE_WORLD_HEIGHT));
-			}
-
-			// --- LADDER LOGIC: Auto-climb when touching a ladder tile ---
-			if (inSiegeBattle) {
-				let pTx = Math.floor(player.x / BATTLE_TILE_SIZE);
-				let pTy = Math.floor(player.y / BATTLE_TILE_SIZE);
-				let currentTile = (battleEnvironment.grid[pTx] && battleEnvironment.grid[pTx][pTy]);
-				
-				if (currentTile === 9) { // Ladder
-					player.onWall = true;
-				} else if (currentTile === 1 || currentTile === 5) { // Ground/Road
-					player.onWall = false;
-				}
-			}
-
-			// --- THE FIX FOR CAVSCRIPT (Animation & Commander Sync) ---
-			let cmdUnit = battleEnvironment.units.find(u => u.isCommander);
-			if (cmdUnit) {
-				// Sync physical units
-				cmdUnit.x = player.x;
-				cmdUnit.y = player.y;
-				cmdUnit.onWall = player.onWall; // Ensure commander visuals match elevation
-
-				// Calculate Velocity for rotation
-				cmdUnit.vx = cmdUnit.x - oldX;
-				cmdUnit.vy = cmdUnit.y - oldY;
-
-				// Determine if we are actually making progress (handling the collision stop)
-				let isActuallyMoving = (Math.abs(cmdUnit.vx) > 0.1 || Math.abs(cmdUnit.vy) > 0.1);
-
-				if (isActuallyMoving) {
-					cmdUnit.state = "moving";
-				} else if (cmdUnit.state !== "attacking") {
-					cmdUnit.state = "idle";
-					cmdUnit.vx = 0;
-					cmdUnit.vy = 0;
-				}
-			}
-		}
-    else if (!isCity) {
-        // --- WORLD MAP COLLISION (Original Logic) ---
-        let ntx = Math.floor(nextX / tileSize);
-        let nty = Math.floor(nextY / tileSize);
-        
-        if (ntx >= 0 && ntx < cols && nty >= 0 && nty < rows) {
-            // Check if destination is impassable (like Deep Ocean)
-            if (!map[ntx][nty].impassable) {
-                player.x = nextX;
-                player.y = nextY;
-            }
+        if (worldMap[tx] && worldMap[tx][ty]) {
+            let playerTile = worldMap[tx][ty];
+            let tileSpeed = playerTile.speed || 1.0;
+            currentSpeed = player.speed * tileSpeed;
         }
     } else {
-        // --- CITY/INTERIOR MOVEMENT ---
-        let withinX = (nextX > 50 && nextX < CITY_WORLD_WIDTH - 50);
-        let withinY = (nextY > 50); 
-
-        if (withinX && withinY) {
-            if (typeof isCityCollision === 'function') {
-                if (!isCityCollision(nextX, nextY)) {
-                    player.x = nextX;
-                    player.y = nextY;
-                }
-            } else {
-                player.x = nextX;
-                player.y = nextY;
-            }
-        }
+        currentSpeed = player.speed;
     }
 
-}
-
-
-function populateCities() {
-        console.log("Settling the Empire...");
-        let attempts = 0;
+    // --- 2. CITY GENERATION LOOP ---
+    while(cities.length < TARGET_CITIES && attempts < 10000) {
+        attempts++;
         
-        while(cities.length < TARGET_CITIES && attempts < 10000) {
-            attempts++;
-            
-            // Random coordinates, keeping a 1000px padding from the absolute map edges
+        // Random coordinates within padding
+        let cx = Math.floor(Math.random() * (WORLD_WIDTH - 2 * PADDING_X)) + PADDING_X;
+        let cy = Math.floor(Math.random() * (WORLD_HEIGHT - 2 * PADDING_Y)) + PADDING_Y;
+        
+        // Convert pixel coordinates to grid coordinates
+        let gX = Math.floor(cx / TILE_SIZE);
+        let gY = Math.floor(cy / TILE_SIZE);
 
-			let cx = Math.floor(Math.random() * (WORLD_WIDTH - 2 * PADDING_X)) + PADDING_X;
-			let cy = Math.floor(Math.random() * (WORLD_HEIGHT - 2 * PADDING_Y)) + PADDING_Y;
-						
-            let tx = Math.floor(cx / TILE_SIZE);
-            let ty = Math.floor(cy / TILE_SIZE);
-            
-            if (!worldMap[tx] || !worldMap[tx][ty]) continue;
-            let tile = worldMap[tx][ty];
+        // FIX: Define 'tile' for this specific coordinate before checking properties
+        if (worldMap && worldMap[gX] && worldMap[gX][gY]) {
+            let tile = worldMap[gX][gY];
 
- 
-                if(!tile.impassable && tile.name !== "River" && tile.name !== "Coastal" && tile.name !== "Ocean") { 
-                // Check distance to other cities (Prevent clumping / overlapping)
+            // Now check if the tile is suitable for a city
+            if(!tile.impassable && tile.name !== "River" && tile.name !== "Coastal" && tile.name !== "Ocean") { 
+                
+                // Check distance to other cities (Prevent clumping)
                 let tooClose = false;
                 for(let c of cities) {
                     if(Math.hypot(c.x - cx, c.y - cy) < 400) { // Min 400px between cities
@@ -399,26 +266,27 @@ function populateCities() {
                     }
                 }
 
-				if(!tooClose) {
-					let newCity = {
-						name: "Settlement", // Placeholder
-						pop: Math.floor(Math.random() * 10000) + 1000, // Slightly higher range for 13th c.
-						x: cx,
-						y: cy,
-						radius: 25 
-						
-					};
-					
-					// This now sets the Faction, Name, Gold, Food, and Military/Civilian split
-					initializeCityData(newCity, WORLD_WIDTH, WORLD_HEIGHT);
-					
-					cities.push(newCity);
-				}
+                if(!tooClose) {
+                    let newCity = {
+                        name: "Settlement", 
+                        pop: Math.floor(Math.random() * 10000) + 1000,
+                        x: cx,
+                        y: cy,
+                        radius: 25 
+                    };
+                    
+                    // Initialize the rest of the city data
+                    if (typeof initializeCityData === 'function') {
+                        initializeCityData(newCity, WORLD_WIDTH, WORLD_HEIGHT);
+                    }
+                    
+                    cities.push(newCity);
+                }
             }
         }
-        console.log(`Successfully generated ${cities.length} dynamic cities.`);
     }
-	
+    console.log(`Successfully generated ${cities.length} dynamic cities.`);
+}
 	
 // --- PROCEDURAL GENERATION & BAKING ---
 
@@ -1525,68 +1393,111 @@ else if (tile.name !== "Ocean" && tile.name !== "River"&& tile.name !== "Coastal
             }
         }
 
-// --- UPDATED FOREST TEXTURE LOGIC ---
-if(tile.name.includes("Forest")) {
+// --- BIOMATIC FOREST ENGINE ---
+if(tile.name.includes("Forest") || tile.color === PALETTE.jungle) {
     let nx = i / COLS;
     let ny = j / ROWS;
     
-    // Calculate Jurchen Influence (0.0 at Mongol border, 1.0 at Jurchen core)
+    // Calculate regional influences
     let jurchenFade = Math.max(0, Math.min(1, (nx - 0.45) / 0.20));
+    let isFarNorth = ny < 0.35;
+    let isDeepSouth = ny > 0.70 || tile.color === PALETTE.jungle;
+    let isAridWest = nx < 0.30;
 
-    // Dynamic Density: Dense at the core, sparse at the edge
-    let densityThreshold = (0.50 - (jurchenFade * 0.48))/3; 
+    // Density: Thicker in the South and Jurchen East
+    let densityThreshold = (0.45 - (jurchenFade * 0.1) - (ny * 0.2)) / 3;
 
     if(Math.random() > densityThreshold) { 
-        // 1. DIVERSE COLOR PALETTE
-        // Jitter the color slightly so every tree is unique
-        let baseColor = tile.color === PALETTE.jungle ? [35, 46, 26] : [54, 69, 40];
-        let jitter = Math.floor(Math.random() * 15) - 7;
-        bgCtx.fillStyle = `rgb(${baseColor[0]+jitter}, ${baseColor[1]+jitter}, ${baseColor[2]+jitter})`;
-
-        // 2. RANDOM POSITIONING (Breaks the grid)
-        let offsetX = (Math.random() - 0.5) * (TILE_SIZE * 0.4);
-        let offsetY = (Math.random() - 0.5) * (TILE_SIZE * 0.4);
-        let centerX = px + TILE_SIZE/2 + offsetX;
-        let centerY = py + TILE_SIZE/2 + offsetY;
+        let offsetX = (Math.random() - 0.5) * (TILE_SIZE * 0.5);
+        let offsetY = (Math.random() - 0.5) * (TILE_SIZE * 0.5);
+        let cx = px + TILE_SIZE/2 + offsetX;
+        let cy = py + TILE_SIZE/2 + offsetY;
         
-        let treeSize = TILE_SIZE * (0.4 + (jurchenFade * 0.4) + (Math.random() * 0.2));
+        let treeSize = TILE_SIZE * (0.35 + (jurchenFade * 0.3) + (Math.random() * 0.3));
+        let treeRand = Math.random();
 
-        // 3. SPECIES VARIATION
-        bgCtx.beginPath();
-        
-        // If high Jurchen influence and high latitude (North), draw Conifers (Spiky)
-        if (jurchenFade > 0.6 && ny < 0.4) {
-            // Pine/Conifer Shape (Triangular stacked layers)
-            bgCtx.moveTo(centerX, centerY - treeSize);
-            bgCtx.lineTo(centerX - treeSize/2, centerY + treeSize/2);
-            bgCtx.lineTo(centerX + treeSize/2, centerY + treeSize/2);
-            bgCtx.closePath();
+        bgCtx.save();
+
+        // --- SPECIES LOGIC BY CLIMATE ---
+
+        if (isFarNorth) {
+            // 1. MANCHURIAN LARCH / TAIGA (Tiered Conifers)
+            // Dark, sharp, and narrow to survive heavy snow
+            let tiers = 2 + Math.floor(Math.random() * 2);
+            bgCtx.fillStyle = `rgb(${10 + Math.random()*10}, ${20 + Math.random()*10}, 15)`;
+            
+            for(let t = 0; t < tiers; t++) {
+                let ty = cy - (t * (treeSize * 0.4));
+                let tw = treeSize * (1 - (t * 0.3));
+                bgCtx.beginPath();
+                bgCtx.moveTo(cx, ty - treeSize);
+                bgCtx.lineTo(cx - tw, ty);
+                bgCtx.lineTo(cx + tw, ty);
+                bgCtx.closePath();
+                bgCtx.fill();
+            }
         } 
-        // If Jungle, draw Broadleaf/Tropical (Wavy/Clustered circles)
-        else if (tile.color === PALETTE.jungle) {
-            bgCtx.arc(centerX, centerY, treeSize * 0.8, 0, Math.PI * 2);
-            // Add a small "puff" to the side for fluffier jungle trees
-            bgCtx.arc(centerX + treeSize*0.3, centerY + treeSize*0.2, treeSize * 0.5, 0, Math.PI * 2);
+        else if (isDeepSouth) {
+            if (treeRand > 0.4) {
+                // 2. ANCIENT BANYAN (Wide Broadleaf)
+                // Massive, dark-teal silhouettes with lumpy canopies
+                let leafColors = ["#0D1F1D", "#1A2F18", "#142414"];
+                for(let l = 0; l < 3; l++) {
+                    bgCtx.fillStyle = leafColors[Math.floor(Math.random() * leafColors.length)];
+                    let lx = cx + (Math.random() - 0.5) * treeSize;
+                    let ly = cy + (Math.random() - 0.5) * treeSize;
+                    bgCtx.beginPath();
+                    bgCtx.ellipse(lx, ly, treeSize * 0.8, treeSize * 0.5, Math.random() * Math.PI, 0, Math.PI * 2);
+                    bgCtx.fill();
+                }
+            } else {
+                // 3. RIVER BAMBOO (Vertical Clusters)
+                bgCtx.strokeStyle = "#1B2B12";
+                bgCtx.lineWidth = 1;
+                for(let b = 0; b < 3; b++) {
+                    let bx = cx + (b * 2) - 2;
+                    let bh = treeSize * (0.8 + Math.random() * 0.5);
+                    bgCtx.beginPath();
+                    bgCtx.moveTo(bx, cy);
+                    bgCtx.lineTo(bx + (Math.random()-0.5), cy - bh);
+                    bgCtx.stroke();
+                    // Small dark leaf tuft
+                    bgCtx.fillStyle = "#2D3B1E";
+                    bgCtx.beginPath();
+                    bgCtx.arc(bx, cy - bh, 1.5, 0, Math.PI * 2);
+                    bgCtx.fill();
+                }
+            }
         } 
-        // Standard Temperate Forest (Classic Arcs)
+        else if (isAridWest) {
+            // 4. STEPPE CYPRESS / SCRUB (Stunted & Thin)
+            // Dark olive, vertical, and sparse
+            bgCtx.fillStyle = "#222B1A";
+            bgCtx.beginPath();
+            bgCtx.ellipse(cx, cy, treeSize * 0.3, treeSize, 0, 0, Math.PI * 2);
+            bgCtx.fill();
+        } 
         else {
-            bgCtx.arc(centerX, centerY, treeSize, 0, Math.PI, true);
-			
-			        bgCtx.fill();
-        
-        // Subtle outline for depth
-        bgCtx.strokeStyle = "rgba(0,0,0,0.2)";
-        bgCtx.lineWidth = 0.5;
-      
-			
+            // 5. CENTRAL SONG WILLOW / OAK (Drooping & Round)
+            // Classic temperate look but with a deeper "Old World" shadow
+            bgCtx.fillStyle = `rgb(${25 + Math.random()*10}, ${35 + Math.random()*10}, 20)`;
+            bgCtx.beginPath();
+            // Main canopy
+            bgCtx.arc(cx, cy, treeSize, 0, Math.PI * 2);
+            // Drooping clusters for Willows
+            if (treeRand > 0.7) {
+                bgCtx.arc(cx - treeSize * 0.5, cy + treeSize * 0.3, treeSize * 0.6, 0, Math.PI * 2);
+                bgCtx.arc(cx + treeSize * 0.5, cy + treeSize * 0.3, treeSize * 0.6, 0, Math.PI * 2);
+            }
+            bgCtx.fill();
         }
 
-        bgCtx.fill();
+        // Final detail: Subtle charcoal outline for all types
+        bgCtx.strokeStyle = "rgba(0,0,0,0.4)";
+        bgCtx.lineWidth = 0.3;
+        bgCtx.stroke();
         
-        // Subtle outline for depth
-        bgCtx.strokeStyle = "rgba(0,0,0,0.2)";
-        bgCtx.lineWidth = 0.5;
-      
+        bgCtx.restore();
     }
 }
   // --- MOUNTAIN ICONS & TIMBERLINES (SPARSE PEAKS, DENSE TREES) ---
@@ -1676,42 +1587,78 @@ if (tile.name.includes("Mountain") || tile.name.includes("Large Mountains")) {
     }
 
 
-    // ==========================================
-    // 2. ALPINE TREE GENERATION (The Focus)
-    // ==========================================
-    // Regular mountains get dense trees. Snowy mountains get very sparse trees.
-    // We use Math.random() here so multiple trees can spawn per tile without relying entirely on the single hash.
-    let treeDensity = isDryMountains ? 0.95 : 0.60; 
+// --- NEW SPECIES ENGINE (DEEP JUNGLE / MOUNTAIN VARIANT) ---
+let treeDensity = isDryMountains ? 0.95 : 0.35; 
+let maxTrees = isDryMountains ? 1 : 3; 
 
-    // We allow a loop to attempt drawing 1 to 2 trees per tile to create thick "alpine forests"
-    let maxTrees = isDryMountains ? 1 : 2;
-    
-    for(let t = 0; t < maxTrees; t++) {
-        if (Math.random() > treeDensity) {
-            // Jitter position so they cluster naturally around the tile
-            let treeX = px + TILE_SIZE/2 + ((Math.random() - 0.5) * TILE_SIZE * 0.8);
-            let treeY = py + TILE_SIZE/2 + ((Math.random() - 0.5) * TILE_SIZE * 0.8);
-            
-            // Pine/Alpine tree colors
-            let baseColor = isDryMountains ? [45, 60, 50] : [35, 55, 30]; 
-            let jitter = Math.floor(Math.random() * 10) - 5;
-            
-            bgCtx.fillStyle = `rgb(${baseColor[0]+jitter}, ${baseColor[1]+jitter}, ${baseColor[2]+jitter})`;
-            
-            // Trees get slightly smaller at higher elevations
-            let sizeScale = isDryMountains ? 0.25 : 0.35;
-            let treeRadius = TILE_SIZE * (sizeScale + (Math.random() * 0.1));
+for(let t = 0; t < maxTrees; t++) {
+    if (Math.random() > treeDensity) {
+        let treeX = px + TILE_SIZE/2 + ((Math.random() - 0.5) * TILE_SIZE * 0.9);
+        let treeY = py + TILE_SIZE/2 + ((Math.random() - 0.5) * TILE_SIZE * 0.9);
+        
+        const treeRand = Math.random();
+        bgCtx.save();
 
-            bgCtx.beginPath();
-            // Using a simple arc for performance, but styled as deep green to look like pines
-            bgCtx.arc(treeX, treeY, treeRadius, 0, Math.PI, true);
-            bgCtx.fill();
+        if (isDryMountains) {
+            // --- STYLE: TIERED HIGHLAND PINE (Midnight Evergreen) ---
+            let tiers = 2 + Math.floor(Math.random() * 2);
+            let treeWidth = TILE_SIZE * (0.4 + Math.random() * 0.3);
             
-            bgCtx.strokeStyle = "rgba(0,0,0,0.2)";
-            bgCtx.lineWidth = 0.5;
- 
+            // Much darker, desaturated alpine greens
+            bgCtx.fillStyle = `rgb(${15 + Math.random()*10}, ${25 + Math.random()*10}, 20)`;
+            
+            for(let i = 0; i < tiers; i++) {
+                let levelY = treeY - (i * 3);
+                let levelW = treeWidth * (1 - (i * 0.3));
+                bgCtx.beginPath();
+                bgCtx.moveTo(treeX, levelY - 5);
+                bgCtx.lineTo(treeX - levelW, levelY);
+                bgCtx.lineTo(treeX + levelW, levelY);
+                bgCtx.closePath();
+                bgCtx.fill();
+            }
+        } 
+        else if (treeRand > 0.6) {
+            // --- STYLE: SOUTHERN BANYAN (Ancient Deep Broadleaf) ---
+            let canopySize = TILE_SIZE * (0.5 + Math.random() * 0.4);
+            
+            // Deep Emerald, Moss Black, and Humid Teal
+            let leafColors = ["#1A2F18", "#0D1F1D", "#223311", "#142414"];
+            
+            for(let i = 0; i < 4; i++) {
+                bgCtx.fillStyle = leafColors[Math.floor(Math.random() * leafColors.length)];
+                let offX = (Math.random() - 0.5) * canopySize;
+                let offY = (Math.random() - 0.5) * canopySize;
+                bgCtx.beginPath();
+                bgCtx.ellipse(treeX + offX, treeY + offY, canopySize*0.6, canopySize*0.4, Math.random()*Math.PI, 0, Math.PI*2);
+                bgCtx.fill();
+            }
+        } 
+        else {
+            // --- STYLE: BAMBOO THICKET (Deep Olive Shadow) ---
+            let stalks = 2 + Math.floor(Math.random() * 3);
+            for(let s = 0; s < stalks; s++) {
+                let sX = treeX + (s * 2) - 2;
+                let sH = 6 + Math.random() * 6;
+                
+                // Dark Wax-Green Stalks
+                bgCtx.strokeStyle = "#2D3B1E";
+                bgCtx.lineWidth = 1.2; // Slightly thicker for visibility in dark
+                bgCtx.beginPath();
+                bgCtx.moveTo(sX, treeY);
+                bgCtx.lineTo(sX + (Math.random()-0.5), treeY - sH);
+                bgCtx.stroke();
+                
+                // Shadowed Leaves
+                bgCtx.fillStyle = "#3E4D26";
+                bgCtx.beginPath();
+                bgCtx.arc(sX, treeY - sH, 1.5, 0, Math.PI*2);
+                bgCtx.fill();
+            }
         }
+        bgCtx.restore();
     }
+}
 }}}
 	
         await setLoading(85, "Aging parchment map");
@@ -1751,11 +1698,9 @@ if (tile.name.includes("Mountain") || tile.name.includes("Large Mountains")) {
 		document.getElementById('ui').style.display = 'block';
         document.getElementById('loading').style.display = 'none';
 
-        // SURGERY: Hide the Units Guide automatically when loading finishes
-        const guideModal = document.getElementById('units-guide-modal');
-        if (guideModal) {
-            guideModal.style.display = 'none';
-        }
+ if (typeof window.hideLoadingScreen === 'function') {
+    window.hideLoadingScreen();
+}
 
         AudioManager.playMusic("WorldMap_Calm");
     }
@@ -1921,57 +1866,57 @@ function drawSnowyPeak(ctx, x, y, width, height, isExtremePeak, tileSize) {
     const alpha = getMountainAlpha(height, tileSize);
     if (alpha <= 0) return;
 
-    // 1. THE JAGGED BASE (Sharp silhouette)
-    // Using a cold, deep blue-grey for the base to represent thin atmosphere/shadow
+    // Local scaling factor (1/4 size)
+    const sW = width * 0.25;
+    const sH = height * 0.25;
+
+    // 1. THE JAGGED BASE
     ctx.fillStyle = `rgba(100, 115, 140, ${alpha})`; 
     ctx.beginPath();
-    ctx.moveTo(x - width / 2, y + tileSize); // Bottom Left
+    ctx.moveTo(x - sW / 2, y + tileSize); // Bottom Left
     
-    // Create a jagged ascent
-    ctx.lineTo(x - width * 0.25, y + tileSize - height * 0.4); 
-    ctx.lineTo(x, y + tileSize - height * 1.4); // Sharp Summit
-    ctx.lineTo(x + width * 0.25, y + tileSize - height * 0.4);
-    ctx.lineTo(x + width / 2, y + tileSize); // Bottom Right
+    // Jagged ascent
+    ctx.lineTo(x - sW * 0.25, y + tileSize - sH * 0.4); 
+    ctx.lineTo(x, y + tileSize - sH * 1.4); // Sharp Summit
+    ctx.lineTo(x + sW * 0.25, y + tileSize - sH * 0.4);
+    ctx.lineTo(x + sW / 2, y + tileSize); // Bottom Right
     ctx.fill();
 
-    // 2. THE SNOW CAP (Upper 50% of the peak)
-    // Bright white with a slight jagged bottom edge
+    // 2. THE SNOW CAP (Upper 50%)
     ctx.fillStyle = isExtremePeak 
         ? `rgba(255, 255, 255, ${Math.min(1, alpha + 0.1)})` 
         : `rgba(220, 235, 245, ${alpha})`;
         
     ctx.beginPath();
-    ctx.moveTo(x, y + tileSize - height * 1.4); // Summit
-    ctx.lineTo(x - width * 0.15, y + tileSize - height * 0.7); // Left snow line
+    ctx.moveTo(x, y + tileSize - sH * 1.4); // Summit
+    ctx.lineTo(x - sW * 0.15, y + tileSize - sH * 0.7); // Left snow line
     
-    // Jagged "Frozen" transition line
-    ctx.lineTo(x - width * 0.05, y + tileSize - height * 0.8);
-    ctx.lineTo(x + width * 0.08, y + tileSize - height * 0.65);
+    // Jagged "Frozen" transition
+    ctx.lineTo(x - sW * 0.05, y + tileSize - sH * 0.8);
+    ctx.lineTo(x + sW * 0.08, y + tileSize - sH * 0.65);
     
-    ctx.lineTo(x + width * 0.15, y + tileSize - height * 0.7); // Right snow line
+    ctx.lineTo(x + sW * 0.15, y + tileSize - sH * 0.7); // Right snow line
     ctx.closePath();
     ctx.fill();
 
-    // 3. THE COLD SHADOW (Depth logic)
-    // Applying a subtle vertical shadow on the right side to give it 3D mass
+    // 3. THE COLD SHADOW
     ctx.fillStyle = `rgba(0, 20, 50, ${alpha * 0.15})`;
     ctx.beginPath();
-    ctx.moveTo(x, y + tileSize - height * 1.4); // Summit
-    ctx.lineTo(x + width * 0.25, y + tileSize - height * 0.4);
-    ctx.lineTo(x + width / 2, y + tileSize);
+    ctx.moveTo(x, y + tileSize - sH * 1.4); // Summit
+    ctx.lineTo(x + sW * 0.25, y + tileSize - sH * 0.4);
+    ctx.lineTo(x + sW / 2, y + tileSize);
     ctx.lineTo(x, y + tileSize); // Center bottom
     ctx.fill();
 
-    // 4. CRISP OUTLINE
-    // Keeping it very faint to maintain the "distant map" aesthetic
+    // 4. CRISP OUTLINE (Reduced width for smaller scale)
     ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.3})`;
-    ctx.lineWidth = 0.8;
+    ctx.lineWidth = 0.4; 
     ctx.beginPath();
-    ctx.moveTo(x - width / 2, y + tileSize);
-    ctx.lineTo(x - width * 0.25, y + tileSize - height * 0.4);
-    ctx.lineTo(x, y + tileSize - height * 1.4);
-    ctx.lineTo(x + width * 0.25, y + tileSize - height * 0.4);
-    ctx.lineTo(x + width / 2, y + tileSize);
+    ctx.moveTo(x - sW / 2, y + tileSize);
+    ctx.lineTo(x - sW * 0.25, y + tileSize - sH * 0.4);
+    ctx.lineTo(x, y + tileSize - sH * 1.4);
+    ctx.lineTo(x + sW * 0.25, y + tileSize - sH * 0.4);
+    ctx.lineTo(x + sW / 2, y + tileSize);
     ctx.stroke();
 }
 	
@@ -2018,3 +1963,134 @@ function drawSnowyPeak(ctx, x, y, width, height, isExtremePeak, tileSize) {
 //     m = 0.80;
 //     isProcRiver = false;
 // }
+
+
+
+ function drawCaravan(x, y, moving, frame, factionColor = "#d4b886") {
+        ctx.save();
+        ctx.translate(x, y);
+        
+        let legSwing = moving ? Math.sin(frame * 0.2) * 8 : 0;
+        let bob = moving ? Math.sin(frame * 0.2) * 2 : 0;
+        let riderBob = moving ? Math.sin(frame * 0.2 + 0.5) * 1.5 : 0;
+
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        // 1. BACK LEGS
+        ctx.strokeStyle = "#3e2723";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(-4, 2); ctx.lineTo(-6 - legSwing, 10);
+        ctx.moveTo(3, 2); ctx.lineTo(1 - legSwing, 10);
+        ctx.stroke();
+
+        // 2. HORSE BODY
+        ctx.fillStyle = "#795548";
+        ctx.strokeStyle = "#3e2723";
+        ctx.beginPath();
+        ctx.ellipse(0, bob, 11, 7, 0, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+
+        // 3. RIDER
+        ctx.save();
+        ctx.translate(-1, -4 + bob + riderBob);
+        ctx.fillStyle = factionColor; 
+        ctx.strokeStyle = "#1a1a1a";
+        ctx.beginPath();
+        ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(2, -9); ctx.lineTo(-2, -9);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#d4b886";
+        ctx.beginPath(); ctx.arc(0, -11, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#a1887f";
+        ctx.beginPath();
+        ctx.moveTo(-10, -11); ctx.lineTo(0, -17); ctx.lineTo(10, -11);
+        ctx.quadraticCurveTo(0, -10, -10, -11);
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+
+        // 4. FRONT LEGS
+        ctx.beginPath();
+        ctx.moveTo(-1, 2); ctx.lineTo(-1 + legSwing, 10);
+        ctx.moveTo(6, 2); ctx.lineTo(8 + legSwing, 10);
+        ctx.stroke();
+
+        // 5. HORSE HEAD (ELONGATED SNOUT)
+        ctx.save();
+        ctx.translate(8, -2 + bob);
+        ctx.fillStyle = "#795548";
+        ctx.beginPath();
+        ctx.moveTo(-2, 4);           // Neck connection
+        ctx.lineTo(8, -6);           // Bridge starts
+        ctx.lineTo(16, -11);         // Way longer nose tip
+        ctx.lineTo(14, -13);         // Muzzle
+        ctx.lineTo(6, -11);          // Forehead
+        ctx.lineTo(5, -14);          // Ear Front
+        ctx.lineTo(3, -14);          // Ear Back
+        ctx.lineTo(1, -10);          // Back of poll
+        ctx.lineTo(-4, -1);          // Neck back
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        
+        // Mane
+        ctx.fillStyle = "#3e2723";
+        ctx.beginPath();
+        ctx.moveTo(1, -10); ctx.quadraticCurveTo(-2, -9, -5, 0); ctx.lineTo(-2, -1);
+        ctx.fill();
+        ctx.restore();
+
+        // 6. TAIL
+        ctx.strokeStyle = "#3e2723";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-10, -1 + bob);
+        ctx.quadraticCurveTo(-16, 1, -14, 10 + bob);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+ // Add factionColor to the parameters
+function drawShip(x, y, moving, frame, factionColor = "#ffffff") {
+    ctx.save();
+    ctx.translate(x, y);
+    
+    // Swaying/Floating effect
+    let sway = Math.sin(frame * 0.08) * 0.1;
+    let bob = Math.cos(frame * 0.08) * 2;
+    ctx.rotate(sway);
+
+    // Hull
+    ctx.fillStyle = "#3e2723";
+    ctx.beginPath();
+    ctx.moveTo(-15, bob);
+    ctx.lineTo(15, bob);
+    ctx.lineTo(10, 10 + bob);
+    ctx.lineTo(-10, 10 + bob);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Sails - NOW USES DYNAMIC COLOR
+    ctx.fillStyle = factionColor; 
+    ctx.beginPath();
+    ctx.moveTo(0, bob);
+    ctx.lineTo(0, -20 + bob);
+    ctx.lineTo(15, -5 + bob);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Mast
+    ctx.strokeStyle = "#5d4037";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, bob);
+    ctx.lineTo(0, -22 + bob);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+
+ 

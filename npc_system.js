@@ -12,7 +12,7 @@ const FACTIONS = {
     "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.98, south: 0.02, west: 0.05, east: 0.95 } }, 
 
     // 5. VIET REALM: Center-Right, Extreme South
-    "Tran Realm":            { color: "#388e3c", geoWeight: { north: 0.02, south: 0.98, west: 0.30, east: 0.70 } }, 
+    "Tran Realm":            { color: "#388e3c", geoWeight: { north: 0.01, south: 0.99, west: 0.30, east: 0.70 } }, 
 
     // 6. GORYUN (KOREA): Mid-East
     "Goryun Kingdom":        { color: "#7b1fa2", geoWeight: { north: 0.40, south: 0.60, west: 0.05, east: 0.85 } },
@@ -131,6 +131,7 @@ function getFactionByGeography(x, y, worldWidth, worldHeight) {
     }
     return bestFaction;
 }
+
 
 function generateFactionCityName(faction) {
     let pool = SYLLABLE_POOLS[faction] || SYLLABLE_POOLS["Hong Dynasty"];

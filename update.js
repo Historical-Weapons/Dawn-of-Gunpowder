@@ -1,10 +1,145 @@
 
-	
+ let economyTick = 0;
+ let uiSyncTick = 0;
+ 
+ 
+ 
+function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
+    // --- 1. STATUS LOCKS ---
+    if (player.isSieging && !inBattleMode) {
+        player.isMoving = false;
+        return; // Completely bypass all movement logic
+    }
+    
+    if (player.stunTimer > 0) {
+        player.stunTimer--;
+        player.isMoving = false;
+        return; // Completely bypass all movement logic while stunned
+    }
+    
+    let dx = 0, dy = 0;
+    player.isMoving = false;
+
+    // --- 2. TERRAIN SPEED CALCULATION ---
+    let currentSpeed = speed;
+    
+    // Only check map speed if we are on the overworld and the map array is valid
+    if (!isCity && !inBattleMode && typeof map !== 'undefined' && map && map.length > 0) {
+        let tx = Math.floor(player.x / tileSize);
+        let ty = Math.floor(player.y / tileSize);
+        
+        if (map[tx] && map[tx][ty]) {
+            currentSpeed = speed * (map[tx][ty].speed || 1.0);
+        }
+    }
+    
+    currentSpeed *= 0.5; // Global player speed modifier
+    
+    // --- 3. INPUT PROCESSING ---
+    if (player.hp > 0) {
+        if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
+        if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
+        if (keys['a'] || keys['arrowleft']) { dx -= currentSpeed; player.isMoving = true; }
+        if (keys['d'] || keys['arrowright']) { dx += currentSpeed; player.isMoving = true; }
+    } else {
+        player.isMoving = false; // Dead commanders don't move
+    }
+
+    if (player.isMoving) player.anim++;
+
+    let nextX = player.x + dx;
+    let nextY = player.y + dy;
+            
+    // --- 4. ENVIRONMENT & COLLISION LOGIC ---
+
+    if (inBattleMode) {
+        // === BATTLEFIELD MOVEMENT ===
+        let oldX = player.x;
+        let oldY = player.y;
+
+// SURGERY: Strictly prevent NaN propagation from custom battle generator overrides
+let bWidth = (typeof BATTLE_WORLD_WIDTH !== 'undefined' && !isNaN(BATTLE_WORLD_WIDTH)) ? BATTLE_WORLD_WIDTH : 2000;
+let bHeight = (typeof BATTLE_WORLD_HEIGHT !== 'undefined' && !isNaN(BATTLE_WORLD_HEIGHT)) ? BATTLE_WORLD_HEIGHT : 2000;
+
+        // Check X & Y independently to allow sliding against walls
+        if (typeof isBattleCollision === 'function') {
+            if (!isBattleCollision(nextX, player.y, player.onWall)) {
+                player.x = Math.max(0, Math.min(nextX, bWidth));
+            }
+            if (!isBattleCollision(player.x, nextY, player.onWall)) {
+                player.y = Math.max(0, Math.min(nextY, bHeight));
+            }
+        } else {
+            // Fallback if collision function isn't loaded
+            player.x = Math.max(0, Math.min(nextX, bWidth));
+            player.y = Math.max(0, Math.min(nextY, bHeight));
+        }
+
+        // LADDER LOGIC: Auto-climb when touching a ladder tile
+        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && typeof battleEnvironment !== 'undefined' && typeof BATTLE_TILE_SIZE !== 'undefined') {
+            let pTx = Math.floor(player.x / BATTLE_TILE_SIZE);
+            let pTy = Math.floor(player.y / BATTLE_TILE_SIZE);
+            
+            if (battleEnvironment.grid && battleEnvironment.grid[pTx] && battleEnvironment.grid[pTx][pTy]) {
+                let currentTile = battleEnvironment.grid[pTx][pTy];
+                if (currentTile === 9) { // Ladder
+                    player.onWall = true;
+                } else if (currentTile === 1 || currentTile === 5) { // Ground/Road
+                    player.onWall = false;
+                }
+            }
+        }
+
+ 
+    } 
+    else if (isCity) {
+        // === CITY MOVEMENT ===
+        // SURGERY: Prevent crash if CITY_WORLD_WIDTH isn't defined
+        let cityWidth = (typeof CITY_WORLD_WIDTH !== 'undefined') ? CITY_WORLD_WIDTH : 2000;
+        let withinX = (nextX > 50 && nextX < cityWidth - 50);
+        let withinY = (nextY > 50); 
+
+        if (withinX && withinY) {
+            if (typeof isCityCollision === 'function') {
+                if (!isCityCollision(nextX, nextY)) {
+                    player.x = nextX;
+                    player.y = nextY;
+                }
+            } else {
+                player.x = nextX;
+                player.y = nextY;
+            }
+        }
+    } 
+    else {
+        // === OVERWORLD MOVEMENT ===
+        if (typeof map !== 'undefined' && map && map.length > 0) {
+            let ntx = Math.floor(nextX / tileSize);
+            let nty = Math.floor(nextY / tileSize); 
+            
+            // Validate boundaries and existance of the target tile array
+            if (ntx >= 0 && ntx < (cols || 0) && nty >= 0 && nty < (rows || 0) && map[ntx]) {
+                let targetTile = map[ntx][nty]; 
+                
+                if (targetTile && !targetTile.impassable) {
+                    player.x = nextX;
+                    player.y = nextY;
+                }
+            }
+        }
+    }
+}
+
+	// Ensure defaults if constants are missing during startup
+const SAFE_WIDTH = typeof WORLD_WIDTH !== 'undefined' ? WORLD_WIDTH : 2000;
+const SAFE_HEIGHT = typeof WORLD_HEIGHT !== 'undefined' ? WORLD_HEIGHT : 2000;
+
+
 	
 // --- REVISION: Added Animation State ---
-const player = {
-				x: WORLD_WIDTH * 0.5,
-				y: WORLD_HEIGHT * 0.45,
+let player = {
+    x: SAFE_WIDTH * 0.5,
+    y: SAFE_HEIGHT * 0.45,
 				baseSpeed: 15, // Store the original speed here
 				speed: 15,
 				size: 24,
@@ -18,10 +153,11 @@ const player = {
 				gold: 500,
 				experience: 0,
 			experienceLevel: 1,
-			maxHealth: 100, // Ensure the player has a cap
-			hp: 100,
+			maxHealth: 200, // Ensure the player has a cap
+			hp: 200,
 			meleeAttack: 15, // Base stats for the player
 			meleeDefense: 15,
+			armor: 20,
 				distTrack: 0, // <--- NEW: Track distance for food mechanic
 				
 		 
@@ -33,13 +169,39 @@ const player = {
 			"Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", 
 			"Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", 
 			"Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", 
-			"Heavy Lancer", "Elite Lancer", "Rocket", "Mangudai", "Hand Cannoneer", 
+			"Heavy Lancer", "Elite Lancer", "Rocket", "Hand Cannoneer", 
 		"Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", 
 			"Slinger", "Glaiveman", "Javelinier"
 		].map(u => ({ type: u, exp: 1 })),
-
+isInitialized: false // Add this flag
     };
 	const keys = {};
+
+// Add an initialization function
+function initPlayer() {
+    // Check if overworld constants exist, otherwise use defaults
+    const worldW = typeof WORLD_WIDTH !== 'undefined' ? WORLD_WIDTH : 2000;
+    const worldH = typeof WORLD_HEIGHT !== 'undefined' ? WORLD_HEIGHT : 2000;
+    
+    player.x = worldW * 0.5;
+    player.y = worldH * 0.45;
+}
+/**
+ * Call this ONLY when the user clicks the "Overworld" button 
+ * in your Main Menu (Option B).
+ */
+function enterOverworldMode() {
+    // Ensure constants are available or use fallbacks
+    const w = (typeof WORLD_WIDTH !== 'undefined') ? WORLD_WIDTH : 2000;
+    const h = (typeof WORLD_HEIGHT !== 'undefined') ? WORLD_HEIGHT : 2000;
+
+    player.x = w * 0.5;
+    player.y = h * 0.45;
+    player.isInitialized = true;
+    
+    console.log("Overworld Started: Player spawned at", player.x, player.y);
+}
+
 
 // 1. ADD THIS: Tell the game when a key is pressed!
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
@@ -55,144 +217,34 @@ window.onwheel = (e) => {
     if (window.isZoomAnimating) { 
         window.isZoomAnimating = false; 
     }      
-    zoom = Math.max(0.1, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    zoom = Math.max(0.3, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
 };
 
- function drawCaravan(x, y, moving, frame, factionColor = "#d4b886") {
-        ctx.save();
-        ctx.translate(x, y);
-        
-        let legSwing = moving ? Math.sin(frame * 0.2) * 8 : 0;
-        let bob = moving ? Math.sin(frame * 0.2) * 2 : 0;
-        let riderBob = moving ? Math.sin(frame * 0.2 + 0.5) * 1.5 : 0;
-
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-
-        // 1. BACK LEGS
-        ctx.strokeStyle = "#3e2723";
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.moveTo(-4, 2); ctx.lineTo(-6 - legSwing, 10);
-        ctx.moveTo(3, 2); ctx.lineTo(1 - legSwing, 10);
-        ctx.stroke();
-
-        // 2. HORSE BODY
-        ctx.fillStyle = "#795548";
-        ctx.strokeStyle = "#3e2723";
-        ctx.beginPath();
-        ctx.ellipse(0, bob, 11, 7, 0, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
-
-        // 3. RIDER
-        ctx.save();
-        ctx.translate(-1, -4 + bob + riderBob);
-        ctx.fillStyle = factionColor; 
-        ctx.strokeStyle = "#1a1a1a";
-        ctx.beginPath();
-        ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(2, -9); ctx.lineTo(-2, -9);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = "#d4b886";
-        ctx.beginPath(); ctx.arc(0, -11, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#a1887f";
-        ctx.beginPath();
-        ctx.moveTo(-10, -11); ctx.lineTo(0, -17); ctx.lineTo(10, -11);
-        ctx.quadraticCurveTo(0, -10, -10, -11);
-        ctx.fill(); ctx.stroke();
-        ctx.restore();
-
-        // 4. FRONT LEGS
-        ctx.beginPath();
-        ctx.moveTo(-1, 2); ctx.lineTo(-1 + legSwing, 10);
-        ctx.moveTo(6, 2); ctx.lineTo(8 + legSwing, 10);
-        ctx.stroke();
-
-        // 5. HORSE HEAD (ELONGATED SNOUT)
-        ctx.save();
-        ctx.translate(8, -2 + bob);
-        ctx.fillStyle = "#795548";
-        ctx.beginPath();
-        ctx.moveTo(-2, 4);           // Neck connection
-        ctx.lineTo(8, -6);           // Bridge starts
-        ctx.lineTo(16, -11);         // Way longer nose tip
-        ctx.lineTo(14, -13);         // Muzzle
-        ctx.lineTo(6, -11);          // Forehead
-        ctx.lineTo(5, -14);          // Ear Front
-        ctx.lineTo(3, -14);          // Ear Back
-        ctx.lineTo(1, -10);          // Back of poll
-        ctx.lineTo(-4, -1);          // Neck back
-        ctx.closePath();
-        ctx.fill(); ctx.stroke();
-        
-        // Mane
-        ctx.fillStyle = "#3e2723";
-        ctx.beginPath();
-        ctx.moveTo(1, -10); ctx.quadraticCurveTo(-2, -9, -5, 0); ctx.lineTo(-2, -1);
-        ctx.fill();
-        ctx.restore();
-
-        // 6. TAIL
-        ctx.strokeStyle = "#3e2723";
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(-10, -1 + bob);
-        ctx.quadraticCurveTo(-16, 1, -14, 10 + bob);
-        ctx.stroke();
-
-        ctx.restore();
-    }
- // Add factionColor to the parameters
-function drawShip(x, y, moving, frame, factionColor = "#ffffff") {
-    ctx.save();
-    ctx.translate(x, y);
-    
-    // Swaying/Floating effect
-    let sway = Math.sin(frame * 0.08) * 0.1;
-    let bob = Math.cos(frame * 0.08) * 2;
-    ctx.rotate(sway);
-
-    // Hull
-    ctx.fillStyle = "#3e2723";
-    ctx.beginPath();
-    ctx.moveTo(-15, bob);
-    ctx.lineTo(15, bob);
-    ctx.lineTo(10, 10 + bob);
-    ctx.lineTo(-10, 10 + bob);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Sails - NOW USES DYNAMIC COLOR
-    ctx.fillStyle = factionColor; 
-    ctx.beginPath();
-    ctx.moveTo(0, bob);
-    ctx.lineTo(0, -20 + bob);
-    ctx.lineTo(15, -5 + bob);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Mast
-    ctx.strokeStyle = "#5d4037";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(0, bob);
-    ctx.lineTo(0, -22 + bob);
-    ctx.stroke();
-
-    ctx.restore();
-}
-
-let economyTick = 0;
- let uiSyncTick = 0;
  
- //main UPDATE
  function update() {
+	 // --- UPDATE UI TEXT: Decoupled Death Logic ---
+        const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
+        
+        // Find the actual physical commander unit to verify death, falling back to global player if missing
+        let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+        let isPlayerDefeated = pCmdr ? (pCmdr.hp <= 0) : (player.hp <= 0);
+	 // If we are in any menu or battle mode, or if player is broken, STOP
+    //if (window.isPaused || inBattleMode) return;
+    //if (!player || isNaN(player.x)) return; //disabled so console can pullout issues
+	
     // --- 1. GLOBAL UI FREEZES ---
     if (typeof inParleMode !== 'undefined' && inParleMode) {
         return; 
     }
+
+const parlePanel = document.getElementById('parle-panel');
+
+if ((inBattleMode || inCityMode) && parlePanel && parlePanel.style.display !== 'none') {
+	
+    parlePanel.style.display = 'none';
+    inParleMode = false;
+}
+
 
     if (typeof troopGUI !== 'undefined' && troopGUI.isOpen) {
         return; 
@@ -238,25 +290,87 @@ let economyTick = 0;
         return; 
     }
     
-    if (inBattleMode) {
+if (inBattleMode) {
+	// ADD THIS SAFETY CHECK HERE:
+        if (!battleEnvironment || !battleEnvironment.grid) {
+            console.warn("Waiting for Battle Grid to initialize...");
+            return; 
+        }
  
-        calculateMovement(player.baseSpeed / 7, null, BATTLE_TILE_SIZE, null, null, true); 
-        updateBattleUnits();
+		// SURGICAL FIX: Prevent crash if units haven't spawned yet
+    if (typeof pCmdr === 'undefined' || !pCmdr) {
+        console.warn("Battle mode active but pCmdr not initialized. Skipping frame...");
+        return; 
+    }
 		
- if (keys['p']) {
+		// ---> ADD THIS LINE HERE <---
+        player.size = 24;
+ 
+        let safeBattleTileSize = typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8;
+        calculateMovement(player.baseSpeed / 4, null, safeBattleTileSize, null, null, true); 
+        
+        if (typeof updateBattleUnits === 'function') updateBattleUnits();
+		
+// ---> SURGERY: ABSOLUTE COMMANDER OVERRIDE <---
+        // Force the physical unit to obey WASD and disable its AI
+        pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+        if (pCmdr && player) {
+            // 1. Update the defeat flag FIRST so we know true status
+            player.hp = pCmdr.hp;
+            isPlayerDefeated = (pCmdr.hp <= 0); 
+
+            if (!isPlayerDefeated) {
+                // --- ALIVE LOGIC ---
+                // Sync physical unit to your invisible WASD coordinates
+                pCmdr.x = player.x;
+                pCmdr.y = player.y;
+
+                // Link animations and facing direction
+                pCmdr.isMoving = player.isMoving;
+                if (player.isMoving) pCmdr.state = "moving";
+                
+                if (keys['a'] || keys['arrowleft']) { pCmdr.direction = -1; player.direction = -1; }
+                if (keys['d'] || keys['arrowright']) { pCmdr.direction = 1; player.direction = 1; }
+
+                // Paralyze the AI (Total override)
+                pCmdr.vx = 0;
+                pCmdr.vy = 0;
+                pCmdr.target = null; 
+            } else {
+                // --- DEAD LOGIC ---
+                // Anchor the invisible WASD player to the corpse so it cannot drift or slide
+                player.x = pCmdr.x;
+                player.y = pCmdr.y;
+                player.isMoving = false;
+            }
+        }
+		
+if (keys['p']) {
             // 1. Check for living enemies and player health
             const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
-            const isPlayerDead = player.hp <= 0;
+            
+            // Decoupled exit check
+            let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+            const isPlayerDead = pCmdr ? (pCmdr.hp <= 0) : (player.hp <= 0);
+			
+			// --- NEW SURGERY: SCALED RETREAT LOGIC ---
+			const scale = (currentBattleData && currentBattleData.initialCounts.player > 300) ? 5 : 1; 
+			const enemyNetCount = aliveEnemies * scale;
+			const enemyInitial = currentBattleData ? currentBattleData.initialCounts.enemy : 1;
 
-            if (isPlayerDead || aliveEnemies === 0) {
- 
-  // To this:
-if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
-    concludeSiegeBattlefield(player);
-} else {
-    leaveBattlefield(player);
-}
-				
+			// Allow exit if: Player is dead OR <10% enemies left OR <5 net enemies left
+			const canLeave = isPlayerDead || (enemyNetCount / enemyInitial < 0.10) || (enemyNetCount < 5);
+
+			if (canLeave) {
+			// --- END SURGERY ---
+							 
+				  // To this:
+				if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+					concludeSiegeBattlefield(player);
+				} else {
+					leaveBattlefield(player);
+				}
+								
 				
             } else {
                 console.log("Cannot retreat while enemies remain!");
@@ -265,34 +379,31 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
             keys['p'] = false;
         }
 		
-        // --- UPDATE UI TEXT: Place at the very end of your DRAW loop ---
-        const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
 
-        if (player.hp <= 0 || aliveEnemies === 0) {
+
+        if (isPlayerDefeated || aliveEnemies === 0) {
             ctx.save();
-            
-            // SURGERY: Reset transform to "Screen Space" 
-            // This ignores camera zoom/panning so the text stays centered on the monitor
             ctx.setTransform(1, 0, 0, 1, 0, 0); 
 
-            // 1. Draw a subtle dark bar behind the text for readability
             ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
             ctx.fillRect(0, window.innerHeight - 80, window.innerWidth, 80);
 
-            // 2. Render the Victory/Defeat Text
-            ctx.fillStyle = player.hp <= 0 ? "#ff5252" : "#ffca28"; // Red if dead, Gold if victory
+            // Use the isolated isPlayerDefeated flag instead of global player.hp
+            ctx.fillStyle = isPlayerDefeated ? "#ff5252" : "#ffca28"; 
             ctx.font = "bold 24px Georgia";
             ctx.textAlign = "center";
             ctx.shadowColor = "black";
             ctx.shadowBlur = 4;
             
-            let statusText = player.hp <= 0 ? "COMMANDER FALLEN" : "VICTORY";
+            let statusText = isPlayerDefeated ? "DEFEAT - COMMANDER FALLEN" : "VICTORY - ENEMIES ROUTED";
             ctx.fillText(`${statusText} - Press [P] to Exit Battlefield`, window.innerWidth / 2, window.innerHeight - 45);
 
             ctx.restore();
         }
     } 
 else if (inCityMode) {
+	
+	player.size = 8;
     // --- 1. LADDER & HEIGHT CHECK ---
     // Check if player is touching a ladder to toggle 'onWall'
     let onLadder = false;
@@ -319,8 +430,7 @@ else if (inCityMode) {
     }
 
     // --- 2. MOVEMENT WITH LAYER DATA ---
-    // Pass player.onWall to your movement function so it can forward it to isCityCollision
-    calculateMovement(player.baseSpeed / 9, null, TILE_SIZE, null, null, true, player.onWall);
+calculateMovement(player.baseSpeed / 9, null, CITY_TILE_SIZE, null, null, true, player.onWall);
 
     // --- 3. TELEPORTATION & NPCs ---
     if (cityDimensions[currentActiveCityFaction]) {
@@ -341,6 +451,9 @@ else if (inCityMode) {
 	
 	
     else { //overworld
+	
+	// ---> ADD THIS LINE HERE <---
+        player.size = 24;
  
         economyTick++;
         if (economyTick > 300) { 
@@ -386,6 +499,7 @@ else if (inCityMode) {
         }
 
         updateNPCs(cities);
+		
 		
 		// --- ADVANCED PROXIMITY AUDIO SYSTEM ---
 if (typeof globalNPCs !== 'undefined' && player) {
@@ -451,14 +565,16 @@ AudioManager.playRandomMP3List([
     }
 }
 // --- END AUDIO SYSTEM ---
-        
+      
+	  
         let tx = Math.floor(player.x / TILE_SIZE);
         let ty = Math.floor(player.y / TILE_SIZE);
         
-        if (tx < 0) tx = 0; if (tx >= COLS) tx = COLS - 1;
+       if (tx < 0) tx = 0; if (tx >= COLS) tx = COLS - 1;
         if (ty < 0) ty = 0; if (ty >= ROWS) ty = ROWS - 1;
 
-        let currentTile = worldMap[tx][ty];
+        // SURGICAL FIX: Prevent crash if the map isn't generated or coordinates are out of bounds
+        let currentTile = (typeof worldMap !== 'undefined' && worldMap[tx] && worldMap[tx][ty]) ? worldMap[tx][ty] : {name: "Plains", speed: 1};
 
         document.getElementById('loc-text').innerText = `${Math.round(player.x)}, ${Math.round(player.y)}`;
         document.getElementById('terrain-text').innerText = currentTile.name;
@@ -536,9 +652,13 @@ const cityPanel = document.getElementById('city-panel');
 //DRAW EVERYTHING TO RUN GAME
  function draw() {
 	 
-	 if (!player || isNaN(player.x) || isNaN(player.y)) return; // Safety gate
-	 
-	 
+if (!player || isNaN(player.x) || isNaN(player.y)) {
+    console.warn("NaN caught in draw! Healing coordinates to prevent black screen.");
+    // Force coordinates back to safety so ctx.translate doesn't destroy the canvas
+    player.x = 800; 
+    player.y = 800;
+    if (isNaN(zoom) || zoom <= 0) zoom = 0.8;
+}
 			ctx.fillStyle = "#050505";
 			ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -568,55 +688,55 @@ const cityPanel = document.getElementById('city-panel');
 					ctx.drawImage(battleEnvironment.fgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
 				}
 				if (typeof renderSiegeEngines === 'function') renderSiegeEngines(ctx);
-		 
-// --- UPDATE UI TEXT: Dynamic Positioning Logic ---
-const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
+						 
+				// --- UPDATE UI TEXT: Dynamic Positioning Logic ---
+				const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
 
-// Text Styles
-ctx.font = "bold 18px Georgia";
-ctx.textAlign = "center";
-ctx.shadowColor = "black";
-ctx.shadowBlur = 4;
+				// Text Styles
+				ctx.font = "bold 18px Georgia";
+				ctx.textAlign = "center";
+				ctx.shadowColor = "black";
+				ctx.shadowBlur = 4;
 
-if (aliveEnemies > 0) {
-// 1. ENEMIES PRESENT: Draw at the current "Ready" position (Bottom Left/Right UI area)
+				if (aliveEnemies > 0) {
+				// 1. ENEMIES PRESENT: Draw at the current "Ready" position (Bottom Left/Right UI area)
 
-// Set small font size
-ctx.font = "10px Arial";
-ctx.fillStyle = "#ffffff";
+				// Set small font size
+				ctx.font = "10px Arial";
+				ctx.fillStyle = "#ffffff";
 
-// Optional: center alignment if you're placing at sceen center
-ctx.textAlign = "center";
+				// Optional: center alignment if you're placing at sceen center
+				ctx.textAlign = "center";
 
-// Draw text
-ctx.fillText(
-    `Enemies Remaining: ${aliveEnemies}`,
-    BATTLE_WORLD_WIDTH / 2,
-    canvas.height + 450
-);
+				// Draw text
+				ctx.fillText(
+					`Enemies Remaining: ${aliveEnemies}`,
+					BATTLE_WORLD_WIDTH / 2,
+					canvas.height + 450
+				);
 
-} else {
-    // 2. BATTLE OVER: Move to the center or fallback position
-    ctx.fillStyle = "#ffca28"; // Gold color for victory/exit
-    
-    let drawX, drawY;
+				} else {
+					// 2. BATTLE OVER: Move to the center or fallback position
+					ctx.fillStyle = "#ffca28"; // Gold color for victory/exit
+					
+					let drawX, drawY;
 
-    if (player && player.hp > 0) {
-        // Center on Player for maximum visibility
-        drawX = player.x;
-        drawY = player.y - 60; // Float slightly above the player's head
-    } else {
-        // Fallback: 200px above the bottom "Red Line" (canvas bottom)
-        drawX = canvas.width / 2;
-        drawY = canvas.height - 200;
-    }
+					if (player && player.hp > 0) {
+						// Center on Player for maximum visibility
+						drawX = player.x;
+						drawY = player.y - 60; // Float slightly above the player's head
+					} else {
+						// Fallback: 200px above the bottom "Red Line" (canvas bottom)
+						drawX = canvas.width / 2;
+						drawY = canvas.height - 200;
+					}
 
-    ctx.fillText("BATTLE OVER - Press [p] to Exit", drawX, drawY);
-}
+					ctx.fillText("BATTLE OVER - Press [p] to Exit", drawX, drawY);
+				}
 
-// Reset shadow so it doesn't bleed into other rendering
-ctx.shadowBlur = 0;
-				
+				// Reset shadow so it doesn't bleed into other rendering
+				ctx.shadowBlur = 0;
+								
 				
 			} 
 			else if (inCityMode) {

@@ -101,7 +101,7 @@ function calculateDamageReceived(attacker, defender, stateString) {
             let weaponDamage = attacker.meleeAttack + (defender.isLarge ? attacker.bonusVsLarge : 0);
             
          
-            totalDamage = Math.max(1, weaponDamage - (defender.armor * 0.3));
+            totalDamage = Math.max(15, weaponDamage - (defender.armor * 0.3)); // reasonable 15 for blunt
         }
     }
 
@@ -130,17 +130,22 @@ const now = Date.now();
         processTacticalOrders();
     }
 
-    // --- REVISED SURGERY: Keep dead units for 10 seconds ---
-   battleEnvironment.units = battleEnvironment.units.filter(u => {
-    if (u.removeFromBattle) return false;
+   // --- REVISED SURGERY: Keep dead units for 10 seconds ---
+    battleEnvironment.units = battleEnvironment.units.filter(u => {
+        if (u.removeFromBattle) return false;
 
-    if (u.hp <= 0) {
-        if (!u.deathTime) handleUnitDeath(u);
-        return (now - u.deathTime) < 10000;
-    }
+        if (u.hp <= 0) {
+            if (!u.deathTime) handleUnitDeath(u);
+            
+            // BULLETPROOF FIX: The Commander's body must never decay!
+            // If it decays, update.js loses its reference and freezes the game.
+            if (u.isCommander) return true; 
+            
+            return (now - u.deathTime) < 10000;
+        }
 
-    return true;
-});
+        return true;
+    });
 
     let units = battleEnvironment.units;
     
@@ -160,16 +165,52 @@ const now = Date.now();
     const eCount = units.filter(u => u.side === 'enemy').length;
 
     /* Process Units */
-units.forEach(unit => {
+	units.forEach(unit => 
+	{
         
 		// --- DEATH HOOK ---
-				if (unit.hp <= 0) {
-					handleUnitDeath(unit);
-					return; // Skip normal AI/Movement for dead units
-				}
+		if (unit.hp <= 0) {
+			handleUnitDeath(unit);
+			return; // Skip normal AI/Movement for dead units
+		}
 
-				/* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
-				/* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
+		// 2. REVISED ROOT CAUSE FIX: Stop AI but update Animation State
+		if (unit.isPlayer) {
+			// 1. Manually find the nearest target so the player unit "knows" who it is fighting
+			if (!unit.target || unit.target.hp <= 0) {
+				let nearestDist = Infinity;
+				units.forEach(other => {
+					if (other.side !== unit.side && other.hp > 0) {
+						let d = Math.hypot(unit.x - other.x, unit.y - other.y);
+						if (d < nearestDist) {
+							nearestDist = d;
+							unit.target = other;
+						}
+					}
+				});
+			}
+
+			// 2. FIX THE TWERKING: Update the animation state based on distance
+			if (unit.target) {
+				let distToTarget = Math.hypot(unit.target.x - unit.x, unit.target.y - unit.y);
+				
+				// If we are within 50px (combat range), stop the horse leg animation
+				if (distToTarget < 50) {
+					unit.state = "idle"; 
+				} else {
+					// Only set to moving if the player is actually holding movement keys
+					// This assumes your 'keys' object is globally accessible
+					unit.state = (keys['w'] || keys['a'] || keys['s'] || keys['d']) ? "moving" : "idle";
+				}
+			} else {
+				unit.state = "idle";
+			}
+
+			// 3. EXIT: We updated the state for the renderer, now skip the AI math below
+			return; 
+		}
+
+			/* 2. MORALE & COWARDICE MATH (AI ONLY - Commander never flees) */
 				if (!unit.isCommander) {
 					let hpPct = unit.hp / unit.stats.health;
 					let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
@@ -208,10 +249,10 @@ units.forEach(unit => {
 					}
 
 					/* FLEEING MECHANICS (TWO-STAGE) */
-/* STAGE 2: Broken (Run Off Map) */
-if (unit.stats.morale <= 0) {
-    unit.state = "FLEEING";
-    
+		/* STAGE 2: Broken (Run Off Map) */
+	if (unit.stats.morale <= 0) {
+		unit.state = "FLEEING";
+			
     if (!unit.escapePoint || unit.escapeType !== "OUTER") {
         unit.escapeType = "OUTER";
         unit.fleeTimer = 0;
@@ -480,6 +521,11 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && unit.side === "enem
 					}
 						 
 					if (unit.cooldown <= 0) {
+					        // --- DEEP FIX: Force stance update if ammo is depleted ---
+					        if (unit.stats.currentStance === "statusrange" && unit.stats.ammo <= 0) {
+					            unit.stats.currentStance = "statusmelee";
+					        }
+
 							if (unit.stats.currentStance === "statusrange") {
 								
 									/* Ranged Combat */
@@ -503,7 +549,7 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && unit.side === "enem
 								
 								// 2. Calculate continuous velocity vector
 								let angle = Math.atan2(targetY - unit.y, targetX - unit.x);
-								let speed = 8; // Projectile flight speed
+								let speed = 12; // Projectile flight speed
 
 								battleEnvironment.projectiles.push({
 									x: unit.x, y: unit.y, 
@@ -682,7 +728,7 @@ if (distFlown > p.maxRange ||
                     u.hp -= dmg;
 
                     // Stick to Unit Bodies
-                    if (isJavelin || isBolt || isArrow || isSlinger || isRocket) {
+if (isJavelin || isBolt || isArrow || isRocket) {
                         if (!u.stuckProjectiles) u.stuckProjectiles = [];
                         if (u.stuckProjectiles.length < 4) {
                             let effectType = isJavelin ? "javelin" : (isBolt ? "bolt" : (isSlinger ? "stone" : (isRocket ? "rocket" : "arrow")));
@@ -724,7 +770,27 @@ if (distFlown > p.maxRange ||
         
         if (hitMade) battleEnvironment.projectiles.splice(i, 1);
     }
+	
+// 🔴 SURGERY: Prevent Player from Flipping & Trigger Enemy AI
+    // THE FIX: Search by side and isCommander instead of the missing isPlayer tag
+    let playerCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+    if (playerCmdr && playerCmdr.hp > 0) {
+        // Force visual direction based on keyboard movement instead of AI targeting
+        if (typeof keys !== 'undefined') {
+            if (keys['a'] || keys['arrowleft']) playerCmdr.direction = -1;
+            else if (keys['d'] || keys['arrowright']) playerCmdr.direction = 1;
+        }
+        // Clear any AI-assigned targets so it doesn't try to auto-chase
+        playerCmdr.target = null; 
     }
+
+    // THE FIX: Explicitly ensure this is an ENEMY before feeding it to the AI
+    let enemyCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "enemy");
+    if (enemyCmdr && enemyCmdr.hp > 0) {
+        processEnemyCommanderAI(enemyCmdr);
+    }
+	
+}
 	
 	
 	
@@ -840,7 +906,10 @@ function drawStuckProjectileOrEffect(ctx, type) {
 function leaveBattlefield(playerObj) {
     console.log("Leaving battlefield. Restoring overworld state...");
 
- 
+ window.pendingSallyOut = false;
+window.inParleMode = false;
+if (typeof player !== 'undefined') player.stunTimer = 0;
+
     // --- 1. THE MODE SWITCH (CRITICAL FIX) ---
     inBattleMode = false; 
     if (typeof inSiegeBattle !== 'undefined') inSiegeBattle = false; // Reset Siege state
@@ -1175,4 +1244,169 @@ function drawBloodPool(ctx, unit) {
     
     ctx.fill();
     ctx.restore();
+}
+
+
+ // ============================================================================
+// ENEMY COMMANDER SKIRMISH AI (20s PHASE THEN MELEE RUSH)
+// ============================================================================
+function processEnemyCommanderAI(cmdr) {
+    if (cmdr.hp <= 0 || cmdr.state === "FLEEING") return;
+
+    // --- 0. THE 60-SECOND TIMER ---
+    // Mark the exact millisecond the commander charge
+    cmdr.skirmishStartTime = cmdr.skirmishStartTime || Date.now();
+    let elapsed = Date.now() - cmdr.skirmishStartTime;
+    let isSkirmishPhase = elapsed < 60000; // 60 seconds
+
+    // --- 1. DECISION THROTTLING ---
+    cmdr.aiTick = (cmdr.aiTick || 0) + 1;
+    if (cmdr.aiTick % 10 !== 0 && cmdr.target && cmdr.target.hp > 0) {
+        applySkirmishPhysics(cmdr);
+        return;
+    }
+
+    let closestDist = Infinity;
+    let closestEnemy = null;
+
+    // --- 2. TARGET PERSISTENCE ---
+    if (cmdr.target && cmdr.target.hp > 0) {
+        let d = Math.hypot(cmdr.target.x - cmdr.x, cmdr.target.y - cmdr.y);
+        if (d < 600) { 
+            closestEnemy = cmdr.target;
+            closestDist = d;
+        }
+    }
+
+    if (!closestEnemy) {
+        for (let u of battleEnvironment.units) {
+            if (u.side === 'player' && u.hp > 0) {
+                let d = Math.hypot(u.x - cmdr.x, u.y - cmdr.y);
+                if (d < closestDist) {
+                    closestDist = d;
+                    closestEnemy = u;
+                }
+            }
+        }
+    }
+
+    if (!closestEnemy) {
+        cmdr.state = "idle";
+        cmdr.isMoving = false;
+        cmdr.vx *= 0.9; cmdr.vy *= 0.9; 
+        return;
+    }
+
+    cmdr.target = closestEnemy;
+
+    let dx = closestEnemy.x - cmdr.x;
+    let dy = closestEnemy.y - cmdr.y;
+    let angle = Math.atan2(dy, dx);
+    cmdr.direction = dx > 0 ? 1 : -1;
+
+// --- 3. PHASE LOGIC ---
+    // Added safety check to ensure we also look at cmdr.stats.ammo
+    if (!isSkirmishPhase || (cmdr.ammo || 0) <= 0 || (cmdr.stats && cmdr.stats.ammo <= 0)) {
+        // ==========================================
+        // PHASE 2: MELEE RUSH (No more arrows!)
+        // ==========================================
+        
+        // CRITICAL FIX: Wipe ammo on BOTH the wrapper and the stats object
+        cmdr.ammo = 0; 
+        cmdr.isRanged = false; 
+        if (cmdr.stats) {
+            cmdr.stats.ammo = 0;
+            cmdr.stats.isRanged = false;
+            cmdr.stats.currentStance = "statusmelee"; // Instantly force melee stance
+        }
+
+        // SPEED FIX: Scale charge speed dynamically instead of a flat 4.5
+        const baseSpeed = (cmdr.stats && cmdr.stats.speed) ? cmdr.stats.speed : 1.0;
+        const chargeSpeed = baseSpeed * 1.0; // Gives a 0% charge bonus
+        const meleeRange = 40;   // Get right in their face
+
+        if (closestDist > meleeRange) {
+            // CHARGE!
+            cmdr.state = "moving";
+            cmdr.isMoving = true;
+            cmdr.targetVx = Math.cos(angle) * chargeSpeed;
+            cmdr.targetVy = Math.sin(angle) * chargeSpeed;
+        } else {
+            // STRIKE!
+            cmdr.state = "attacking"; 
+            cmdr.isMoving = false;
+            cmdr.targetVx = 0;
+            cmdr.targetVy = 0;
+        }
+    } else {
+        // ==========================================
+        // PHASE 1: ANNOYING SKIRMISH (First 20s)
+        // ==========================================
+        const IDEAL_MIN = 200; 
+        const IDEAL_MAX = 500; 
+        const speed = 1.2; 
+
+        if (closestDist < IDEAL_MIN) {
+            // Retreat
+            cmdr.state = "moving";
+            cmdr.isMoving = true;
+            cmdr.targetVx = -Math.cos(angle) * speed; 
+            cmdr.targetVy = -Math.sin(angle) * speed; 
+        } else if (closestDist > IDEAL_MAX) {
+            // Advance cautiously
+            cmdr.state = "moving";
+            cmdr.isMoving = true;
+            cmdr.targetVx = Math.cos(angle) * speed * 0.8;
+            cmdr.targetVy = Math.sin(angle) * speed * 0.8;
+        } else {
+            // Hold and Shoot
+            cmdr.state = "attacking"; 
+            cmdr.isMoving = false;
+            cmdr.targetVx = 0;
+            cmdr.targetVy = 0;
+        }
+    }
+
+    applySkirmishPhysics(cmdr);
+
+    // --- 4. COMBAT EXECUTION ---
+    // The ultimate safeguard: He is ONLY allowed to shoot if the 20-second
+    // phase is active AND he actually has ammo.
+    if (isSkirmishPhase && cmdr.state === "attacking" && cmdr.cooldown <= 0 && (cmdr.ammo || 0) > 0) {
+        fireCommanderProjectile(cmdr, angle);
+    }
+    
+    if (cmdr.cooldown > 0) cmdr.cooldown--;
+}
+
+function applySkirmishPhysics(cmdr) {
+    const lerp = 0.15; 
+    cmdr.vx = (cmdr.vx || 0) * (1 - lerp) + (cmdr.targetVx || 0) * lerp;
+    cmdr.vy = (cmdr.vy || 0) * (1 - lerp) + (cmdr.targetVy || 0) * lerp;
+
+    cmdr.x += cmdr.vx;
+    cmdr.y += cmdr.vy;
+
+    let margin = 60;
+    cmdr.x = Math.max(margin, Math.min(BATTLE_WORLD_WIDTH - margin, cmdr.x));
+    cmdr.y = Math.max(margin, Math.min(BATTLE_WORLD_HEIGHT - margin, cmdr.y));
+}
+
+function fireCommanderProjectile(cmdr, angle) {
+    let projSpeed = 12;
+    battleEnvironment.projectiles.push({
+        x: cmdr.x, y: cmdr.y,
+        vx: Math.cos(angle) * projSpeed,
+        vy: Math.sin(angle) * projSpeed,
+        startX: cmdr.x, startY: cmdr.y,
+        maxRange: cmdr.stats.range || 750,
+        attackerStats: cmdr.stats,
+        side: cmdr.side,
+        projectileType: "Arrow",
+        isFire: false
+    });
+
+    if (typeof AudioManager !== 'undefined') AudioManager.playSound('arrow');
+    cmdr.ammo--;
+    cmdr.cooldown = 150;
 }

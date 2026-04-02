@@ -111,36 +111,7 @@ function city_system_renderTroops(ctx, factionName) {
     }
 }
 function city_system_renderGateOverlays(ctx) {
-    if (typeof overheadCityGates === 'undefined') return;
-    
-    for (let g of overheadCityGates) {
-        let gx = g.x * CITY_TILE_SIZE;
-        let gy = g.y * CITY_TILE_SIZE;
-        let roofColor = g.arch.roofs[0];
-        
-        // --- Draw the Roof ---
-        ctx.fillStyle = roofColor;
-        let roofWidth = (8 * CITY_TILE_SIZE) + 48; 
-        ctx.fillRect(gx - roofWidth/2, gy - 30, roofWidth, 24);
-        ctx.fillRect(gx - roofWidth/3, gy - 45, roofWidth * 0.66, 15);
-        ctx.fillStyle = "rgba(0,0,0,0.4)";
-        ctx.fillRect(gx - roofWidth/2, gy - 6, roofWidth, 6); 
-
-        // --- Draw Exit Prompt ---
-        // Only show if player (assumed global 'player') is near the gate
-        let dist = Math.hypot(player.x - gx, player.y - gy);
-        if (dist < 100) {
-            ctx.save();
-            ctx.fillStyle = "#ffeb3b"; // RPG Yellow
-            ctx.font = "bold 16px sans-serif";
-            ctx.textAlign = "center";
-            ctx.shadowBlur = 4;
-            ctx.shadowColor = "black";
-            let bounce = Math.sin(Date.now() / 200) * 4;
-            ctx.fillText("PRESS [P] TO EXIT", gx, gy - 60 + bounce);
-            ctx.restore();
-        }
-    }
+ 
 }
 
 // Add this listener to your main input handler or the bottom of city_system.js
@@ -176,12 +147,28 @@ const ARCHITECTURE = {
         ground: "#556b2f", road: "#7a7a7a", plaza: "#8c8c8c", water: "#4b8da6", 
         trees: ["#2e4a1f", "#3a5f27", "#1f3315"] 
     },
-    "Dab Tribes": { 
-        roofs: ["#00838f", "#006064", "#d2b48c", "#c2a37c", "#a88c69", "#eebd86"], 
-        // Fixed: Replaced #cfae7e with #f4e4c1 (Light cream adobe) for contrast
-        walls: ["#f4e4c1", "#bfa373", "#d6bc94", "#a68a5c", "#e3cca6"],            
-        ground: "#cfae7e", road: "#eebd86", plaza: "#d9ae75", water: "#3ba3ab", 
-        trees: ["#5c6b3e", "#4a5732", "#6e804a"] 
+"Dab Tribes": { 
+        // Mossy thatch, dark slate tiles, and weathered bamboo
+        roofs: ["#2D3624", "#3E4A3D", "#1A2421", "#735C32", "#4E5B31"], 
+        
+        // Dark tropical timber, teak, and humid-stained stone
+        walls: ["#4E3B31", "#3D3028", "#5C4D32", "#2B2B2B"],           
+        
+        // Deep mossy/clay earth
+        ground: "#3E4D26", 
+        
+        // Packed humid mud paths
+        road: "#5A4632", 
+        
+        // Lichen-covered flagstone
+        plaza: "#697063", 
+        
+        // Deep tropical river teal
+        water: "#1E5F61", 
+        
+        // Vibrant jungle greens, deep ferns, and karst-style limestone foliage
+        trees: ["#2D5A27", "#4A7C38", "#1E3D1A", "#5C913C"] 
+    
     },
     "Great Khaganate": { 
         roofs: ["#e0e0e0", "#f5f5dc", "#dcdcdc", "#8b5a2b", "#6b4421"],            
@@ -277,7 +264,7 @@ let midX = Math.floor(CITY_COLS / 2);
     }
 
     // 2. Organic Winding Roads (Drunkard's Walk spreading outward)
-    let numRoads = 60; // More branches = denser road network
+    let numRoads = 10; // More branches = denser road network
 	
 // --- INTEGRATED WOBBLY ROADS (MIGRATED FROM FORTIFICATION SYSTEM) ---
     let gateRadius = 4;
@@ -291,7 +278,7 @@ for (let y = 0; y < CITY_ROWS; y++) {
     let minDist = Math.min(distToNorth, distToSouth);
     
     // This logic keeps the road straight at the very ends (gates)
-    let straightness = Math.min(1, Math.max(0, (minDist - 15) / 20));
+    let straightness = Math.min(1, Math.max(0, (minDist - 105) / 20));
     let wobble = Math.floor(Math.sin(y * 0.08) * 5 * straightness);
     let currentMidX = midX + wobble;
     
@@ -307,7 +294,7 @@ for (let y = 0; y < CITY_ROWS; y++) {
         let distToWest = Math.abs(x - startX);
         let distToEast = Math.abs(x - endX);
         let minDist = Math.min(distToWest, distToEast);
-        let straightness = Math.min(1, Math.max(0, (minDist - 15) / 20));
+        let straightness = Math.min(1, Math.max(0, (minDist - 105) / 20));
         let wobble = Math.floor(Math.sin(x * 0.08) * 5 * straightness);
         let currentMidY = midY + wobble;
 
@@ -323,7 +310,7 @@ for (let y = 0; y < CITY_ROWS; y++) {
         let cx = midX;
         let cy = midY;
         let angle = Math.random() * Math.PI * 2;
-        let length = 30 + Math.random() * (maxRadius * 0.8);
+        let length = 30 + Math.random() * (maxRadius * 8);
         let roadWidth = 1 + Math.floor(Math.random() * 3);
 
         for(let step = 0; step < length; step++) {
@@ -350,7 +337,7 @@ for (let y = 0; y < CITY_ROWS; y++) {
 
     // 3. Scatter Buildings Radially (Dense center, sparse edges)
     const buildings = [];
-    let numBuildingAttempts = 110000; 
+    let numBuildingAttempts = 510000; 
 
 for (let i = 0; i < numBuildingAttempts; i++) {
         let bx = Math.floor(Math.random() * CITY_COLS);
@@ -408,9 +395,11 @@ for (let i = 0; i < numBuildingAttempts; i++) {
         }
     }
 
-    // Add Organic Features (Trees=3, Water=4)
-generateOrganicFeatures(grid, 3, 40, 18);
-generateOrganicFeatures(grid, 4, 12, 12);
+// Trees: Reduced from 40 clusters to 10; max spread from 18 to 10
+generateOrganicFeatures(grid, 3, 10, 10); 
+
+// Water: Reduced from 12 clusters to 4; max spread from 12 to 8
+generateOrganicFeatures(grid, 4, 4, 8);
 
 // =========================================================
     // START ADDITION: HORIZONTAL PARTITION WALL (Yellow Block)
@@ -552,7 +541,16 @@ function enterCity(factionName, playerObj) {
     savedWorldPlayerState.x = playerObj.x;
     savedWorldPlayerState.y = playerObj.y;
     
+    // 🔴 CRITICAL: kill parle first
+    closeParleUI();
+
     inCityMode = true;
+
+    // Extra safety wipe
+    const panel = document.getElementById('parle-panel');
+    if (panel) panel.style.display = 'none';
+
+
     currentActiveCityFaction = factionName;
 	
 	// ---> PASTE HERE <---

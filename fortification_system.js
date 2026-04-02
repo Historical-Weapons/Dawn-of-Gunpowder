@@ -45,11 +45,10 @@ let fortificationTroops = {};
 
     if (open) {
         // --- OPEN GATE STATE ---
-        ctx.fillStyle = arch.road;
+ctx.fillStyle = "rgba(140, 140, 140, 0)";
         ctx.fillRect(px, py, pw, ph);
 
-        ctx.fillStyle = "rgba(0,0,0,0.10)";
-        ctx.fillRect(cx - tile * 0.12, py + 1, tile * 0.24, ph - 2);
+ 
 
         const leafIn = tile * 0.55;
         const leafOut = tile * 1.9;
@@ -81,16 +80,12 @@ let fortificationTroops = {};
         ctx.fill();
         ctx.stroke();
 
-        // DRAW ROOF
-        ctx.fillStyle = isNorth ? "#8d1f1f" : "#7a1818";
-        ctx.fillRect(px, capY, pw, 4);
+    
 
         return;
     }
 
-    // --- CLOSED GATE STATE ---
-    ctx.fillStyle = "#5d4037";
-    ctx.fillRect(px, py, pw, ph);
+ 
 
     // vertical planks
     ctx.fillStyle = "#3e2723";
@@ -142,8 +137,10 @@ function buildCityWalls(grid, arch, ctx, factionName) {
 
     overheadCityGates = [
         { x: midX, y: startY, arch: arch, isOpen: false, gateHP: 1000, side: "north" },
-        { x: midX, y: endY, arch: arch, isOpen: false, gateHP: 1000, side: "south" }
+        { x: midX, y: endY, arch: arch, isOpen: false, gateHP: 1000, side: "south" } //TOGGLE HP 0 TO 1000 FOR DEBUGGING 
     ];
+	
+ 
 
     //1 let
     let towers = [];
@@ -247,60 +244,7 @@ function buildCityWalls(grid, arch, ctx, factionName) {
         }
     }
 
-    // =========================================================
-    // CUSTOM SIDE WALL EXTENSIONS (Seamless Match)
-    // =========================================================
-    
-    // Calculate the vertical middle of the map to center the side extensions
-    const logicalRows = typeof CITY_LOGICAL_ROWS !== 'undefined' ? CITY_LOGICAL_ROWS : CITY_ROWS;
-    const extMidY = Math.floor(logicalRows / 2);
-    const extStartY = extMidY - Math.floor(wallThick / 2);
-    const extEndY = extStartY + wallThick - 1;
-
-    for (let x = 0; x < CITY_COLS; x++) {
-        // We ONLY want to draw outside the inner keep area (from edge of map to outer walls)
-        if (x >= startX && x <= endX) continue; 
-
-        for (let y = extStartY; y <= extEndY; y++) {
-            // Distance calculations to render identical outer parapets & walkable core
-            let distFromTop = y - extStartY;
-            let distFromBottom = extEndY - y;
-            let minDistToEdge = Math.min(distFromTop, distFromBottom);
-
-            let isOuterParapet = (minDistToEdge < 2);
-            
-            let px = x * CITY_TILE_SIZE;
-            let py = y * CITY_TILE_SIZE;
-
-            if (isOuterParapet) {
-                grid[x][y] = 6; // Set to impassable obstacle
-                ctx.fillStyle = baseColor;
-                ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                
-                // Keep diagnostic tint identical
-                ctx.fillStyle = "rgba(40, 40, 40, 0.45)"; 
-                ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-
-                // Add the outer wall crenellations (ticks) on the horizontal edges
-                ctx.fillStyle = "#1a1a1a"; 
-                if ((y === extStartY || y === extEndY) && x % 3 === 0) {
-                    ctx.fillRect(px + CITY_TILE_SIZE/2 - 2, py + (y === extStartY ? 0 : CITY_TILE_SIZE - 6), 4, 6);
-                }
-            } else {
-                // Walkable floor ring (Matches main wall)
-                grid[x][y] = 1; 
-                ctx.fillStyle = "#b8b5ad"; 
-                ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                
-                ctx.strokeStyle = "rgba(0,0,0,0.1)"; 
-                ctx.strokeRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                
-                ctx.fillStyle = "rgba(255,255,255,0.3)"; 
-                ctx.fillRect(px + 1, py + 1, CITY_TILE_SIZE - 2, CITY_TILE_SIZE - 2);
-            }
-        }
-    }
-    // =========================================================
+ 
 
     // 3. RENDER INNER TOWERS & BIG WALKABLE LADDER BRIDGES
     for (let t of towers) {
