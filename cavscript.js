@@ -675,7 +675,7 @@ ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ct
         ctx.closePath(); ctx.fill(); ctx.stroke();
     }
 else if (type === "horse_archer") {
-        // --- DIRECTIONAL FLIPPING ---
+        
         ctx.save();
         ctx.scale(dir, 1);
 
@@ -705,32 +705,56 @@ else if (type === "horse_archer") {
 
         // --- OUT OF AMMO: Melee Lance Fallback ---
         if (ammo <= 0) {
-			 		   drawOffhandhorseBow(animFrame);   // keep bow visible
-            let meleeCycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 0;
-            let thrust = isAttacking ? Math.sin(meleeCycle * Math.PI) * 8 : 0;
+			 		    
+// --- IMPROVED AGGRESSIVE MELEE LOGIC ---
+let meleeCycle = isAttacking ? Math.max(0, maxCd - cd) / maxCd : 0;
 
-            // 1. Draw Stowed Bow in Bow Case
-            ctx.save();
-            ctx.translate(-5, 0 + b);
-            ctx.rotate(Math.PI / 6);
-            ctx.fillStyle = "#4e342e"; ctx.fillRect(-3, -8, 6, 16);
-            ctx.strokeStyle = "#212121"; ctx.lineWidth = 1; ctx.strokeRect(-3, -8, 6, 16);
-            ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, -8); 
-            ctx.quadraticCurveTo(4, -12, -2, -16); ctx.stroke();
-            ctx.restore();
+// Use a power function to make the strike "pop" forward 
+// Math.pow(x, 0.3) starts extremely fast and slows down at the end
+let snapCycle = Math.sin(Math.pow(meleeCycle, 0.3) * Math.PI);
 
-            // 2. Draw Melee Lance & Hand
-            ctx.save();
-            ctx.translate(2 + thrust, -4 + b); 
-            ctx.fillStyle = "#795548"; ctx.fillRect(-10, -1, 30, 2);
-            ctx.fillStyle = "#e0e0e0";
-            ctx.beginPath();
-            ctx.moveTo(20, -1.5); ctx.lineTo(26, 0); ctx.lineTo(20, 1.5); 
-            ctx.fill();
-            ctx.fillStyle = "#ffccbc"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
-            ctx.restore();
+// Determine if this specific unit is performing a 'Swing' instead of a 'Thrust'
+// We use the unit's internal ID (if available) or a coordinate hash to keep it consistent
+let unitSeed = (unit && unit.id) ? unit.id : (x + y);
+let isSwing = (unitSeed % 3 === 0); // Roughly 33% of units will swing instead of thrust
 
+let thrust = !isSwing ? snapCycle * 14 : snapCycle * 5; // Longer reach for thrusts
+let swingAngle = isSwing ? (snapCycle * 1.2) - 0.6 : 0; // Rotational arc for swings
+
+// 1. Draw Stowed Bow in Bow Case (Kept as is)
+ctx.save();
+ctx.translate(-5, 0 + b);
+ctx.rotate(Math.PI / 6);
+ctx.fillStyle = "#4e342e"; ctx.fillRect(-3, -8, 6, 16);
+ctx.strokeStyle = "#212121"; ctx.lineWidth = 1; ctx.strokeRect(-3, -8, 6, 16);
+ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 2;
+ctx.beginPath(); ctx.moveTo(0, -8); 
+ctx.quadraticCurveTo(4, -12, -2, -16); ctx.stroke();
+ctx.restore();
+
+// 2. REVISED: Draw Melee Lance & Hand
+ctx.save();
+// Apply translation for the "snap" thrust and rotation for the "swing"
+ctx.translate(2 + thrust, -4 + b); 
+if (isSwing) ctx.rotate(swingAngle); 
+
+// The Lance Shaft
+ctx.fillStyle = "#795548"; 
+ctx.fillRect(-10, -1, 35, 2); // Slightly longer lance for better visual impact
+
+// The Lance Tip (Steel)
+ctx.fillStyle = "#e0e0e0";
+ctx.beginPath();
+ctx.moveTo(25, -2); ctx.lineTo(33, 0); ctx.lineTo(25, 2); 
+ctx.fill();
+
+// The Hand (Placed last to stay on top of the shaft)
+ctx.fillStyle = "#ffccbc"; 
+ctx.beginPath(); 
+ctx.arc(0, 0, 2.5, 0, Math.PI * 2); 
+ctx.fill();
+
+ctx.restore();
         } else {
 			   drawOffhandhorseBow(animFrame);   // keep bow visible
             // --- RANGED COMBAT: Has Ammo ---

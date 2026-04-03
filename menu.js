@@ -279,10 +279,10 @@ manualModal.style.maxHeight = "90vh";
             <ul style="line-height: 1.8; font-size: 1.1rem; list-style-type: square; color: #d4b886;">
                 <li><strong style="color: #f5d76e;">WASD to Travel</li>
                 <li><strong style="color: #f5d76e;">SCROLL to Zoom Map</li>
-			    <li><strong style="color: #f5d76e;">12345 to Select Unit Type in Battlefield</li>
-			    <li><strong style="color: #f5d76e;">Press Q,E,R,F to Select Unit Type in Battlefield</li>
-							    <li><strong style="color: #f5d76e;">Press Z,X,C,V,B to Command Unit Formation</li>
-                <li><strong style="color: #f5d76e;">Press P to Return to Overworld unless still in Live Battle</li>
+			    <li><strong style="color: #f5d76e;">12345 or click to Select Unit Type in Battlefield</li>
+			    <li><strong style="color: #f5d76e;">Press Q,E,R,F to Order Selected in Battlefield</li>
+							    <li><strong style="color: #f5d76e;">Press Z,X,C,V,B to set Unit Formation</li>
+                <li><strong style="color: #f5d76e;">Press P to Return to Overworld after Battle</li>
 				                <li><strong style="color: #f5d76e;">Press T to view Troops & EXP in Overworld</li>
             </ul>
 <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 25px;">

@@ -331,12 +331,19 @@ function updateBattleUnits() {
             unit.escapeType = null;
         }
 
-        /* 3. COMBAT & TARGETING LOGIC */
-        if (!unit.target || unit.target.hp <= 0) {
+/* 3. COMBAT & TARGETING LOGIC */
+        // Calculate distance to current target (if any)
+        let currentTargetDist = (unit.target && unit.target.hp > 0) 
+            ? Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y) 
+            : Infinity;
+
+        // Re-evaluate if: No target, target is dead, OR occasionally checking for closer threats if chasing someone far away
+        if (!unit.target || unit.target.hp <= 0 || (currentTargetDist > 80 && Math.random() < 0.02)) {
             let nearestDist = Infinity;
             let nearestEnemy = null;
             units.forEach(other => {
-                if (other.side !== unit.side && other.hp > 0) {
+                // Ensure it's an enemy, alive, and NOT a dummy waypoint
+                if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
                     let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
                     if (dist < nearestDist) {
                         nearestDist = dist;
@@ -344,7 +351,11 @@ function updateBattleUnits() {
                     }
                 }
             });
-            unit.target = nearestEnemy;
+            
+            // Lock onto the new target if we didn't have one, or if this new enemy is closer than the old one!
+            if (nearestEnemy && nearestDist < currentTargetDist) {
+                unit.target = nearestEnemy;
+            }
         }
 
         // --- TRACK POSITION BEFORE MOVEMENT ---
@@ -841,36 +852,179 @@ function isBattleCollision(x, y, onWall = false) {
 }
 
 
-// Shared function to draw stuck projectiles and bomb marks
-function drawStuckProjectileOrEffect(ctx, type) {
-    if (type === "javelin") {
+// Add 'seed' as a third parameter
+function drawStuckProjectileOrEffect(ctx, type, seed = 0) {
+// Adding 1.1 ensures seed 0 doesn't result in sin(0)
+    let rand = Math.abs(Math.sin((seed + 1.1) * 12.9898) * 43758.5453) % 1;
+
+if (type === "javelin") {
+    if (rand < 0.60) {
+        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(4, 0); ctx.stroke(); 
+    } else if (rand < 0.80) {
+        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-2, 0); ctx.stroke(); 
+        ctx.save(); ctx.translate(-1, 3); ctx.rotate(0.5);
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(8, 0); ctx.stroke();
+        ctx.fillStyle = "#bdbdbd"; ctx.beginPath();
+        ctx.moveTo(8, 0); ctx.lineTo(7.33, -0.83); ctx.lineTo(10.67, 0); ctx.lineTo(7.33, 0.83); ctx.fill();
+        ctx.restore();
+    } else {
         ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(8, 0); ctx.stroke();
         ctx.fillStyle = "#bdbdbd"; ctx.beginPath();
-        ctx.moveTo(8, 0); ctx.lineTo(6, -2.5); ctx.lineTo(16, 0); ctx.lineTo(6, 2.5); ctx.fill();
-    } else if (type === "bolt") {
-        ctx.fillStyle = "#5d4037"; ctx.fillRect(-4, -1, 8, 2);
-        ctx.fillStyle = "#757575"; ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(9, 0); ctx.lineTo(4, 2); ctx.fill();
-        ctx.fillStyle = "#8d6e63"; ctx.fillRect(-5, -1.5, 3, 3);
-    } else if (type === "stone") {
-        ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
-    } else if (type === "rocket") {
-        ctx.scale(0.5, 0.5); // Scaled down for sticking
-        ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(12, 0); ctx.stroke();
-         ctx.fillStyle = "#4e342e"; ctx.fillRect(-6, 0.5, 14, 2.2);
-        ctx.fillStyle = "#424242"; ctx.beginPath(); ctx.moveTo(12, -1.2); ctx.lineTo(20, 0); ctx.lineTo(12, 1.2); ctx.fill();
-        ctx.scale(2, 2); // Reset scale
-    } else if (type === "bomb_crater") {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.6)"; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#424242"; // Shrapnel fragments
-        ctx.fillRect(3, -5, 2, 2); ctx.fillRect(-6, 4, 1.5, 1.5); ctx.fillRect(5, 6, 2.5, 2.5); ctx.fillRect(-7, -3, 2, 2);
-    } else { // arrow
-        ctx.fillStyle = "#8d6e63"; ctx.fillRect(-6, -0.5, 12, 1);
-        ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.moveTo(6, -1.5); ctx.lineTo(11, 0); ctx.lineTo(6, 1.5); ctx.fill();
-        ctx.fillStyle = "#4caf50"; ctx.fillRect(-7, -1.5, 4, 1); ctx.fillRect(-7, 0.5, 4, 1);
+  ctx.moveTo(8, 0); ctx.lineTo(7.33, -0.83); ctx.lineTo(10.67, 0); ctx.lineTo(7.33, 0.83); ctx.fill();
     }
 }
-
+	
+	
+	else if (type === "bolt") {
+        if (rand < 0.60) {
+            ctx.fillStyle = "#5d4037"; ctx.fillRect(-4, -1, 6, 2); 
+            ctx.fillStyle = "#8d6e63"; ctx.fillRect(-5, -1.5, 3, 3);
+        } else if (rand < 0.80) {
+            ctx.fillStyle = "#5d4037"; ctx.fillRect(-4, -1, 4, 2); 
+            ctx.fillStyle = "#8d6e63"; ctx.fillRect(-5, -1.5, 3, 3);
+            ctx.save(); ctx.translate(1, 2); ctx.rotate(0.4);
+            ctx.fillStyle = "#5d4037"; ctx.fillRect(0, -1, 4, 2);
+            ctx.fillStyle = "#757575"; ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(9, 0); ctx.lineTo(4, 2); ctx.fill();
+            ctx.restore();
+        } else {
+            ctx.fillStyle = "#5d4037"; ctx.fillRect(-4, -1, 8, 2);
+            ctx.fillStyle = "#757575"; ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(9, 0); ctx.lineTo(4, 2); ctx.fill();
+            ctx.fillStyle = "#8d6e63"; ctx.fillRect(-5, -1.5, 3, 3);
+        }
+    } else if (type === "stone") {
+        if (rand < 0.70) {
+            ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#bdbdbd"; ctx.beginPath(); ctx.arc(-0.8, -0.8, 1, 0, Math.PI * 2); ctx.fill();
+        } else if (rand < 0.90) {
+            ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "#424242"; ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.moveTo(-1.5, -1.5); ctx.lineTo(1, 1); ctx.moveTo(0, 0); ctx.lineTo(1.8, -0.5); ctx.stroke();
+        } else {
+            ctx.fillStyle = "#757575"; 
+            ctx.beginPath(); ctx.arc(-1.5, 1, 1.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(1.5, -0.5, 1, 0, Math.PI * 2); ctx.fill();
+            ctx.fillRect(0, 2, 1, 1); ctx.fillRect(-2, -2, 1.2, 1.2);
+        }
+} else if (type === "rocket") {
+        ctx.scale(0.5, 0.5); // Scaled down for sticking
+        
+        if (rand < 0.45) {
+            // 45% Chance: Stuck in ground (Head & Tube buried)
+            // Bamboo tube and arrowhead are underground, only the long shaft is visible
+            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 0.6; 
+            ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(-4, 0); ctx.stroke();
+        } else if (rand < 0.80) {
+            // 35% Chance: Intact / Bounced (Tube & Shaft attached)
+            // The full assembly survived the impact
+            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 0.6; 
+            ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(12, 0); ctx.stroke();
+            ctx.fillStyle = "#4e342e"; ctx.fillRect(-6, 0.5, 14, 2.2); // Bamboo Tube
+            ctx.fillStyle = "#424242"; ctx.beginPath(); // Arrowhead
+            ctx.moveTo(12, -1.2); ctx.lineTo(20, 0); ctx.lineTo(12, 1.2); ctx.fill();
+        } else if (rand < 0.95) {
+            // 15% Chance: Headless Shaft (Tube intact, Arrowhead snapped off)
+            // Common in impact; the heavy metal tip breaks off but the tube stays tied
+            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 0.6; 
+            ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(12, 0); ctx.stroke();
+            ctx.fillStyle = "#4e342e"; ctx.fillRect(-6, 0.5, 14, 2.2); // Tube remains
+        } else {
+            // 5% Chance: EXTREMELY RARE (Tube propeller break/separation)
+            // The bindings failed and the bamboo tube snapped away from the shaft
+            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 0.6;
+            ctx.beginPath(); ctx.moveTo(-28, 0); ctx.lineTo(12, 0); ctx.stroke(); // Bare shaft
+            
+            ctx.save(); // The propellant tube lying nearby
+            ctx.translate(5, 4);
+            ctx.rotate(0.8);
+            ctx.fillStyle = "#4e342e"; ctx.fillRect(0, 0, 14, 2.2);
+            ctx.fillStyle = "#424242"; ctx.beginPath(); 
+            ctx.moveTo(14, -1.2); ctx.lineTo(20, 1.1); ctx.lineTo(14, 3.4); ctx.fill();
+            ctx.restore();
+        }
+        
+        ctx.scale(2, 2); // Reset scale
+} else if (type === "bomb_crater") {
+        if (rand < 0.25) {
+            // 25% Chance: Heavy Deep Crater (Layered soot + internal debris)
+            ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+            ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "rgba(30, 20, 10, 0.5)"; // Earthy undertone
+            ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#212121";
+            for(let i=0; i<8; i++) {
+                let r = 6 + (Math.sin(i + seed) * 6);
+                ctx.fillRect(Math.cos(i) * r, Math.sin(i) * r, 2.5, 2.5);
+            }
+        } else if (rand < 0.45) {
+            // 20% Chance: Starburst Scorch (Flash burn with thin radiating lines)
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.6)"; ctx.lineWidth = 0.8;
+            for(let i=0; i<12; i++) {
+                let angle = (i / 12) * Math.PI * 2 + seed;
+                let len = 10 + (Math.cos(i * seed) * 5);
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(angle) * len, Math.sin(angle) * len); ctx.stroke();
+            }
+        } else if (rand < 0.65) {
+            // 20% Chance: Debris Field (Small central mark with wide shrapnel)
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#424242";
+            for(let i=0; i<10; i++) {
+                let offX = Math.sin(i * seed) * 15;
+                let offY = Math.cos(i * seed) * 15;
+                let size = 1 + (Math.abs(Math.sin(i)) * 2);
+                ctx.fillRect(offX, offY, size, size);
+            }
+        } else if (rand < 0.80) {
+            // 15% Chance: Skidding/Directional Blast (Elongated oval)
+            ctx.save();
+            ctx.rotate(seed % Math.PI); // Random orientation
+            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+            ctx.beginPath(); ctx.ellipse(0, 0, 15, 6, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.beginPath(); ctx.ellipse(-4, 0, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        } else if (rand < 0.92) {
+            // 12% Chance: Double Impact (Two overlapping small craters)
+            for(let i=0; i<2; i++) {
+                let offX = (i === 0) ? -4 : 4;
+                let offY = (i === 0) ? -2 : 3;
+                ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                ctx.beginPath(); ctx.arc(offX, offY, 7, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = "#1a1a1a";
+                ctx.fillRect(offX, offY, 2, 2);
+            }
+        } else {
+            // 8% Chance: "Dud" or Shallow Thud (Faint grey ring)
+            ctx.strokeStyle = "rgba(60, 60, 60, 0.4)";
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+            ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+        }
+		
+    } else { // arrow
+        if (rand < 0.60) {
+            ctx.fillStyle = "#8d6e63"; ctx.fillRect(-6, -0.5, 8, 1); 
+            ctx.fillStyle = "#4caf50"; ctx.fillRect(-7, -1.5, 4, 1); ctx.fillRect(-7, 0.5, 4, 1);
+        } else if (rand < 0.80) {
+            ctx.fillStyle = "#8d6e63"; ctx.fillRect(-6, -0.5, 5, 1); 
+            ctx.fillStyle = "#4caf50"; ctx.fillRect(-7, -1.5, 4, 1); ctx.fillRect(-7, 0.5, 4, 1);
+            ctx.save(); ctx.translate(0, 2); ctx.rotate(0.6);
+            ctx.fillStyle = "#8d6e63"; ctx.fillRect(0, -0.5, 6, 1);
+            ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.moveTo(6, -1.5); ctx.lineTo(11, 0); ctx.lineTo(6, 1.5); ctx.fill();
+            ctx.restore();
+        } else {
+            ctx.fillStyle = "#8d6e63"; ctx.fillRect(-6, -0.5, 12, 1);
+            ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.moveTo(6, -1.5); ctx.lineTo(11, 0); ctx.lineTo(6, 1.5); ctx.fill();
+            ctx.fillStyle = "#4caf50"; ctx.fillRect(-7, -1.5, 4, 1); ctx.fillRect(-7, 0.5, 4, 1);
+        }
+    }
+}
 function leaveBattlefield(playerObj) {
     console.log("Leaving battlefield. Restoring overworld state...");
 

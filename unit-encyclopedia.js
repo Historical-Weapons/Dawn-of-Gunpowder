@@ -57,6 +57,12 @@
     if (u.name === "Hand Cannoneer") {   // <-- change to your unit name
         displayRange = Math.floor(displayRange / 2);
     }
+		    if (u.name === "Rocket") {   // <-- change to your unit name
+        displayRange = Math.floor(displayRange / 2);
+    }
+	    if (u.name === "Bomb") {   // <-- change to your unit name
+        displayRange = Math.floor(displayRange / 3);
+    }
 	
 	if (u.name === "Camel Cannon") {   // <-- change to your unit name
         displayRange = Math.floor(displayRange / 2);

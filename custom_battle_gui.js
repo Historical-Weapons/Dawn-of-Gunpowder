@@ -6,7 +6,7 @@
  
     // --- STATE MANAGEMENT ---
     let customBattleActive = false;
-    let customFunds = 1000;
+    let customFunds = 500;
     
     let playerSetup = { faction: "Hong Dynasty", color: "#d32f2f", roster: [], cost: 0 };
     let enemySetup = { faction: "Great Khaganate", color: "#1976d2", roster: [], cost: 0 };
@@ -36,8 +36,8 @@ const FactionUnitRules = {
 "Tran Realm": {
     bannedRoles: [], // Clear this to allow roles like Cavalry (which Elephants use)
     bannedUnits: [
-        "Horse Archer", "Heavy Horse Archer", "Lancer", "Heavy Lancer", 
-        "Elite Lancer", "Keshig", "Camel Cannon", "Hand Cannoneer", "Rocket","Heavy Crossbowman", "Repeater Crossbowman"
+        "Horse Archer", "War Elephant", "Slinger","Heavy Horse Archer", "Lancer", "Heavy Lancer", 
+        "Elite Lancer", "Keshig", "Camel Cannon", "Hand Cannoneer", "Rocket","Heavy Crossbowman", "Repeater Crossbowman", "Glaiveman","Heavy Two Handed"
     ] // Manually exclude all "Horse-like" names and specific tech
 },
 
@@ -45,7 +45,7 @@ const FactionUnitRules = {
     bannedRoles: [], // Clear this to allow elephants
     bannedUnits: [
         "Horse Archer", "Heavy Horse Archer", "Lancer", "Heavy Lancer", 
-        "Elite Lancer", "Keshig", "Camel Cannon", "Slinger", "Hand Cannoneer", "Rocket","Heavy Crossbowman", "Repeater Crossbowman"
+        "Elite Lancer", "Keshig", "Camel Cannon","Heavy Firelance", "Firelance", "Bomb", "Slinger", "Hand Cannoneer", "Rocket","Heavy Crossbowman", "Repeater Crossbowman", "Glaiveman"
     ] 
 },
         "Great Khaganate": {
@@ -68,28 +68,28 @@ const FactionUnitRules = {
 
         "Xiaran Dominion": {
               bannedRoles: [], 
-            bannedUnits: ["War Elephant", "Keshig","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer", "Repeater Crossbowman"]
+            bannedUnits: ["War Elephant", "Keshig","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer", "Repeater Crossbowman","Heavy Crossbowman","Heavy Firelance", "Heavy Lancer","Heavy Horse Archer", "Glaiveman","Heavy Two Handed","Rocket"]
         },
 
         "Hong Dynasty": {
             bannedRoles: [], 
             // Banned Xia's unique tech and the nomad elites
-            bannedUnits: ["War Elephant", "Keshig", "Camel Cannon","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer", "Hand Cannoneer"] 
+            bannedUnits: ["War Elephant", "Keshig", "Camel Cannon","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer", "Hand Cannoneer","Heavy Horse Archer", "Lancer", "Heavy Lancer","Horse Archer","Heavy Firelance"] 
         },
 
         "Jinlord Confederacy": {
             bannedRoles: ["Rocket", "bomb"], 
-            bannedUnits: ["War Elephant", "Camel Cannon", "Keshig","Slinger","Javelinier", "Poison Crossbowman", "Repeater Crossbowman"]
+            bannedUnits: ["War Elephant","Heavy Lancer", "Camel Cannon", "Keshig","Slinger","Javelinier", "Poison Crossbowman", "Repeater Crossbowman", "Glaiveman","Lancer","Crossbowman","Heavy Horse Archer"]
         },
 
         "Goryun Kingdom": {
             bannedRoles: ["mounted_gunner", "gunner"],
-            bannedUnits: ["War Elephant", "Camel Cannon", "Hand Cannoneer", "Keshig","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer"]
+            bannedUnits: ["War Elephant", "Camel Cannon", "Hand Cannoneer", "Keshig","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer","Heavy Horse Archer","Heavy Lancer","Heavy Two Handed", "Heavy Crossbowman", "Glaiveman","Light Two Handed","Lancer"]
         },
 
         "High Plateau Kingdoms": {
             bannedRoles: ["gunner", "mounted_gunner", "Rocket", "bomb", "firelance"],
-            bannedUnits: ["War Elephant", "Camel Cannon", "Hand Cannoneer", "Heavy Lancer", "Elite Lancer", "Keshig", "Poison Crossbowman", "Repeater Crossbowman"]
+            bannedUnits: ["War Elephant", "Camel Cannon", "Hand Cannoneer", "Heavy Lancer", "Elite Lancer", "Keshig", "Poison Crossbowman", "Repeater Crossbowman","Crossbowman","Heavy Crossbowman","Heavy Two Handed", "Glaiveman"]
         }
     };
 
@@ -188,12 +188,12 @@ const FactionUnitRules = {
             </div>
             <div>
                 <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Funds</label><br>
-                <input id="cb-funds-input" type="number" value="${customFunds}" step="1000" style="background: #3e2723; color: #f5d76e; border: 1px solid #d4b886; padding: 5px; width: 100px; font-family: Georgia; text-align: right;">
+                <input id="cb-funds-input" type="number" value="${customFunds}" min="100" max="2000" step="100"style="background: #3e2723; color: #f5d76e; border: 1px solid #d4b886; padding: 5px; width: 100px; font-family: Georgia; text-align: right;">
             </div>
             <div style="margin-left: 15px; text-align: center;">
                 <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Game Mode</label><br>
                 <div style="color: #ff9800; font-size: 14px; font-weight: bold; margin-top: 4px; text-shadow: 1px 1px 2px #000;">
-                    Regicide (Commander Death)
+                   Field Battle
                 </div>
             </div>
         `;
@@ -213,7 +213,7 @@ const FactionUnitRules = {
         header.appendChild(settingsBox);
         header.appendChild(actionBox);
 
-        // 3. ARMIES SPLIT SCREEN
+ // 3. ARMIES SPLIT SCREEN
         const body = document.createElement("div");
         body.style.display = "flex";
         body.style.flex = "1";
@@ -232,11 +232,19 @@ const FactionUnitRules = {
         container.appendChild(body);
         document.body.appendChild(container);
 
-        // Event Listeners
+        // --- REVISED EVENT LISTENERS ---
         document.getElementById("cb-funds-input").addEventListener("change", (e) => {
-            customFunds = parseInt(e.target.value) || 10000;
+            let val = parseInt(e.target.value) || 500;
+            
+            // SURGERY: Force value between 100 and 2000
+            customFunds = Math.max(100, Math.min(2000, val));
+            
+            // Sync the input box display so it doesn't show the illegal number
+            e.target.value = customFunds; 
+            
             updateUI();
         });
+
         document.getElementById("cb-map-select").addEventListener("change", (e) => {
             selectedMap = e.target.value;
         });
@@ -304,7 +312,7 @@ const FactionUnitRules = {
     trayHeader.style.marginBottom = "10px";
 
     const trayTitle = document.createElement("div");
-    trayTitle.innerText = "SELECTED ROSTER (Max 100)";
+    trayTitle.innerText = "SELECTED ROSTER (Max 30)";
     trayTitle.style.color = "#a1887f";
     trayTitle.style.fontSize = "12px";
 
@@ -485,7 +493,7 @@ const tray = document.createElement("div");
             let setup = side === "player" ? playerSetup : enemySetup;
             if (isCatalog) {
                 if (setup.cost + cost > customFunds) return; // Ignore if it exceeds funds
-                if (setup.roster.length >= 100) return; // Engine soft limit
+                if (setup.roster.length >= 30) return; // Engine soft limit
                 
                 setup.roster.push(unitKey);
                 setup.cost += cost;
@@ -543,8 +551,8 @@ const tray = document.createElement("div");
 
     // --- RANDOM BATTLE GENERATOR ---
     function launchRandomBattle() {
-        // Set funds to 1000
-        customFunds = 1000;
+        // Set funds to 500
+        customFunds = 500;
         const fundsInput = document.getElementById("cb-funds-input");
         if (fundsInput) fundsInput.value = customFunds;
 
@@ -568,19 +576,22 @@ const tray = document.createElement("div");
             setupObj.cost = 0;
 
             let attempts = 0;
-            // Target ~1000 funds with max 100 units
-            while (setupObj.cost < customFunds && setupObj.roster.length < 100 && attempts < 50) {
-                let randomUnit = validUnits[Math.floor(Math.random() * validUnits.length)];
-                let cost = UnitRoster.allUnits[randomUnit].cost || 50;
+						// Target ~500 funds with max 30 units
+			while (setupObj.roster.length < 30 && attempts < 100) {
+				attempts++;
 
-                if (setupObj.cost + cost <= customFunds) {
-                    setupObj.roster.push(randomUnit);
-                    setupObj.cost += cost;
-                    attempts = 0; // Reset consecutive failures
-                } else {
-                    attempts++;
-                }
-            }
+				let randomUnit = validUnits[Math.floor(Math.random() * validUnits.length)];
+				let unitData = UnitRoster.allUnits[randomUnit];
+				let cost = unitData.cost || 50;
+
+				// Check if this unit fits in the 500-2000 budget
+				if (setupObj.cost + cost <= customFunds) {
+					setupObj.roster.push(randomUnit);
+					setupObj.cost += cost;
+				} 
+				// Note: if it's too expensive, we don't 'break', we 'continue' 
+				// to see if a cheaper unit fits in the remaining budget.
+			}
         }
 
         populateRandomArmy(playerSetup);
@@ -686,8 +697,8 @@ if (typeof window.player === "undefined" || !window.player) {
                 y: BATTLE_WORLD_HEIGHT - 100, 
                 hp: 200, 
                 maxHealth: 200, 
-                baseSpeed: 15, // ---> ADDED THIS: Stops undefined speed crashes
-                speed: 15,     // ---> ADDED THIS: Stops undefined speed crashes
+                baseSpeed: 7, // ---> ADDED THIS: Stops undefined speed crashes
+                speed: 7,     // ---> ADDED THIS: Stops undefined speed crashes
                 faction: playerSetup.faction,
                 state: "idle",  // Prevents rendering animation crashes
                 frame: 0,
@@ -940,7 +951,8 @@ if (typeof window.player === "undefined" || !window.player) {
             ammo: finalAmmo,      // Pulls 24 directly from your General stats
             renderType: "horse_archer", 
             x: centerX,
-            y: startY - (80 * rankDir), 
+            // FIX: Change the minus (-) to a plus (+) to spawn BEHIND the army
+            y: startY + (80 * rankDir),
             vx: 0,
             vy: 0,
             direction: rankDir, 

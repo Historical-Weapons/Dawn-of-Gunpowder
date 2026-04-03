@@ -248,301 +248,301 @@ ctx.fillRect(3.0, -12, 0.8, 2.5);
 	
 else if (type === "peasant") {
 		
-    const isMilitia = unitName === "Militia";
-    
-    // 1. RESILIENT SEED GENERATION
-    let seed = 0;
-    if (typeof unit !== 'undefined' && unit !== null) {
-        if (typeof unit.id === 'number') {
-            seed = Math.abs(unit.id);
-        } else if (typeof unit.id === 'string') {
-            // Hash a string ID (like a UUID) into a number
-            for (let i = 0; i < unit.id.length; i++) {
-                seed += unit.id.charCodeAt(i);
-            }
-        } else {
-            // If no ID exists, create a permanent random seed on the unit object
-            // This prevents the weapon from flickering every frame
-            if (typeof unit._weaponSeed === 'undefined') {
-                unit._weaponSeed = Math.floor(Math.random() * 1000);
-            }
-            seed = unit._weaponSeed;
-        }
-    }
-    
-    let weaponType = seed % 10; // Expanded to 10 weapons
-    
- 
-
-    let wBob = (typeof weaponBob !== 'undefined') ? weaponBob : (typeof bob !== 'undefined' ? bob : 0);
-    let maxCd = 300;
-    let currentCd = (typeof cooldown !== 'undefined') ? cooldown : 0;
-    let cycle = isAttacking ? (maxCd - currentCd) / maxCd : 0;
-
-    // Separate animation profiles based on the weapon
-    let isThrusting = (weaponType === 0 || weaponType === 1 || weaponType === 4);
-    
-    let thrust = 0;
-    let swingAngle = 0;
-
-    if (isAttacking) {
-        if (isThrusting) {
-            // Snappy, rapid thrust animation
-            thrust = cycle < 0.2 ? (cycle / 0.2) * 12 : 12 * (1 - (cycle - 0.2) / 0.8);
-        } else {
-            // Heavy overhead/side swinging animation (used by axes, hammers, scythes)
-            swingAngle = Math.sin(cycle * Math.PI) * (Math.PI / 1.5);
-        }
-    }
-
-    // --- DRAWING OFF-HAND / SHIELD ---
-    if ([4, 5, 8].includes(weaponType)) {
-        ctx.save();
-        let shieldPush = isAttacking ? 2 : 0;
-        ctx.translate((2 + shieldPush) * dir, -3 + wBob);
-        
-        if (weaponType === 4) {
- 
-				// --- Chinese Tengpai (Woven Rattan Shield) ---
-				ctx.save();
-				let shieldRadius = 8; // Medium-large circular shield
+				const isMilitia = unitName === "Militia";
 				
-				// 1. Base Rattan Color (Light Straw/Gold)
-				ctx.fillStyle = "#e3c58d"; 
-				ctx.beginPath();
-				ctx.arc(0, 0, shieldRadius, 0, Math.PI * 1.5);
-				ctx.fill();
+				// 1. RESILIENT SEED GENERATION
+				let seed = 0;
+				if (typeof unit !== 'undefined' && unit !== null) {
+					if (typeof unit.id === 'number') {
+						seed = Math.abs(unit.id);
+					} else if (typeof unit.id === 'string') {
+						// Hash a string ID (like a UUID) into a number
+						for (let i = 0; i < unit.id.length; i++) {
+							seed += unit.id.charCodeAt(i);
+						}
+					} else {
+						// If no ID exists, create a permanent random seed on the unit object
+						// This prevents the weapon from flickering every frame
+						if (typeof unit._weaponSeed === 'undefined') {
+							unit._weaponSeed = Math.floor(Math.random() * 1000);
+						}
+						seed = unit._weaponSeed;
+					}
+				}
+				
+				let weaponType = seed % 10; // Expanded to 10 weapons
+				
+			 
 
-				// 2. Woven Coils (Concentric rings to show the rattan wrap)
-				ctx.strokeStyle = "#a0522d"; // Golden brown
-				ctx.lineWidth = 0.6;
-				for (let r = 1; r <= shieldRadius; r += 1.5) {
-					ctx.beginPath();
-					ctx.arc(0, 0, r, 0, Math.PI * 2);
-					ctx.stroke();
+				let wBob = (typeof weaponBob !== 'undefined') ? weaponBob : (typeof bob !== 'undefined' ? bob : 0);
+				let maxCd = 300;
+				let currentCd = (typeof cooldown !== 'undefined') ? cooldown : 0;
+				let cycle = isAttacking ? (maxCd - currentCd) / maxCd : 0;
+
+				// Separate animation profiles based on the weapon
+				let isThrusting = (weaponType === 0 || weaponType === 1 || weaponType === 4);
+				
+				let thrust = 0;
+				let swingAngle = 0;
+
+				if (isAttacking) {
+					if (isThrusting) {
+						// Snappy, rapid thrust animation
+						thrust = cycle < 0.2 ? (cycle / 0.2) * 12 : 12 * (1 - (cycle - 0.2) / 0.8);
+					} else {
+						// Heavy overhead/side swinging animation (used by axes, hammers, scythes)
+						swingAngle = Math.sin(cycle * Math.PI) * (Math.PI / 1.5);
+					}
 				}
 
-				// 3. The Radial Weave (The "Star" pattern that binds the coils)
-				ctx.strokeStyle = "#6d4c41"; // Darker brown for depth
-				ctx.lineWidth = 0.4;
-				for (let i = 0; i < 12; i++) {
-					let angle = (i * Math.PI) / 6;
+				// --- DRAWING OFF-HAND / SHIELD ---
+				if ([4, 5, 8].includes(weaponType)) {
+					ctx.save();
+					let shieldPush = isAttacking ? 2 : 0;
+					ctx.translate((2 + shieldPush) * dir, -3 + wBob);
+					
+					if (weaponType === 4) {
+			 
+							// --- Chinese Tengpai (Woven Rattan Shield) ---
+							ctx.save();
+							let shieldRadius = 8; // Medium-large circular shield
+							
+							// 1. Base Rattan Color (Light Straw/Gold)
+							ctx.fillStyle = "#e3c58d"; 
+							ctx.beginPath();
+							ctx.arc(0, 0, shieldRadius, 0, Math.PI * 1.5);
+							ctx.fill();
+
+							// 2. Woven Coils (Concentric rings to show the rattan wrap)
+							ctx.strokeStyle = "#a0522d"; // Golden brown
+							ctx.lineWidth = 0.6;
+							for (let r = 1; r <= shieldRadius; r += 1.5) {
+								ctx.beginPath();
+								ctx.arc(0, 0, r, 0, Math.PI * 2);
+								ctx.stroke();
+							}
+
+							// 3. The Radial Weave (The "Star" pattern that binds the coils)
+							ctx.strokeStyle = "#6d4c41"; // Darker brown for depth
+							ctx.lineWidth = 0.4;
+							for (let i = 0; i < 12; i++) {
+								let angle = (i * Math.PI) / 6;
+								ctx.beginPath();
+								ctx.moveTo(0, 0);
+								// We use a slight curve or dashed line to simulate weaving over/under
+								ctx.lineTo(Math.cos(angle) * shieldRadius, Math.sin(angle) * shieldRadius);
+								ctx.stroke();
+							}
+
+							// 4. Central "Peak" (The reinforced center point)
+							ctx.fillStyle = "#8d6e63";
+							ctx.beginPath();
+							ctx.arc(0, 0, 2, 0, Math.PI * 2);
+							ctx.fill();
+							// Tiny highlight on the peak
+							ctx.fillStyle = "#ffe0b2";
+							ctx.beginPath();
+							ctx.arc(-0.5 * dir, -0.5, 0.5, 0, Math.PI * 2);
+							ctx.fill();
+
+							// 5. Reinforced Outer Rim
+							ctx.strokeStyle = "#5d4037";
+							ctx.lineWidth = 1.2;
+							ctx.beginPath();
+							ctx.arc(0, 0, shieldRadius, 0, Math.PI * 2);
+							ctx.stroke();
+
+							ctx.restore();
+			}
+					
+
+					else if (weaponType === 5) {
+				// --- Improvised Plank Shield (Worn/Scrap Wood) ---
+				ctx.save();
+				
+				let sW = 7;  // Total width
+				let sH = 12; // Total height
+				let xOff = -3.5 * dir; // Center the shield on the arm
+				
+				// 1. Draw 3 individual vertical planks
+				let plankWidth = sW / 3;
+				let woodColors = ["#795548", "#6d4c41", "#8d6e63"]; // Slight variations in wood tone
+				
+				for (let i = 0; i < 3; i++) {
+					ctx.fillStyle = woodColors[i];
+					ctx.fillRect(xOff + (i * plankWidth * dir), -sH/2, plankWidth * dir, sH);
+					
+					// Plank gaps/outlines
+					ctx.strokeStyle = "#3e2723";
+					ctx.lineWidth = 0.5;
+					ctx.strokeRect(xOff + (i * plankWidth * dir), -sH/2, plankWidth * dir, sH);
+				}
+
+				// 2. Horizontal Cross-Braces (The "Battens" holding them together)
+				ctx.fillStyle = "#5d4037";
+				// Top brace
+				ctx.fillRect(xOff - (0.5 * dir), -4, (sW + 1) * dir, 2);
+				// Bottom brace
+				ctx.fillRect(xOff - (0.5 * dir), 2, (sW + 1) * dir, 2);
+
+				// 3. Iron Nails (Tiny silver dots on the braces)
+				ctx.fillStyle = "#bdbdbd";
+				for (let row = -3; row <= 3; row += 6) { // Top and bottom brace
+					for (let col = 0; col < 3; col++) { // One nail per plank
+						let nailX = xOff + (col * plankWidth + plankWidth/2) * dir;
+						ctx.beginPath();
+						ctx.arc(nailX, row, 0.4, 0, Math.PI * 2);
+						ctx.fill();
+					}
+				}
+
+				// 4. Rough/Chipped Edges (Optional: adds a jagged look)
+				ctx.strokeStyle = "#3e2723";
+				ctx.lineWidth = 1;
+				ctx.strokeRect(xOff, -sH/2, sW * dir, sH);
+
+				ctx.restore();
+			}
+			else if (weaponType === 8) {
+				// --- Chinese Steamer Lid (Flipped/Inside View) ---
+				ctx.save();
+				let shieldRadius = 9; // Large, prominent size
+				
+				// 1. The Main Circular Base
+				ctx.fillStyle = "#d2b48c"; // Bamboo Tan
+				ctx.beginPath();
+				ctx.arc(0, 0, shieldRadius, 0, Math.PI * 2);
+				ctx.fill();
+
+				// 2. The "Blanks" (Radial Bamboo Support Slats)
+				// We draw lines from the center to the edge to look like the internal structure
+				ctx.strokeStyle = "#a0522d"; // Darker bamboo brown
+				ctx.lineWidth = 1;
+				for (let i = 0; i < 8; i++) {
+					let angle = (i * Math.PI) / 4;
 					ctx.beginPath();
 					ctx.moveTo(0, 0);
-					// We use a slight curve or dashed line to simulate weaving over/under
 					ctx.lineTo(Math.cos(angle) * shieldRadius, Math.sin(angle) * shieldRadius);
 					ctx.stroke();
 				}
 
-				// 4. Central "Peak" (The reinforced center point)
-				ctx.fillStyle = "#8d6e63";
+				// 3. Inner Binding Rings
+				// These hold the slats together
 				ctx.beginPath();
-				ctx.arc(0, 0, 2, 0, Math.PI * 2);
-				ctx.fill();
-				// Tiny highlight on the peak
-				ctx.fillStyle = "#ffe0b2";
+				ctx.arc(0, 0, shieldRadius * 0.4, 0, Math.PI * 2);
+				ctx.stroke();
+				
 				ctx.beginPath();
-				ctx.arc(-0.5 * dir, -0.5, 0.5, 0, Math.PI * 2);
-				ctx.fill();
+				ctx.arc(0, 0, shieldRadius * 0.7, 0, Math.PI * 2);
+				ctx.stroke();
 
-				// 5. Reinforced Outer Rim
-				ctx.strokeStyle = "#5d4037";
-				ctx.lineWidth = 1.2;
+				// 4. Thick Outer Rim (The deep edge of the lid)
+				ctx.strokeStyle = "#8b4513";
+				ctx.lineWidth = 1.8;
 				ctx.beginPath();
 				ctx.arc(0, 0, shieldRadius, 0, Math.PI * 2);
 				ctx.stroke();
 
 				ctx.restore();
-}
-        
+			}
+			ctx.restore();
+				}
 
-		else if (weaponType === 5) {
-    // --- Improvised Plank Shield (Worn/Scrap Wood) ---
-    ctx.save();
-    
-    let sW = 7;  // Total width
-    let sH = 12; // Total height
-    let xOff = -3.5 * dir; // Center the shield on the arm
-    
-    // 1. Draw 3 individual vertical planks
-    let plankWidth = sW / 3;
-    let woodColors = ["#795548", "#6d4c41", "#8d6e63"]; // Slight variations in wood tone
-    
-    for (let i = 0; i < 3; i++) {
-        ctx.fillStyle = woodColors[i];
-        ctx.fillRect(xOff + (i * plankWidth * dir), -sH/2, plankWidth * dir, sH);
-        
-        // Plank gaps/outlines
-        ctx.strokeStyle = "#3e2723";
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(xOff + (i * plankWidth * dir), -sH/2, plankWidth * dir, sH);
-    }
+				// --- DRAWING MAIN WEAPON ---
+				ctx.save();
+				
+				let pivotX = -2 * dir;
+				let pivotY = -4 + wBob;
+				
+				ctx.translate(pivotX + (thrust * dir), pivotY);
+				let baseAngle = isThrusting ? -Math.PI / 3 : -Math.PI / 2.5; 
+				ctx.rotate(baseAngle + (swingAngle * dir));
 
-    // 2. Horizontal Cross-Braces (The "Battens" holding them together)
-    ctx.fillStyle = "#5d4037";
-    // Top brace
-    ctx.fillRect(xOff - (0.5 * dir), -4, (sW + 1) * dir, 2);
-    // Bottom brace
-    ctx.fillRect(xOff - (0.5 * dir), 2, (sW + 1) * dir, 2);
+				let woodColor = "#5d4037";
+				let metalColor = isMilitia ? "#bdbdbd" : "#757575";
 
-    // 3. Iron Nails (Tiny silver dots on the braces)
-    ctx.fillStyle = "#bdbdbd";
-    for (let row = -3; row <= 3; row += 6) { // Top and bottom brace
-        for (let col = 0; col < 3; col++) { // One nail per plank
-            let nailX = xOff + (col * plankWidth + plankWidth/2) * dir;
-            ctx.beginPath();
-            ctx.arc(nailX, row, 0.4, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
+				switch(weaponType) {
+					case 0: // Pitchfork
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(18 * dir, 0); ctx.stroke();
+						ctx.strokeStyle = metalColor; ctx.lineWidth = 1.2;
+						let pHeadX = 18 * dir;
+						ctx.beginPath(); ctx.moveTo(pHeadX, -3); ctx.lineTo(pHeadX, 3); ctx.stroke();
+						for (let i = -1; i <= 1; i++) {
+							ctx.beginPath(); ctx.moveTo(pHeadX, i * 2.5); ctx.lineTo(pHeadX + (6 * dir), i * 2.5); ctx.stroke();
+						}
+						ctx.fillStyle = "#3e2723"; ctx.fillRect(pHeadX - (2 * dir), -1.5, 2 * dir, 3);
+						break;
 
-    // 4. Rough/Chipped Edges (Optional: adds a jagged look)
-    ctx.strokeStyle = "#3e2723";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(xOff, -sH/2, sW * dir, sH);
+					case 1: // Bamboo Spear
+						ctx.strokeStyle = "#827717"; ctx.lineWidth = 1.8;
+						ctx.beginPath(); ctx.moveTo(-2 * dir, 0); ctx.lineTo(18 * dir, 0); ctx.stroke();
+						ctx.strokeStyle = "#558b2f"; ctx.lineWidth = 1;
+						ctx.beginPath(); ctx.moveTo(4 * dir, -1.5); ctx.lineTo(4 * dir, 1.5); ctx.stroke();
+						ctx.beginPath(); ctx.moveTo(10 * dir, -1.5); ctx.lineTo(10 * dir, 1.5); ctx.stroke();
+						ctx.fillStyle = "#4e342e";
+						ctx.beginPath(); ctx.moveTo(18 * dir, -1.2); ctx.lineTo(24 * dir, 0); ctx.lineTo(18 * dir, 1.2); ctx.fill();
+						break;
 
-    ctx.restore();
-}
-else if (weaponType === 8) {
-    // --- Chinese Steamer Lid (Flipped/Inside View) ---
-    ctx.save();
-    let shieldRadius = 9; // Large, prominent size
-    
-    // 1. The Main Circular Base
-    ctx.fillStyle = "#d2b48c"; // Bamboo Tan
-    ctx.beginPath();
-    ctx.arc(0, 0, shieldRadius, 0, Math.PI * 2);
-    ctx.fill();
+					case 2: // Woodcutter's Axe
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12 * dir, 0); ctx.stroke();
+						ctx.fillStyle = metalColor;
+						ctx.beginPath(); ctx.moveTo(10 * dir, -1); ctx.lineTo(13 * dir, -5); ctx.lineTo(14 * dir, 2); ctx.lineTo(10 * dir, 1); ctx.fill();
+						break;
 
-    // 2. The "Blanks" (Radial Bamboo Support Slats)
-    // We draw lines from the center to the edge to look like the internal structure
-    ctx.strokeStyle = "#a0522d"; // Darker bamboo brown
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 8; i++) {
-        let angle = (i * Math.PI) / 4;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(Math.cos(angle) * shieldRadius, Math.sin(angle) * shieldRadius);
-        ctx.stroke();
-    }
+					case 3: // Mining Pickaxe
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14 * dir, 0); ctx.stroke();
+						ctx.strokeStyle = metalColor; ctx.lineWidth = 2.5; ctx.lineCap = "square";
+						ctx.beginPath(); ctx.moveTo(13 * dir, -6); ctx.quadraticCurveTo(15 * dir, 0, 13 * dir, 6); ctx.stroke();
+						break;
 
-    // 3. Inner Binding Rings
-    // These hold the slats together
-    ctx.beginPath();
-    ctx.arc(0, 0, shieldRadius * 0.4, 0, Math.PI * 2);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.arc(0, 0, shieldRadius * 0.7, 0, Math.PI * 2);
-    ctx.stroke();
+					case 4: // Small Dagger
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 1.5;
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(3 * dir, 0); ctx.stroke();
+						ctx.fillStyle = metalColor;
+						ctx.beginPath(); ctx.moveTo(3 * dir, -1); ctx.lineTo(9 * dir, 0); ctx.lineTo(3 * dir, 1); ctx.fill();
+						break;
 
-    // 4. Thick Outer Rim (The deep edge of the lid)
-    ctx.strokeStyle = "#8b4513";
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.arc(0, 0, shieldRadius, 0, Math.PI * 2);
-    ctx.stroke();
+					case 5: // Sickle
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 1.5;
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(8 * dir, 0); ctx.stroke();
+						ctx.strokeStyle = metalColor; ctx.lineWidth = 2; ctx.lineCap = "round";
+						ctx.beginPath(); ctx.moveTo(7 * dir, 0); ctx.quadraticCurveTo(12 * dir, -2, 9 * dir, -6); ctx.stroke();
+						break;
 
-    ctx.restore();
-}
-ctx.restore();
-	}
+					case 6: // Farming Hoe
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(15 * dir, 0); ctx.stroke();
+						ctx.fillStyle = metalColor;
+						ctx.fillRect(13 * dir, 0, 2 * dir, 5); // Flat metal blade extending downwards
+						break;
 
-    // --- DRAWING MAIN WEAPON ---
-    ctx.save();
-    
-    let pivotX = -2 * dir;
-    let pivotY = -4 + wBob;
-    
-    ctx.translate(pivotX + (thrust * dir), pivotY);
-    let baseAngle = isThrusting ? -Math.PI / 3 : -Math.PI / 2.5; 
-    ctx.rotate(baseAngle + (swingAngle * dir));
+					case 7: // Blacksmith Sledgehammer
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 2.2;
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14 * dir, 0); ctx.stroke();
+						ctx.fillStyle = metalColor;
+						ctx.fillRect(12 * dir, -3, 4 * dir, 6); // Heavy block head
+						break;
 
-    let woodColor = "#5d4037";
-    let metalColor = isMilitia ? "#bdbdbd" : "#757575";
+					case 8: // Meat Cleaver
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 1.8;
+						ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(4 * dir, 0); ctx.stroke();
+						ctx.fillStyle = metalColor;
+						ctx.fillRect(4 * dir, -3, 6 * dir, 5); // Broad rectangular blade
+						ctx.beginPath(); ctx.arc(9 * dir, -2, 0.5, 0, Math.PI*2); ctx.fillStyle = "#424242"; ctx.fill(); // Hole in the cleaver
+						break;
 
-    switch(weaponType) {
-        case 0: // Pitchfork
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 1.6; ctx.lineCap = "round";
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(18 * dir, 0); ctx.stroke();
-            ctx.strokeStyle = metalColor; ctx.lineWidth = 1.2;
-            let pHeadX = 18 * dir;
-            ctx.beginPath(); ctx.moveTo(pHeadX, -3); ctx.lineTo(pHeadX, 3); ctx.stroke();
-            for (let i = -1; i <= 1; i++) {
-                ctx.beginPath(); ctx.moveTo(pHeadX, i * 2.5); ctx.lineTo(pHeadX + (6 * dir), i * 2.5); ctx.stroke();
-            }
-            ctx.fillStyle = "#3e2723"; ctx.fillRect(pHeadX - (2 * dir), -1.5, 2 * dir, 3);
-            break;
+					case 9: // War Scythe
+						ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
+						ctx.beginPath(); ctx.moveTo(-2 * dir, 0); ctx.lineTo(18 * dir, 0); ctx.stroke(); // Long pole
+						ctx.strokeStyle = metalColor; ctx.lineWidth = 1.5; ctx.lineCap = "round";
+						ctx.beginPath(); ctx.moveTo(17 * dir, 0); ctx.quadraticCurveTo(19 * dir, -8, 14 * dir, -10); ctx.stroke(); // Hooking blade
+						break;
+				}
 
-        case 1: // Bamboo Spear
-            ctx.strokeStyle = "#827717"; ctx.lineWidth = 1.8;
-            ctx.beginPath(); ctx.moveTo(-2 * dir, 0); ctx.lineTo(18 * dir, 0); ctx.stroke();
-            ctx.strokeStyle = "#558b2f"; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(4 * dir, -1.5); ctx.lineTo(4 * dir, 1.5); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(10 * dir, -1.5); ctx.lineTo(10 * dir, 1.5); ctx.stroke();
-            ctx.fillStyle = "#4e342e";
-            ctx.beginPath(); ctx.moveTo(18 * dir, -1.2); ctx.lineTo(24 * dir, 0); ctx.lineTo(18 * dir, 1.2); ctx.fill();
-            break;
-
-        case 2: // Woodcutter's Axe
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12 * dir, 0); ctx.stroke();
-            ctx.fillStyle = metalColor;
-            ctx.beginPath(); ctx.moveTo(10 * dir, -1); ctx.lineTo(13 * dir, -5); ctx.lineTo(14 * dir, 2); ctx.lineTo(10 * dir, 1); ctx.fill();
-            break;
-
-        case 3: // Mining Pickaxe
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14 * dir, 0); ctx.stroke();
-            ctx.strokeStyle = metalColor; ctx.lineWidth = 2.5; ctx.lineCap = "square";
-            ctx.beginPath(); ctx.moveTo(13 * dir, -6); ctx.quadraticCurveTo(15 * dir, 0, 13 * dir, 6); ctx.stroke();
-            break;
-
-        case 4: // Small Dagger
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(3 * dir, 0); ctx.stroke();
-            ctx.fillStyle = metalColor;
-            ctx.beginPath(); ctx.moveTo(3 * dir, -1); ctx.lineTo(9 * dir, 0); ctx.lineTo(3 * dir, 1); ctx.fill();
-            break;
-
-        case 5: // Sickle
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(8 * dir, 0); ctx.stroke();
-            ctx.strokeStyle = metalColor; ctx.lineWidth = 2; ctx.lineCap = "round";
-            ctx.beginPath(); ctx.moveTo(7 * dir, 0); ctx.quadraticCurveTo(12 * dir, -2, 9 * dir, -6); ctx.stroke();
-            break;
-
-        case 6: // Farming Hoe
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(15 * dir, 0); ctx.stroke();
-            ctx.fillStyle = metalColor;
-            ctx.fillRect(13 * dir, 0, 2 * dir, 5); // Flat metal blade extending downwards
-            break;
-
-        case 7: // Blacksmith Sledgehammer
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 2.2;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(14 * dir, 0); ctx.stroke();
-            ctx.fillStyle = metalColor;
-            ctx.fillRect(12 * dir, -3, 4 * dir, 6); // Heavy block head
-            break;
-
-        case 8: // Meat Cleaver
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 1.8;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(4 * dir, 0); ctx.stroke();
-            ctx.fillStyle = metalColor;
-            ctx.fillRect(4 * dir, -3, 6 * dir, 5); // Broad rectangular blade
-            ctx.beginPath(); ctx.arc(9 * dir, -2, 0.5, 0, Math.PI*2); ctx.fillStyle = "#424242"; ctx.fill(); // Hole in the cleaver
-            break;
-
-        case 9: // War Scythe
-            ctx.strokeStyle = woodColor; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(-2 * dir, 0); ctx.lineTo(18 * dir, 0); ctx.stroke(); // Long pole
-            ctx.strokeStyle = metalColor; ctx.lineWidth = 1.5; ctx.lineCap = "round";
-            ctx.beginPath(); ctx.moveTo(17 * dir, 0); ctx.quadraticCurveTo(19 * dir, -8, 14 * dir, -10); ctx.stroke(); // Hooking blade
-            break;
-    }
-
-    ctx.restore();
+				ctx.restore();
 }
 else if (type === "spearman") {
         const safeName = unitName || "";
@@ -982,144 +982,195 @@ else if (type === "throwing") {
             ctx.arc(handX, handY, 2, 0, Math.PI*2); 
             ctx.fill();
         }
-  else { // NOT SLINGER SO JAVELINIER
-        // 1. Context & State Retrieval
+   else { //  JAVELINIER
+     // 1. Context & State Retrieval
         let currentAmmo = (typeof unit !== 'undefined' && unit.ammo !== undefined) ? unit.ammo : 4;
         let isMelee = false;
         
         // Distance Check for Melee Stabbing vs Throwing
         if (typeof unit !== 'undefined' && unit.target) {
             let distToTarget = Math.hypot(unit.target.x - unit.x, unit.target.y - unit.y);
-            // Threshold for "too close" - adjust this pixel value if they stab too early/late
+            // Threshold for "too close" - forces melee to defend themselves
             if (distToTarget < 35) {
                 isMelee = true;
             }
         }
 
+        // --- AMMO = 0 OVERRIDE ---
+        // If out of ammo, they can't throw. Force melee mode using their final spear.
         if (currentAmmo <= 0) {
-            // --- OUT OF AMMO: SHORTSWORD FALLBACK ---
-            let swordThrust = 0;
-            if (isAttacking) {
-                let p = (Date.now() / 600) % 1.0; // Fast stab cycle
-                swordThrust = (p < 0.5) ? Math.sin(p * 2 * Math.PI) * 8 : 0; 
-            }
-            
-            ctx.save();
-            ctx.translate(swordThrust * dir, 0); // Apply thrust to the whole sword
+            isMelee = true;
+        }
 
-            // Blade
-            ctx.strokeStyle = "#9e9e9e"; ctx.lineWidth = 2.5; 
-            ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo((12 + weaponBob) * dir, -10 + (weaponBob / 2)); ctx.stroke(); 
-            // Hilt/Guard
-            ctx.strokeStyle = "#212121"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(1 * dir, -5); ctx.lineTo(3 * dir, -8); ctx.stroke();
+        // --- DRAW SHIELD (True Hmong Rattan Weave) ---
+        ctx.save();
+        // Positioned slightly forward on the body
+        ctx.translate(4 * dir, -5 + (typeof weaponBob !== 'undefined' ? weaponBob : 0)); 
+        ctx.rotate((Math.PI / 12) * dir); 
+
+        // Off-hand explicitly gripping the back/side of the shield to show it's held
+        ctx.fillStyle = "#ffccbc";
+        ctx.beginPath();
+        ctx.arc(-2 * dir, 0, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Rattan base color (richer, natural tan)
+        ctx.fillStyle = "#cbb593"; 
+        ctx.beginPath();
+        ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Authentic woven rattan texture (Radial spokes + Concentric loops)
+        ctx.strokeStyle = "#8b5a2b"; 
+        ctx.lineWidth = 0.5;
+        
+        // 1. Radial spokes (the frame)
+        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(angle) * 7.5, Math.sin(angle) * 7.5);
+            ctx.stroke();
+        }
+        
+        // 2. Concentric woven loops
+        for (let r = 1.5; r <= 7.5; r += 1.5) {
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        
+        // Outer thick bound rim
+        ctx.strokeStyle = "#4a3018"; 
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Center binding/reinforcement knot
+        ctx.fillStyle = "#4a3018";
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+// --- DRAW STORED JAVELINS (On Back) ---
+        // CLAMPED LOGIC: ammo 4 = 3 on back, ammo 1 = 0 on back. 
+        // Math.min(3, ...) ensures we never render infinite javelins in UI/Unit Cards.
+        let backJavelinsCount = Math.max(0, Math.min(3, currentAmmo - 1));
+        
+        for (let i = 0; i < backJavelinsCount; i++) {
+            ctx.save();
+            // Spacing and angle logic
+            let offsetX = (-2.5 - i * 1.5) * dir;
+            let angle = (-0.1 - i * 0.05) * dir;
+            
+            // Dampened weaponBob to stop the wobbling
+            ctx.translate(offsetX, -4 + (typeof weaponBob !== 'undefined' ? weaponBob * 0.3 : 0));
+            ctx.rotate(angle);
+
+            // Thinner Shaft (Shaved down)
+            ctx.strokeStyle = "#4e342e"; 
+            ctx.lineWidth = 1.0; // Thinned further for sleek look
+            ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(0, -16); ctx.stroke();
+
+            // EVEN SMALLER Symmetrical Head
+            ctx.fillStyle = "#bdbdbd";
+            ctx.beginPath();
+            ctx.moveTo(0, -16);    // base center
+            ctx.lineTo(-0.8, -14); // Ultra-thin left barb
+            ctx.lineTo(0, -18.5);  // Sharp tip
+            ctx.lineTo(0.8, -14);  // Ultra-thin right barb
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // --- ANIMATION LOGIC (Spear Thrust vs Throw) ---
+        let handX = -1 * dir; 
+        let handY = -7 + (typeof weaponBob !== 'undefined' ? weaponBob : 0);
+        let javRotation = 0;
+        let thrustX = 0;
+        let thrustY = 0;
+        let isVisible = true;
+        
+        let maxCd = 1600;
+        let cycle = isAttacking ? (Date.now() % maxCd) / maxCd : 0;
+
+        if (isMelee) {
+            // PHASE: STRICTLY MELEE STAB (Last Javelin held as Spear)
+            javRotation = (Math.PI / 2.2) * dir; 
+            if (isAttacking) {
+                if (cycle < 0.3) {
+                    // Windup / Pull back behind the shield
+                    let p = cycle / 0.3;
+                    thrustX = -4 * p;
+                    thrustY = -1 * p;
+                } else if (cycle < 0.5) {
+                    // Heavy Spear Thrust forward
+                    let p = (cycle - 0.3) / 0.2;
+                    thrustX = -4 + (p * 18);
+                    thrustY = -1 + (p * 2);
+                } else {
+                    // Retract back to stance
+                    let p = (cycle - 0.5) / 0.5;
+                    thrustX = 14 * (1 - p);
+                    thrustY = 1 * (1 - p);
+                }
+            }
+        } else {
+            // PHASE: THROWING (Safe distance)
+            if (isAttacking) {
+                if (cycle < 0.7) { 
+                    // Wind-up
+                    let p = cycle / 0.7;
+                    thrustX = -(p * 8); 
+                    javRotation = ((-Math.PI / 6) - (p * Math.PI / 4)) * dir; 
+                } else if (cycle < 0.95) { 
+                    // The Throw Snap
+                    let p = (cycle - 0.7) / 0.25;
+                    thrustX = -8 + (p * 20); 
+                    javRotation = ((-Math.PI / 4) + (p * Math.PI / 1.5)) * dir; 
+                    isVisible = true;
+                } else { 
+                    // Follow-through & Release
+                    let p = (cycle - 0.95) / 0.05;
+                    thrustX = 12 + (p * 4); 
+                    javRotation = (Math.PI / 3) * dir;
+                    isVisible = false; 
+                }
+            }
+        }
+
+        // --- DRAW ACTIVE JAVELIN ---
+        if (isVisible || !isAttacking) {
+            ctx.save();
+            ctx.translate(handX + (thrustX * dir), handY + thrustY);
+            ctx.rotate(javRotation);
+
+            // Thinner Shaft
+            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 1.5; 
+            ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(0, -12); ctx.stroke();
+            
+            // EVEN SMALLER Active Javelin Head
+            ctx.fillStyle = "#bdbdbd";
+            ctx.beginPath();
+            ctx.moveTo(0, -12);      // base center
+            ctx.lineTo(-1.0, -10.5); // left barb
+            ctx.lineTo(0, -15);      // sharp tip
+            ctx.lineTo(1.0, -10.5);  // right barb
+            ctx.closePath();
+            ctx.fill();
             
             ctx.restore();
-
-            // Hand holding the sword
-            ctx.fillStyle = "#ffccbc";
-            ctx.beginPath(); ctx.arc((2 + swordThrust) * dir, -6, 2.5, 0, Math.PI * 2); ctx.fill();
-
-        } else {
-            // --- HAS AMMO: JAVELIN RENDERING ---
-            // Calculate how many javelins are stored on the back (Max 3 on back, 1 in hand)
-            let backJavelinsCount = Math.min(3, currentAmmo - 1); 
-            
-            ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 1.5;
-            ctx.fillStyle = "#bdbdbd";
-            
-            // Draw stored javelins dynamically
-            if (backJavelinsCount >= 1) { // Stored 1
-                ctx.beginPath(); ctx.moveTo(-4 * dir, -2); ctx.lineTo(-8 * dir, -18); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(-8 * dir, -18); ctx.lineTo(-10 * dir, -22); ctx.lineTo(-6 * dir, -19); ctx.fill();
-            }
-            if (backJavelinsCount >= 2) { // Stored 2
-                ctx.beginPath(); ctx.moveTo(-2 * dir, -2); ctx.lineTo(-5 * dir, -19); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(-5 * dir, -19); ctx.lineTo(-6 * dir, -23); ctx.lineTo(-3 * dir, -20); ctx.fill();
-            }
-            if (backJavelinsCount >= 3) { // Stored 3 (Makes 4 total with the one in hand)
-                ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(-2 * dir, -18); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(-2 * dir, -18); ctx.lineTo(-4 * dir, -22); ctx.lineTo(-1 * dir, -20); ctx.fill();
-            }
-
-            // --- ANIMATION LOGIC (Melee vs Throw) ---
-            let handX = 2 * dir; 
-            let handY = -8;
-            let javRotation = 0;
-            let thrust = 0;
-            let isVisible = true;
-            let maxCd = 1600;
-            let cycle = isAttacking ? (Date.now() % maxCd) / maxCd : 0;
-
-            if (isMelee) {
-                // PHASE: MELEE STABBING (Too close to throw)
-                javRotation = (Math.PI / 2.2) * dir; // Held horizontally, pointing slightly up
-                
-                if (isAttacking) {
-                    if (cycle < 0.3) {
-                        thrust = -(cycle / 0.3) * 6; // Windup pull back
-                    } else if (cycle < 0.6) {
-                        thrust = 12; // Fast thrust forward
-                    } else {
-                        thrust = 12 * (1 - ((cycle - 0.6) / 0.4)); // Smooth retract
-                    }
-                }
-            } else {
-                // PHASE: THROWING (Safe distance)
-                if (isAttacking) {
-                    if (cycle < 0.7) { 
-                        // Wind-up
-                        let p = cycle / 0.7;
-                        thrust = -(p * 8); 
-                        javRotation = ((-Math.PI / 6) - (p * Math.PI / 4)) * dir; 
-                    } else if (cycle < 0.95) { 
-                        // The Throw Snap
-                        let p = (cycle - 0.7) / 0.25;
-                        thrust = -8 + (p * 20); 
-                        javRotation = ((-Math.PI / 4) + (p * Math.PI / 1.5)) * dir; 
-                        isVisible = true;
-                    } else { 
-                        // Follow-through & Release
-                        let p = (cycle - 0.95) / 0.05;
-                        thrust = 12 + (p * 4); 
-                        javRotation = (Math.PI / 3) * dir;
-                        isVisible = false; // Vanishes as actual projectile spawns
-                    }
-                }
-            }
-
-            // --- DRAW ACTIVE JAVELIN ---
-            if (isVisible || !isAttacking) {
-                ctx.save();
-                ctx.translate(handX + (thrust * dir), handY);
-                ctx.rotate(javRotation);
-
-                // Shaft
-                ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(0, -12); ctx.stroke();
-                
-                // Javelin Head
-                ctx.fillStyle = "#bdbdbd";
-                ctx.beginPath();
-                ctx.moveTo(0, -12); 
-                ctx.lineTo(-2, -10); 
-                ctx.lineTo(0, -18); 
-                ctx.lineTo(2, -10); 
-                ctx.closePath();
-                ctx.fill();
-                
-                ctx.restore();
-            }
-
-            // Hand holding the javelin
-            ctx.fillStyle = "#ffccbc";
-            ctx.beginPath();
-            ctx.arc(handX + (thrust * dir), handY, 2.5, 0, Math.PI * 2);
-            ctx.fill();
         }
-    } // End of Javeliner block
-}//SUPPOSED TO END THROWING BLOCK
 
+        // --- DRAW MAIN HAND ---
+        // Draws on top of the javelin shaft so the grip is solid
+        ctx.fillStyle = "#ffccbc";
+        ctx.beginPath();
+        ctx.arc(handX + (thrustX * dir), handY + thrustY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+} // End of Javelinier block
+}
 
 else if (type === "crossbow") { 
     let b = (typeof bob !== 'undefined') ? bob : 0; 
@@ -1178,8 +1229,10 @@ else if (type === "crossbow") {
     }
 // --- RANGED COMBAT: Engine Sync ---
 let cdown = (typeof cooldown !== 'undefined') ? cooldown : 0;
-// We use 300 as the baseline for the "Full Reload" cycle
-let maxCool = (unitName === "Repeater Crossbowman") ? 300 : 200; 
+
+// Distinguish between Long Reload (> 50) and Rapid Burst (<= 50)
+let isLongReload = cdown > 50; 
+let maxCool = isLongReload ? 300 : 15; // Use 15 as the assumed max for a rapid burst shot
 let p = Math.max(0, Math.min(1.0, 1.0 - (cdown / maxCool)));
 
 if (unitName === "Repeater Crossbowman") {
@@ -1188,7 +1241,7 @@ if (unitName === "Repeater Crossbowman") {
 
     // --- PHASE 1: BOX MAG RELOAD (cdown > 50) ---
     // This simulates the 300-tick "Empty to Full" transition.
-    if (cdown > 50) {
+    if (isLongReload) {
         loadingMag = true;
         // Normalize progress for the 250-tick reload window (300 down to 50)
         let reloadP = Math.max(0, Math.min(1, 1 - ((cdown - 50) / 250)));
@@ -1196,16 +1249,20 @@ if (unitName === "Repeater Crossbowman") {
         // Hand "jumps" 5 times to simulate dropping 5 sets of bolts
         let dropCycle = (reloadP * 5) % 1; 
         handX = dropCycle < 0.5 ? -2 : 10; // Moves from pouch to mag
-        handY = dropCycle < 0.5 ? 5 : -16;   // Dipping down then up to the box
+        handY = dropCycle < 0.5 ? 5 : -4;   // Dipping down then up to the box
         
         leverMove = 0; // Lever is dead during mag reload
     } 
     // --- PHASE 2: INDIVIDUAL BOLT FIRE (cdown <= 50) ---
-    // This handles the 50-tick rapid cycle per shot.
+    // This handles the rapid cycle per shot during the 10-round burst.
     else if (cdown > 0) {
         handOnLever = true;
-        // Normalize 50 to 0 into a 0.0 to 1.0 cycle
-        let shotP = 1.0 - (cdown / 50);
+        
+        // SURGERY: Normalize against a short burst cooldown (15) instead of 50.
+        // Math.min ensures that if the engine's burst cooldown is slightly higher than 15,
+        // it doesn't break the animation sequence by producing a negative number.
+        let burstStart = Math.min(cdown, 15);
+        let shotP = 1.0 - (burstStart / 15);
 
         if (shotP < 0.4) { // Push
             leverMove = (shotP / 0.4) * 5;
@@ -1218,11 +1275,17 @@ if (unitName === "Repeater Crossbowman") {
         } else { // Snap/Recoil
             wobbleX = (Math.random() - 0.5) * 3;
             wobbleY = (Math.random() - 0.5) * 3;
+            boltInTray = false; // Bolt leaves the tray when snapped
         }
         magOffset = leverMove * 0.8;
+    } else {
+        // --- IDLE STATE ---
+        // Ensures the lever is held and bolt is ready when the unit is fully cooled down
+        handOnLever = true;
+        boltInTray = true;
     }
 
-    // --- RENDERING ---
+    // --- RENDERING --- (100% UNTOUCHED)
     ctx.save();
     ctx.translate(wobbleX, 8 + wobbleY);
 
@@ -1254,11 +1317,11 @@ if (unitName === "Repeater Crossbowman") {
     // Hand Logic
     ctx.fillStyle = "#ffccbc";
     if (loadingMag) { 
-        ctx.beginPath(); ctx.arc(handX, handY, 2.5, 0, Math.PI * 2); ctx.fill(); 
+        ctx.beginPath(); ctx.arc(handX, handY-16, 1.5, 0, Math.PI * 2); ctx.fill(); 
     } else if (handOnLever) { 
         let arcX = (15 + magOffset) + Math.cos(Math.PI + 0.6 + (leverMove / 5) * -0.7) * 14;
         let arcY = -10 + Math.sin(Math.PI + 0.6 + (leverMove / 5) * -0.7) * 14;
-        ctx.beginPath(); ctx.arc(arcX, arcY, 2.8, 0, Math.PI * 2); ctx.fill(); 
+        ctx.beginPath(); ctx.arc(arcX, arcY, 1.5, 0, Math.PI * 2); ctx.fill(); 
     }
     ctx.restore(); 
 }
@@ -1720,139 +1783,197 @@ else if (unitName && unitName.includes("Firelance")) {
         ctx.restore();
     }
 	else if (unitName && unitName.includes("Bomb")) {
-        // 1. Context & Ammo State
-        const currentAmmo = (typeof unit !== 'undefined' && unit.ammo !== undefined) ? unit.ammo : 2;
-        const hasAmmo = currentAmmo > 0;
-        
-        // Timing synced to projectile spawn (assuming ~1.2s reload/attack cycle)
-        let maxCd = 1200; 
+    // Ammo lookup
+    let currentAmmo = 0;
+    if (typeof unit !== 'undefined' && unit.ammo !== undefined) {
+        currentAmmo = unit.ammo;
+    } else if (typeof unitAmmo !== 'undefined') {
+        currentAmmo = unitAmmo;
+    }
+
+    const hasAmmo = currentAmmo > 0;
+    const isNull = currentAmmo <= 0; // last ammo spent -> null/catch state
+
+    // Safer bob fallback
+    let weaponBob = (typeof bob !== 'undefined') ? bob : 0;
+
+    // --- 1. OFF-HAND & BOMB LOGIC ---
+    let offHandX = -4 * dir;
+    let offHandY = -4 + weaponBob;
+
+    // When out of ammo, drop into the null/catch pose
+    if (isNull) {
+        offHandX = -2.5 * dir;
+        offHandY = -1 + weaponBob;
+    }
+
+    if (hasAmmo) {
+        // Optional throw movement while ammo remains
+        let maxCd = 1200;
         let currentCd = (typeof cooldown !== 'undefined') ? cooldown : 0;
-        let cycle = isAttacking ? (maxCd - currentCd) / maxCd : 0;
 
-        if (!hasAmmo) {
-            // --- STATE: AMMO DEPLETED (Shortsword & Sling on Back) ---
-            // Draw Sling on back
-            ctx.save();
-            ctx.translate(-2 * dir, -5);
-            ctx.rotate(Math.PI / 1.2 * dir); 
-            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -20); ctx.stroke(); // Staff
-            ctx.strokeStyle = "#3e2723"; ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(2, -10); ctx.stroke(); // Limp rope
-            ctx.restore();
+        if (isAttacking && currentCd > 0) {
+            let throwCycle = (maxCd - currentCd) / maxCd;
+            if (throwCycle < 0.3) {
+                offHandX -= 2 * dir;
+                offHandY -= 2;
+            } else if (throwCycle < 0.6) {
+                offHandX += 4 * dir;
+                offHandY -= 4;
+            }
+        }
 
-            // Draw Shortsword (Melee Fallback)
-            let swordThrust = isAttacking ? Math.sin(cycle * Math.PI) * 8 : 0;
-            ctx.save();
-            ctx.translate((4 + swordThrust) * dir, -6 + weaponBob);
-            ctx.rotate(Math.PI / 2 * dir);
-            ctx.strokeStyle = "#9e9e9e"; ctx.lineWidth = 2.5;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -10); ctx.stroke(); // Blade
-            ctx.strokeStyle = "#212121"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(2, -2); ctx.stroke(); // Guard
-            ctx.restore();
+        // Bomb body
+        ctx.fillStyle = "#546e7a";
+        let bombRadius = 3.5;
 
+        ctx.beginPath();
+        ctx.arc(offHandX, offHandY - 3, bombRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Spikes
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+            let angle = (i / 8) * Math.PI * 2;
+            let spikeX = offHandX + Math.cos(angle) * (bombRadius + 1.5);
+            let spikeY = (offHandY - 3) + Math.sin(angle) * (bombRadius + 1.5);
+            ctx.moveTo(offHandX, offHandY - 3);
+            ctx.lineTo(spikeX, spikeY);
+        }
+        ctx.strokeStyle = "#455a64";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Fuse
+        ctx.strokeStyle = "#5d4037";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(offHandX, offHandY - 6);
+        ctx.bezierCurveTo(
+            offHandX - 2 * dir, offHandY - 10,
+            offHandX - 5 * dir, offHandY - 8,
+            offHandX - 6 * dir, offHandY - 12
+        );
+        ctx.stroke();
+    }
+
+    // Hand always draws, including null state
+    ctx.fillStyle = "#ffccbc";
+    ctx.beginPath();
+    ctx.arc(offHandX, offHandY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- 2. MAIN HAND: THE SHORT DAO ---
+    let meleeSpeed = 130;
+    let currentCd = (typeof cooldown !== 'undefined') ? cooldown : 0;
+
+    let cycle = 0;
+    if (isAttacking) {
+        cycle = Math.min(1, (meleeSpeed - (currentCd % meleeSpeed)) / meleeSpeed);
+        if (currentCd > meleeSpeed) cycle = 0;
+    }
+
+    let thrust = 0, swing = 0, handOffsetY = 0;
+    let attackSeed = (unit && unit.id) ? (unit.id % 3) : (Math.floor(x + y) % 3);
+
+    if (isAttacking && cycle > 0 && cycle < 1) {
+        if (cycle < 0.15) {
+            let p = cycle / 0.15;
+            if (attackSeed === 0) {
+                thrust = -5 * p;
+                swing = -0.2 * p;
+            } else if (attackSeed === 1) {
+                thrust = -2 * p;
+                swing = -Math.PI / 1.8 * p;
+                handOffsetY = -5 * p;
+            } else {
+                thrust = -2 * p;
+                swing = Math.PI / 1.2 * p;
+            }
+        } else if (cycle < 0.45) {
+            let p = (cycle - 0.15) / 0.3;
+            let ease = p * (2 - p);
+            if (attackSeed === 0) {
+                thrust = -5 + (ease * 18);
+                swing = -0.2 + (ease * 0.5);
+            } else if (attackSeed === 1) {
+                thrust = -2 + (ease * 8);
+                swing = -Math.PI / 1.8 + (ease * Math.PI * 0.9);
+                handOffsetY = -5 + (ease * 10);
+            } else {
+                thrust = -2 + (ease * 12);
+                swing = Math.PI / 1.2 - (ease * Math.PI * 1.4);
+            }
         } else {
-            // --- STATE: HAS AMMO (Staff Sling Animation) ---
-            
-            // 2. Draw Stored Bombs (Dynamic based on ammo)
-            if (currentAmmo > 1) {
-                ctx.fillStyle = "#212121";
-                for (let i = 0; i < Math.min(currentAmmo - 1, 3); i++) {
-                    ctx.beginPath(); 
-                    ctx.arc((-5 - i*2) * dir, 0 + (i*1), 3.5, 0, Math.PI * 2); 
-                    ctx.fill();
-                    // Small fuse detail on stored bombs (Unlit)
-                    ctx.strokeStyle = "#5d4037"; ctx.beginPath();
-                    ctx.moveTo((-5 - i*2) * dir, -3 + (i*1)); ctx.lineTo((-7 - i*2) * dir, -6 + (i*1)); ctx.stroke();
-                }
-            }
-
-            // 3. Staff Sling Physics
-            let staffRotation = -Math.PI / 6; // Idle angle
-            let pouchRotation = Math.PI / 4;  // Idle pouch hang
-            let bombVisible = true;
-            let handX = 2 * dir;
-            let handY = -6 + weaponBob;
-
-            if (isAttacking) {
-                if (cycle < 0.4) {
-                    // PHASE 1: Wind-up (Leaning back)
-                    let p = cycle / 0.4;
-                    staffRotation = (-Math.PI / 6) - (p * Math.PI / 3);
-                    pouchRotation = (Math.PI / 4) + (p * Math.PI / 2);
-                } else if (cycle < 0.8) {
-                    // PHASE 2: The Snap (Forceful forward swing)
-                    let p = (cycle - 0.4) / 0.4;
-                    let ease = p * p; // Accelerates
-                    staffRotation = (-Math.PI / 2) + (ease * Math.PI * 1.2);
-                    pouchRotation = -Math.PI / 2 + (p * Math.PI);
-                } else {
-                    // PHASE 3: Follow-through (Release)
-                    let p = (cycle - 0.8) / 0.2;
-                    staffRotation = (Math.PI / 1.5);
-                    pouchRotation = Math.PI / 4;
-                    bombVisible = false; // Projectile is now in the air
-                }
-            }
-
-            // 4. Render Staff & Pouch
-            ctx.save();
-            ctx.translate(handX, handY);
-            ctx.rotate(staffRotation * dir);
-
-            // Draw Staff
-            ctx.strokeStyle = "#5d4037"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -22); ctx.stroke();
-
-            // Draw Pouch (Anchor at top of staff)
-            ctx.save();
-            ctx.translate(0, -22);
-            ctx.rotate(pouchRotation * dir);
-            
-            // Rope/Sling
-            ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1.2;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 10); ctx.stroke();
-
-            // The Bomb in the Pouch
-            if (bombVisible) {
-                // Pouch leather
-                ctx.fillStyle = "#4e342e";
-                ctx.beginPath(); ctx.arc(0, 10, 4, 0, Math.PI); ctx.fill();
-                
-                // The actual Bomb
-                ctx.fillStyle = "#212121";
-                ctx.beginPath(); ctx.arc(0, 10, 3.5, 0, Math.PI * 2); ctx.fill();
-                
-                // --- QUICK FUSE LOGIC ---
-                // Only spark if attacking and specifically in the "snap" phase (0.6 to 0.8)
-                // This prevents the "eternal fuse" look.
-                if (isAttacking && cycle > 0.6 && cycle < 0.8) {
-                    let spark = Math.random() * 2.5;
-                    ctx.fillStyle = (Math.random() > 0.5) ? "#ff9800" : "#ffeb3b"; // Flicker color
-                    ctx.beginPath(); 
-                    ctx.arc(2, 7, spark, 0, Math.PI * 2); 
-                    ctx.fill();
-                    
-                    // Added a tiny white core to the spark for intensity
-                    ctx.fillStyle = "#ffffff";
-                    ctx.beginPath(); ctx.arc(2, 7, spark/2, 0, Math.PI * 2); ctx.fill();
-                } else {
-                    // Draw a plain brown thread for the unlit fuse
-                    ctx.strokeStyle = "#5d4037";
-                    ctx.lineWidth = 1;
-                    ctx.beginPath(); ctx.moveTo(1, 9); ctx.lineTo(3, 6); ctx.stroke();
-                }
-            }
-            
-            ctx.restore(); // End pouch
-            ctx.restore(); // End staff
-
-            // Hand holding the staff
-            ctx.fillStyle = "#ffccbc";
-            ctx.beginPath(); ctx.arc(handX, handY, 2.5, 0, Math.PI * 2); ctx.fill();
+            let p = (cycle - 0.45) / 0.55;
+            let recoveryEase = Math.pow(1 - p, 2);
+            thrust = (attackSeed === 0 ? 13 : 6) * recoveryEase;
+            swing = (attackSeed === 1 ? 0.4 : 0) * recoveryEase;
+            handOffsetY = (attackSeed === 1 ? 5 : 0) * recoveryEase;
         }
     }
-	 else if (unitName?.toLowerCase().includes("ocket") || unitName?.includes("Hwacha") || type === "rocket" || type === "hwacha") {
+
+    ctx.save();
+    ctx.translate((4 + thrust) * dir, (-6 + handOffsetY) + weaponBob);
+
+    let baseRotation = (attackSeed === 2) ? -Math.PI / 1.6 : Math.PI / 4;
+    ctx.rotate((baseRotation + swing) * dir);
+
+    // Shadow / depth
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.fillRect(0, 0, 1.5 * dir, -12);
+
+    // Blade
+    ctx.fillStyle = (unit && unit.id % 5 === 0) ? "#8d8d8d" : "#a1a1a1";
+    ctx.beginPath();
+    ctx.moveTo(-1.3, 0);
+    ctx.lineTo(-1.3, -13);
+    ctx.lineTo(1.5, -10);
+    ctx.lineTo(1.5, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Edge detail
+    ctx.strokeStyle = "#cfd8dc";
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(1.5, 0);
+    ctx.lineTo(1.5, -10);
+    ctx.stroke();
+
+    // Guard
+    ctx.strokeStyle = "#263238";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-2.5, 0);
+    ctx.lineTo(2.5, 0);
+    ctx.stroke();
+
+    // Grip
+    ctx.strokeStyle = "#4e342e";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 5);
+    ctx.stroke();
+
+    // Ring pommel
+    ctx.strokeStyle = "#263238";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 7, 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Main hand
+    ctx.fillStyle = "#ffccbc";
+    ctx.beginPath();
+    ctx.arc((4 + thrust) * dir, (-6 + handOffsetY) + weaponBob, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+ else if (unitName?.toLowerCase().includes("ocket") || unitName?.includes("Hwacha") || type === "rocket" || type === "hwacha") {
     // 1. Logic Setup
     // Use 'unitAmmo' from the function arguments, not 'unit.ammo'
     const currentAmmo = (typeof unitAmmo !== 'undefined') ? unitAmmo : 0;
@@ -1948,24 +2069,98 @@ else if (unitName && unitName.includes("Firelance")) {
     ctx.arc((-8 + stabX) * dir, -8 + bob + stabY, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-} // End of Rocket block (Note: NO ctx.restore here, the function handles it at the very bottom)
-   else if (type === "shortsword" || (typeof unit !== 'undefined' && unit.stats && unit.stats.isRanged && unit.stats.ammo <= 0)) {
-        // Use the 'bob' variable defined at the top of the function to avoid NaN errors
-        let b = (typeof bob !== 'undefined') ? bob : 0;
+} 
 
-        ctx.strokeStyle = "#9e9e9e"; 
-        ctx.lineWidth = 2.5; 
-        ctx.beginPath(); 
-        ctx.moveTo(0, -6 + b); 
-        ctx.lineTo(12 * dir, -10 + b); 
-        ctx.stroke(); 
-
-        ctx.strokeStyle = "#212121"; 
-        ctx.lineWidth = 2;
-        ctx.beginPath(); 
-        ctx.moveTo(1 * dir, -5 + b); 
-        ctx.lineTo(3 * dir, -8 + b); 
-        ctx.stroke();
+else if (type === "shortsword" || (typeof unit !== 'undefined' && unit.stats && unit.stats.isRanged && unit.stats.ammo <= 0 && type !== "javelinier")) {
+    
+    // --- 1. OVERRIDE SLOW RELOAD TIMING ---
+    // Even if the unit is a Bomber (1200ms), the SWING should only take 600ms.
+    let meleeSpeed = 130; 
+    let currentCd = (typeof cooldown !== 'undefined') ? cooldown : 0;
+    
+    // We 'clamp' the cycle so the sword swing finishes quickly even if the reload is slow
+    let cycle = 0;
+    if (isAttacking) {
+        // This math ensures the animation completes in the first 600ms of the cooldown
+        cycle = Math.min(1, (meleeSpeed - (currentCd % meleeSpeed)) / meleeSpeed);
+        // If the actual cooldown is much longer than meleeSpeed, stay in 'idle' after one swing
+        if (currentCd > meleeSpeed) cycle = 0; 
     }
+    
+    let thrust = 0, swing = 0, handOffsetY = 0;
+    let attackSeed = (unit && unit.id) ? (unit.id % 3) : (Math.floor(x + y) % 3);
+
+    // --- 2. COMBAT REALISTIC ANIMATION ---
+    if (isAttacking && cycle > 0 && cycle < 1) {
+        if (cycle < 0.15) { // Snappier wind-up
+            let p = cycle / 0.15;
+            if (attackSeed === 0) { thrust = -5 * p; swing = -0.2 * p; } // Deep Stab Prep
+            else if (attackSeed === 1) { thrust = -2 * p; swing = -Math.PI/1.8 * p; handOffsetY = -5 * p; } // High Overhead
+            else { thrust = -2 * p; swing = Math.PI/1.2 * p; } // Backhand Flip
+        } else if (cycle < 0.45) { // Explosive Strike
+            let p = (cycle - 0.15) / 0.3;
+            let ease = p * (2 - p); // Power easing
+            if (attackSeed === 0) { thrust = -5 + (ease * 18); swing = -0.2 + (ease * 0.5); }
+            else if (attackSeed === 1) { thrust = -2 + (ease * 8); swing = -Math.PI/1.8 + (ease * Math.PI * 0.9); handOffsetY = -5 + (ease * 10); }
+            else { thrust = -2 + (ease * 12); swing = Math.PI/1.2 - (ease * Math.PI * 1.4); }
+        } else { // Realistic Recovery (Slow down at the end)
+            let p = (cycle - 0.45) / 0.55;
+            let recoveryEase = Math.pow(1 - p, 2);
+            thrust = (attackSeed === 0 ? 13 : 6) * recoveryEase;
+            swing = (attackSeed === 1 ? 0.4 : 0) * recoveryEase;
+            handOffsetY = (attackSeed === 1 ? 5 : 0) * recoveryEase;
+        }
+    }
+
+    ctx.save();
+    ctx.translate((4 + thrust) * dir, (-6 + handOffsetY) + (typeof bob !== 'undefined' ? bob : 0));
+    
+    // Base rotation depends on style (Style 2 is a "flipped" grip)
+    let baseRotation = (attackSeed === 2) ? -Math.PI / 1.6 : Math.PI / 4; 
+    ctx.rotate((baseRotation + swing) * dir);
+
+    // --- 3. DRAW REALISTIC STRAIGHT DAO ---
+    
+    // Shadow/Blade Depth
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.fillRect(0, 0, 1.5 * dir, -12);
+
+    // Blade (Single Edge, Straight Back, Cheap Iron)
+    ctx.fillStyle = (unit && unit.id % 5 === 0) ? "#8d8d8d" : "#a1a1a1"; // Variable wear
+    ctx.beginPath();
+    ctx.moveTo(-1.3, 0);       
+    ctx.lineTo(-1.3, -13);     // Straight back
+    ctx.lineTo(1.5, -10);      // Clipped tip
+    ctx.lineTo(1.5, 0);        // Cutting edge
+    ctx.closePath();
+    ctx.fill();
+    
+    // The "Cheap" Edge Detail
+    ctx.strokeStyle = "#cfd8dc"; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(1.5, 0); ctx.lineTo(1.5, -10); ctx.stroke();
+
+    // Guard (Small, thick iron disc)
+    ctx.strokeStyle = "#263238"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-2.5, 0); ctx.lineTo(2.5, 0); ctx.stroke();
+
+    // Grip
+    ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 5); ctx.stroke();
+
+    // Ring Pommel
+    ctx.strokeStyle = "#263238"; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 7, 2, 0, Math.PI * 2); 
+    ctx.stroke();
+
     ctx.restore();
+
+    // 4. Draw Hand (Properly layered)
+    ctx.fillStyle = "#ffccbc";
+    ctx.beginPath();
+    ctx.arc((4 + thrust) * dir, (-6 + handOffsetY) + (typeof bob !== 'undefined' ? bob : 0), 2.8, 0, Math.PI * 2);
+    ctx.fill();
 }
+
+ctx.restore(); // 2. CRITICAL: Restores the GLOBAL unit position save from the top of the function
+} // End of drawInfantryUnit function
