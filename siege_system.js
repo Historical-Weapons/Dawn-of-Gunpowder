@@ -9,14 +9,14 @@ let pendingSallyOut = null;
  
 function initiateSiege(attacker, city) {
     // ---> GATEKEEPER: Only the Player or Military Armies can lay siege <---
-    if (!attacker.isPlayer && attacker.role !== "Military") {
+    if (!attacker.disableAICombat && attacker.role !== "Military") {
         return; 
     }
 
     // Prevent duplicate sieges on the same city
     if (activeSieges.some(s => s.defender === city)) return;
 
-    let attackerName = attacker.isPlayer ? "Your forces" : `${attacker.faction} ${attacker.role}s`;
+    let attackerName = attacker.disableAICombat ? "Your forces" : `${attacker.faction} ${attacker.role}s`;
     console.log(`${attackerName} have laid siege to ${city.name}!`);
 
     // 1. LOCK STATES & CLEAR TARGETS
@@ -25,7 +25,7 @@ function initiateSiege(attacker, city) {
     attacker.battleTarget = null;
     attacker.battlingTimer = 0;
     
-    if (!attacker.isPlayer) {
+    if (!attacker.disableAICombat) {
         attacker.waitTimer = 100; 
         attacker.targetX = city.x;
         attacker.targetY = city.y;
@@ -50,7 +50,7 @@ function initiatePlayerSiege(city) {
         return;
     }
 
-    player.isPlayer = true; 
+    player.disableAICombat = true; 
     initiateSiege(player, city);
     
     // Hide city panel
@@ -78,7 +78,7 @@ function initiatePlayerSiege(city) {
 
 
 function resumeSiege() {
-    const siege = activeSieges.find(s => s.attacker === player || s.attacker.isPlayer);
+    const siege = activeSieges.find(s => s.attacker === player || s.attacker.disableAICombat);
     if (siege) siege.isPaused = false;
     
     document.getElementById('gui-continue-btn').style.display = 'none';
@@ -103,7 +103,7 @@ function endSiege(success = false) {
     if(aBtn) aBtn.style.display = 'none';
 	
     // Remove player siege from active list
-    activeSieges = activeSieges.filter(s => !s.attacker.isPlayer);
+    activeSieges = activeSieges.filter(s => !s.attacker.disableAICombat);
 
     if (success) {
         console.log("City Captured!");
@@ -141,23 +141,23 @@ function updateSieges() {
         let atk = siege.attacker;
         let def = siege.defender;
 
-        let attackerCount = atk.isPlayer ? player.troops : atk.count;
-		let attackerDead = atk.isPlayer ? (player.troops <= 0) : atk.count <= 0;
+        let attackerCount = atk.disableAICombat ? player.troops : atk.count;
+		let attackerDead = atk.disableAICombat ? (player.troops <= 0) : atk.count <= 0;
         
-        let isInBattle = atk.isPlayer ? (typeof inBattleMode !== 'undefined' && inBattleMode) : (atk.battlingTimer > 0);
+        let isInBattle = atk.disableAICombat ? (typeof inBattleMode !== 'undefined' && inBattleMode) : (atk.battlingTimer > 0);
 // Locate this in updateSieges()
 if (attackerDead || isInBattle) {
     console.log(`The siege of ${def.name} has been broken!`);
     
     // MOVE THIS HERE (Outside the death check)
-    if (atk.isPlayer) {
+    if (atk.disableAICombat) {
         const sBtn = document.getElementById('siege-button');
         const aBtn = document.getElementById('assault-button');
         if(sBtn) sBtn.style.display = 'block';
         if(aBtn) aBtn.style.display = 'none';
     }
 
-    if (atk.isPlayer && player.troops <= 0) {
+    if (atk.disableAICombat && player.troops <= 0) {
         // ... status text and alert logic ...
         const gui = document.getElementById('siege-gui');
         if(gui) gui.style.display = 'none';
@@ -175,7 +175,7 @@ if (attackerDead || isInBattle) {
         siege.ticks++;
 
         // Continually enforce the movement lock
-        if (!atk.isPlayer) atk.waitTimer = 50; 
+        if (!atk.disableAICombat) atk.waitTimer = 50; 
         else atk.isMoving = false; 
 // --- NEW SALLY OUT LOGIC ---
         let defenderMilitary = def.militaryPop || def.troops || 0;
@@ -184,7 +184,7 @@ if (attackerDead || isInBattle) {
         if (defenderMilitary > attackerCount && Math.random() < 0.00005) {         //for DEBUGGING I HAVE IT AS LOWER BUT ORIGINAL IS 0.005
             console.log(`${def.name} garrison sallies out to break the siege!`);
 
-			if (atk.isPlayer) {
+			if (atk.disableAICombat) {
                 const statusText = document.getElementById('siege-status-text');
                 if(statusText) {
                     statusText.innerText = "STATUS: DEFENDERS ATTACKING!";
@@ -218,17 +218,17 @@ if (attackerDead || isInBattle) {
             
             // weaker attacker drain
             let atkConsumption = Math.max(1, Math.floor(attackerCount * 0.03)); 
-            if (atk.isPlayer) player.food -= atkConsumption;
+            if (atk.disableAICombat) player.food -= atkConsumption;
             else atk.food -= atkConsumption;
 
-            let currentAtkFood = atk.isPlayer ? player.food : atk.food;
+            let currentAtkFood = atk.disableAICombat ? player.food : atk.food;
 
 // Resolve Attacker Starvation
             if (currentAtkFood <= 0) {
-                if (atk.isPlayer) player.food = 0; else atk.food = 0;
+                if (atk.disableAICombat) player.food = 0; else atk.food = 0;
                 
                 let attrition = Math.max(1, Math.ceil(attackerCount * 0.05));
-                if (atk.isPlayer) {
+                if (atk.disableAICombat) {
                     player.troops -= attrition;
                     if(player.roster && player.roster.length > 0) player.roster.pop();
                     
@@ -255,7 +255,7 @@ if (attackerDead || isInBattle) {
                 def.pop -= Math.floor(garrisonDamage * 0.5); // Population stays slightly more resilient
 
                 // --- UI SURGERY: UPDATE STATUS TEXT ---
-                if (atk.isPlayer) {
+                if (atk.disableAICombat) {
                     const statusText = document.getElementById('siege-status-text');
                     if (statusText) {
                         statusText.innerText = "STATUS: DEFENDERS STARVING";
@@ -265,8 +265,8 @@ if (attackerDead || isInBattle) {
 
                 // Conquest Triggered
                 if (def.militaryPop <= 0) {
-                    let conqueringFaction = atk.isPlayer ? player.faction : atk.faction;
-                    let conqueringColor = atk.isPlayer ? "#FFFFFF" : atk.color;
+                    let conqueringFaction = atk.disableAICombat ? player.faction : atk.faction;
+                    let conqueringColor = atk.disableAICombat ? "#FFFFFF" : atk.color;
                     
                     console.log(`${def.name} has fallen to ${conqueringFaction}!`);
                     
@@ -280,7 +280,7 @@ if (attackerDead || isInBattle) {
                     def.troops = occupyingForce;
                     def.pop += occupyingForce;
                     
-                    if (atk.isPlayer) {
+                    if (atk.disableAICombat) {
                         player.troops -= occupyingForce;
                         
                         // --- UI SURGERY: FINAL VICTORY STATUS ---
@@ -310,10 +310,10 @@ function drawSiegeVisuals(ctx) {
     activeSieges.forEach(s => {
         let def = s.defender;
         let atk = s.attacker;
-        let attackerCount = atk.isPlayer ? player.troops : atk.count;
+        let attackerCount = atk.disableAICombat ? player.troops : atk.count;
         let defenderCount = def.militaryPop || def.troops || 0;
         
-        let attackerFood = atk.isPlayer ? player.food : atk.food;
+        let attackerFood = atk.disableAICombat ? player.food : atk.food;
         let defenderFood = def.food;
 
         ctx.save();
@@ -389,7 +389,7 @@ function resolveSallyOut(choice) {
 
 
 function triggerSiegeAssault() {
-    const currentSiege = activeSieges.find(s => s.attacker.isPlayer);
+    const currentSiege = activeSieges.find(s => s.attacker.disableAICombat);
     if (!currentSiege) {
         alert("You are not currently besieging a settlement!");
         return;
@@ -401,6 +401,15 @@ function triggerSiegeAssault() {
     if(sBtn) sBtn.style.display = 'block';
     if(aBtn) aBtn.style.display = 'none';
 
+// --- SURGERY: CLOSE PARLE PANEL IMMEDIATELY ---
+    if (typeof closeParleUI === 'function') {
+        closeParleUI();
+    } else {
+        const panel = document.getElementById('parle-panel');
+        if (panel) panel.style.display = 'none';
+        inParleMode = false;
+    }
+	
     const city = currentSiege.defender;
  
     const defenderCount = city.militaryPop || city.troops || 0;
@@ -443,7 +452,7 @@ function triggerSiegeAssault() {
 
 function restoreSiegeAfterBattle(didPlayerWin) {
  
-    const siege = activeSieges.find(s => s.attacker === player || s.attacker.isPlayer);
+    const siege = activeSieges.find(s => s.attacker === player || s.attacker.disableAICombat);
     if (!siege) return;
 
     siege.isPaused = true; 

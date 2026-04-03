@@ -599,7 +599,7 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
     deployArmy(currentBattleData.playerFaction, playerTroopCount, "player"); 
     deployArmy(enemyNPC.faction, enemyNPC.count, "enemy");
 
-    // ---> SURGERY: SNAP WASD TO COMMANDER <---
+// ---> SURGERY: SNAP WASD TO COMMANDER <---
     // Find exactly where the army deployed the commander and move the invisible WASD player there
     let deployedCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
     if (deployedCmdr) {
@@ -610,6 +610,20 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
         playerObj.y = BATTLE_WORLD_HEIGHT - 100;
     }
 	
+    // =========================================================
+    // ---> SURGERY: LAZY GENERAL AUTO-CHARGE (5 + Q BY DEFAULT)
+    // =========================================================
+    battleEnvironment.units.forEach(u => {
+        // Target player troops (ignoring the player/commander avatar)
+        if (u.side === "player" && !u.isCommander && !u.disableAICombat) {
+            u.selected = true;           // Simulates '5' (Select All)
+            u.hasOrders = true;          // Activates the command state
+            u.orderType = "seek_engage"; // Simulates 'Q' (Seek & Engage)
+            u.orderTargetPoint = null;   // Clears waypoints so they use dynamic enemy pathing
+            u.formationTimer = 120;      // Brief buffer to orient before breaking line
+        }
+    });
+    // =========================================================
     let totalCombatants = playerTroopCount + enemyNPC.count;
     
 
@@ -915,7 +929,7 @@ for (let i = 0; i < count; i++) {
             unitType: comp.type, 
 			isCommander: isCmdr, // <--- ADD THIS LINE HERE
 			// ADD THIS LINE: Explicitly tag the player's commander
-    isPlayer: (side === 'player' && isCmdr),
+    disableAICombat: (side === 'player' && isCmdr),
             stats: unitStats, 
             hp: unitStats.health,
             x: finalX,

@@ -6,35 +6,60 @@
     <meta http-equiv="Expires" content="0">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dawn of Gunpowder - Asia</title>
+    <title>Dawn of Gunpowder - East Asia</title>
     <link rel="stylesheet" href="mainStyle.css">
 </head>
 <body>
 <div id="loading" style="display: none; z-index: 11999;">Initializing... (0%)</div>
+<div id="ui">
+    <button id="ui-collapse-btn" class="ui-collapse-btn" onclick="toggleUI()">−</button>
+    
+    <div class="game-hint-header" id="ui-main-header">
+        🧨 DAWN OF GUNPOWDER
+    </div>
 
-    <div id="ui">
-        <h1>Map</h1>
+    <div class="ui-content" id="ui-main-wrapper">
         <div class="stat"><span>Region:</span> <span id="terrain-text" class="val">Plains</span></div>
         <div class="stat"><span>Speed:</span> <span id="speed-text" class="val">1.0x</span></div>
         <div class="stat"><span>Coordinates:</span> <span id="loc-text" class="val">0, 0</span></div>
         <div class="stat"><span>Zoom Level:</span> <span id="zoom-text" class="val">1.0x</span></div>
+
         <div class="hint">Scroll to Zoom (0.1x - 3x)<br>WASD to explore. <br> Overworld Map - T for troops. <br> Battle/City - P for exit.</div>
 
-        <div class="hint" style="font-size:11px; line-height:1.25; color:#eee; background:rgba(0,0,0,0.85); padding:3px 5px; border-radius:3px; font-family:monospace; pointer-events:none; border:1px solid #444; width:fit-content;">
-            <b style="color:#ffca28">🌍 Overworld</b>&nbsp; WASD🏃 Scroll🔍 T📜 P↩️<br>
-            <b style="color:#ffca28">✅ Units</b> &nbsp; 1⚔️&nbsp; 2🏹&nbsp; 3🐎&nbsp; 4🔥 5 ALL <br>
-            <b style="color:#ffca28">📢 Form</b> &nbsp;&nbsp; Z:🛡️ X:REG C:➖ V:⭕ B:🔲 <br>
-            <b style="color:#ffca28">🚩 Orders</b> &nbsp;Q:🔺️ R:️🔻 E:⛔ F:FOLLOW <br> 
-            <span style="color:#ff5252;">⚠ Hold Formation by Deselecting 1,2,3,4,5</span>   
-        </div>
+<div class="hint" style="
+    font-size: 11px; 
+    line-height: 1.4; 
+    color: #eee; 
+    background: rgba(0,0,0,0.7); 
+    padding: 10px 15px 10px 38px; /* Matches parent left-offset */
+    margin: 15px -20px -15px -38px; /* Negative margins to hit the edges */
+    font-family: monospace; 
+    pointer-events: none; 
+    border-top: 1px solid #444; 
+    width: auto; /* Removes fit-content to allow stretching */
+    display: block;
+">
+    <b style="color:#ffca28">🌍 </b>&nbsp; WASD🏃 Scroll🔍 T📜 P↩️<br>
+    <b style="color:#ffca28">✅ </b> &nbsp;  1⚔️&nbsp; 2🏹&nbsp; 3🐎&nbsp; 4🔥 5 ALL <br>
+    <b style="color:#ffca28">📢 </b> &nbsp;&nbsp;Z:🛡️ X:REG C:➖ V:⭕ B:🔲 <br>
+    <b style="color:#ffca28">🚩 </b> &nbsp;  Q:🔺️ R:️🔻 E:⛔ F:FOLLOW <br> 
+    <span style="color:#ff5252;">Hold Formation by Deselecting</span>   
+</div>
     </div>
-
-    <div id="diplomacy-container" style="position: absolute; top: 20px; right: 20px; z-index: 5000; display: none;">
-        <button class="menu-btn" onclick="toggleDiplomacyMenu()" style="width: 100%; height: 35px; font-size: 0.9rem; border: 2px solid #ffca28; box-shadow: 0 4px 15px rgba(0,0,0,0.5); pointer-events: auto;">
+</div>
+<div id="diplomacy-container" style="display: none;">
+    <div class="diplomacy-btn-wrapper">
+        <button id="dip-log-toggle-btn" onclick="toggleDipLog()">−</button>
+        
+        <button class="diplomacy-main-btn" onclick="toggleDiplomacyMenu()">
             📜 Diplomacy
         </button>
+    </div>
+
+    <div id="dip-log-body">
         <div id="event-log-container"></div>
     </div>
+</div>
 
     <div id="city-panel">
         <h2 id="city-name">City Name</h2>
@@ -49,7 +74,7 @@
             
         <div id="recruit-box" style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
 <button class="menu-btn" onclick="
-if(player.gold >= 20) { 
+if(player.gold >= 50) { 
     if(typeof AudioManager !== 'undefined') AudioManager.playSound('gold_buy');
 
     // Give player 5 Militia
@@ -60,11 +85,11 @@ if(player.gold >= 20) {
     }
 
     // Deduct gold from player
-    player.gold -= 20; 
+    player.gold -= 50; 
 
     // Add gold to active city
     if(activeCity) {
-        activeCity.gold = (activeCity.gold || 0) + 20;
+        activeCity.gold = (activeCity.gold || 0) + 50;
 
         // Refresh city UI labels
         document.getElementById('city-gold').innerText = Math.floor(activeCity.gold);
@@ -75,7 +100,7 @@ if(player.gold >= 20) {
     if(typeof AudioManager !== 'undefined') AudioManager.playSound('error');
     alert('Not enough gold!'); 
 }
-">Recruit 5 Militia (20 Gold)</button>
+">Recruit 5 Militia (50 Gold)</button>
 
 <button class="menu-btn" onclick="if(activeCity) { 
                 if(typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
@@ -214,42 +239,86 @@ if(player.gold >= 20) {
     </div>  
 
     <canvas id="gameCanvas"></canvas>
-	
-	   <div id="diplomacy-panel" style="
-    display: none; 
-    position: absolute; 
-    top: 20%; 
-    left: 10%;           /* Centered: (100% - 80%) / 2 */
-    width: 83%;          /* Set width to 80% */
-    max-height: 80vh;    /* Prevents it from going off-screen vertically */
-    overflow-y: auto;    /* Allows scrolling inside if the table is long */
+<div id="diplomacy-panel" style="
+    display: none;
+    position: fixed; /* Changed to fixed for screen-centering */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* Perfectly centers the element */
+    width: 80%;
+    height: 80%; /* Fixed height as requested */
+    overflow: hidden; /* Prevent panel itself from scrolling, only the body */
     background: rgba(35, 25, 15, 0.98); 
     border: 3px solid #5d4037; 
     border-radius: 8px; 
     padding: 20px; 
     color: #d4b886; 
-    z-index: 9999;       /* Extremely high to overlap everything else */
-    box-shadow: 0 0 30px rgba(0,0,0,0.8); 
+    z-index: 9999;
+    box-shadow: 0 0 50px rgba(0,0,0,0.9); 
     font-family: 'Georgia', serif;
+    box-sizing: border-box;
 ">
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #5d4037; padding-bottom: 10px; margin-bottom: 10px;">
+    <div id="dip-header" style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #5d4037;
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+        height: 40px; /* Locked height */
+    ">
         <h2 style="margin: 0; font-size: 1.5rem;">Faction Diplomacy</h2>
-        <button class="dip-close-btn" onclick="document.getElementById('diplomacy-panel').style.display='none'">X</button>
-    </div>
-    
-    <div id="diplomacy-table-container">
+        <div style="display:flex; gap:6px; align-items:center;">
+            <button type="button" id="dip-toggle-btn" class="ui-collapse-btn" onclick="toggleDipPanel()">−</button>
+            <button type="button" class="ui-collapse-btn" onclick="document.getElementById('diplomacy-panel').style.display='none'">X</button>
         </div>
-</div>
+    </div>
 
+    <div id="dip-body" style="height: calc(100% - 60px); overflow-y: auto;">
+        <div id="diplomacy-table-container"></div>
+    </div>
+</div>
+</div>
+<script>
+// ============================================================================
+// REVISED TOGGLE UI: Targets the whole container state
+// ============================================================================
+function toggleUI() {
+    const uiContainer = document.getElementById('ui'); // The parent wrapper
+    const btn = document.getElementById('ui-collapse-btn');
+    
+    // Toggle the class on the parent container
+    const isCollapsed = uiContainer.classList.toggle('collapsed');
+    
+    // Update button text to match the state
+    btn.textContent = isCollapsed ? '+' : '−';
+}
+function toggleDipPanel() {
+    const panel = document.getElementById('diplomacy-panel');
+    const btn = document.getElementById('dip-toggle-btn');
+
+    panel.classList.toggle('collapsed');
+
+    btn.textContent = panel.classList.contains('collapsed') ? '+' : '−';
+}
+function toggleDipLog() {
+    const container = document.getElementById('diplomacy-container');
+    const btn = document.getElementById('dip-log-toggle-btn');
+    
+    const isCollapsed = container.classList.toggle('collapsed');
+    btn.textContent = isCollapsed ? '+' : '−';
+}
+</script>
+ 
     <script src="camera_effects.js"></script>  
     <script src="npc_system.js"></script>
     <script src="fortification_system.js"></script>
     <script src="city_system.js"></script>
 	
-	    <script src="siegebattle.js"></script>
+	<script src="siegebattle.js"></script>
 	
     <script src="battlefield_system.js"></script>
-	    <script src="battlefield_damagelogic.js"></script>
+	<script src="battlefield_damagelogic.js"></script>
     <script src="troop_system.js"></script>
 			    <script src="unit-encyclopedia.js"></script>
     <script src="infscript.js"></script>
@@ -260,7 +329,7 @@ if(player.gold >= 20) {
     <script src="troopGUI.js"></script> 
     <script src="menu.js"></script>  
     <script src="menu-units-guide.js"></script>
-	    <script src="loading-screen.js"></script>
+	<script src="loading-screen.js"></script>
 
 			
     <script src="audio_system.js"></script>

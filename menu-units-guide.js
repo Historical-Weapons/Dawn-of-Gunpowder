@@ -34,7 +34,7 @@
     armor: "Armor",
     bonusVsLarge: "Bonus vs Large",
     speed: "Moving Speed",
-    range: "Range (in feet)",
+    range: "Effective Range (m)",
     morale: "Morale",
     cost: "Cost"
   };
@@ -56,13 +56,24 @@
     return el;
   }
 
-  function prettyValue(key, value) {
-    if (value === true) return "Yes";
-    if (value === false) return "No";
-    if (value === null || typeof value === "undefined") return "—";
-    if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.00$/, "");
-    return String(value);
+function prettyValue(key, value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  if (value === null || typeof value === "undefined") return "—";
+
+  if (typeof value === "number") {
+    // 🎯 SPECIAL CASE: round range to nearest 5 meters
+    if (key === "range") {
+      return String(Math.round(value / 5) * 5);
+    }
+
+    return Number.isInteger(value)
+      ? String(value)
+      : value.toFixed(2).replace(/\.00$/, "");
   }
+
+  return String(value);
+}
 
   function makeStatGrid(stats) {
     const items = [];

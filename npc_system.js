@@ -742,14 +742,14 @@ function updateNPCs(cities) {
 
             // Player Tracking for AI
             if (!npc.isSieging && npc.role !== "Civilian" && npc.role !== "Commerce") {
-                let isPlayerEnemy = (npc.faction === "Bandits") || (player.enemies && player.enemies.includes(npc.faction));
-                if (isPlayerEnemy && npc.role === "Patrol" && (player.troops || 0) >= npc.count) isPlayerEnemy = false;
+                let disableAICombatEnemy = (npc.faction === "Bandits") || (player.enemies && player.enemies.includes(npc.faction));
+                if (disableAICombatEnemy && npc.role === "Patrol" && (player.troops || 0) >= npc.count) disableAICombatEnemy = false;
                 
-                if (isPlayerEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 10000) {
+                if (disableAICombatEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 10000) {
                     let playerScore = -distSqToPlayer + 90000000;
                     if (playerScore > bestTargetScore) {
                         bestTargetScore = playerScore;
-                        bestTarget = { x: player.x, y: player.y, role: "Player", isPlayer: true };
+                        bestTarget = { x: player.x, y: player.y, role: "Player", disableAICombat: true };
                     }
                 }
             }
@@ -879,7 +879,7 @@ function updateNPCs(cities) {
                 npc.waitTimer = 0; npc.speed = 0.8; npc.decisionTimer = 40; 
             } 
             else if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && bestTarget) {
-                let isWorthDiverting = (bestTarget.role === "Military" || bestTarget.role === "Patrol" || bestTarget.isPlayer);
+                let isWorthDiverting = (bestTarget.role === "Military" || bestTarget.role === "Patrol" || bestTarget.disableAICombat);
                 if (npc.role === "Patrol" && bestTarget.role === "Bandit") isWorthDiverting = true; 
                 if (npc.role === "Bandit" && bestTarget.role === "Commerce") isWorthDiverting = true; 
                 

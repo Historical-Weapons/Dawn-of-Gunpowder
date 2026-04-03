@@ -607,11 +607,11 @@ const tray = document.createElement("div");
             }
 
             // Check if player commander is dead
-            let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.isPlayer);
+            let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.disableAICombat);
             let pIsDead = (pCmdr && pCmdr.hp <= 0) || (typeof player !== 'undefined' && player.hp <= 0);
 
             // Check if enemy commander is dead
-            let eCmdr = battleEnvironment.units.find(u => u.isCommander && !u.isPlayer);
+            let eCmdr = battleEnvironment.units.find(u => u.isCommander && !u.disableAICombat);
             let eIsDead = (eCmdr && eCmdr.hp <= 0);
 
             // Trigger battle exit if a commander has fallen
@@ -739,10 +739,23 @@ if (typeof window.player === "undefined" || !window.player) {
                 enemy: enemySetup.roster.length + 1
             }
         };
-
-        // Spawn armies
+		// Spawn armies
         customSpawnLoop(playerSetup.roster, "player", playerSetup.faction, playerSetup.color);
         customSpawnLoop(enemySetup.roster, "enemy", enemySetup.faction, enemySetup.color);
+
+        // =========================================================
+        // ---> SURGERY: LAZY GENERAL AUTO-CHARGE (CUSTOM BATTLE)
+        // =========================================================
+        battleEnvironment.units.forEach(u => {
+            if (u.side === "player" && !u.isCommander && !u.disableAICombat) {
+                u.selected = true;           // Simulates '5' (Select All)
+                u.hasOrders = true;          // Activates the command state
+                u.orderType = "seek_engage"; // Simulates 'Q' (Seek & Engage)
+                u.orderTargetPoint = null;   // Clears waypoints 
+                u.formationTimer = 120;      // Brief buffer to orient
+            }
+        });
+        // =========================================================
 
         // Use the player commander as the battle anchor
         const playerCommander = battleEnvironment.units.find(
@@ -867,6 +880,7 @@ if (typeof window.player === "undefined" || !window.player) {
                 faction: faction,
                 color: color,
                 unitType: unitKey,
+				disableAICombat: false,
                 stats: unitStats,
                 hp: safeHP,
                 maxHp: safeHP, 
@@ -898,7 +912,7 @@ if (typeof window.player === "undefined" || !window.player) {
 // ========================================================================
         // COMMANDER SPAWN (USING NEW 'GENERAL' ROSTER UNIT)
         // ========================================================================
-        let isPlayerSide = side === "player";
+        let disableAICombatSide = side === "player";
         let cmdrName = "General"; 
         
         // Pull the dedicated General stats you created in troop_system.js
@@ -913,13 +927,13 @@ if (typeof window.player === "undefined" || !window.player) {
         let finalAmmo = cmdrStats.ammo || 24;
 
         battleEnvironment.units.push({
-            id: isPlayerSide ? 999999 : 888888 + Math.floor(Math.random() * 1000), 
+            id: disableAICombatSide ? 999999 : 888888 + Math.floor(Math.random() * 1000), 
             side: side,
             faction: faction,
             color: color,
             unitType: cmdrName, 
             isCommander: true,
-            isPlayer: isPlayerSide, 
+            disableAICombat: false, //counterintuitive but needed
             stats: cmdrStats,
             hp: finalMaxHp,       // Pulls 200 directly from your General stats
             maxHp: finalMaxHp,    
@@ -941,7 +955,7 @@ if (typeof window.player === "undefined" || !window.player) {
         });
 
         // Final global sync for player health so UI matches the General's HP
-        if (isPlayerSide && typeof player !== 'undefined') {
+        if (disableAICombatSide && typeof player !== 'undefined') {
             player.hp = finalMaxHp;
             player.maxHealth = finalMaxHp;
         }
@@ -968,8 +982,8 @@ function handleCustomBattleExit() {
     let pLosses = preBattleStats.playerMen - pAlive;
     let eLosses = preBattleStats.enemyMen - eAlive;
 
-    let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.isPlayer);
-    let eCmdr = battleEnvironment.units.find(u => u.isCommander && !u.isPlayer);
+    let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.disableAICombat);
+    let eCmdr = battleEnvironment.units.find(u => u.isCommander && !u.disableAICombat);
 
     let pCommanderDead = (pCmdr && pCmdr.hp <= 0) || (typeof player !== 'undefined' && player.hp <= 0);
     let eCommanderDead = (eCmdr && eCmdr.hp <= 0);

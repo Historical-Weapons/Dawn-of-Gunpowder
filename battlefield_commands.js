@@ -4,7 +4,8 @@
 
 let currentSelectionGroup = null; 
 let currentFormationStyle = "line"; 
-
+// --- SURGERY: ADD THIS LINE ---
+let activeBattleFormation = null;
 let isRightDragging = false;
 let dragStartPos = { x: 0, y: 0 };
 let dragCurrentPos = { x: 0, y: 0 };
@@ -26,7 +27,7 @@ document.addEventListener("keydown", (event) => {
 
     // 2. REVISED CHAIN OF COMMAND CHECK
     // We look for the unit that is BOTH a commander and on the player's side
-    const activeCommander = battleEnvironment.units.find(u => u.side === 'player' && (u.isCommander || u.isPlayer));
+    const activeCommander = battleEnvironment.units.find(u => u.side === 'player' && (u.isCommander || u.disableAICombat));
     
     if (!activeCommander || activeCommander.hp <= 0) {
         console.log("Command failed: Player General is fallen or not found!");
@@ -34,7 +35,7 @@ document.addEventListener("keydown", (event) => {
     }
 
     // 3. DEFINE SCOPES
-    const playerUnits = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && !u.isPlayer && u.hp > 0);
+    const playerUnits = battleEnvironment.units.filter(u => u.side === "player" && !u.isCommander && !u.disableAICombat && u.hp > 0);
     const commander = activeCommander; // Alias for use in formation math
 
     // =========================
@@ -80,26 +81,44 @@ document.addEventListener("keydown", (event) => {
     const selectedUnits = playerUnits.filter(u => u.selected);
     if (selectedUnits.length === 0) return;
 
-    // =========================
+// =========================
     // Z, X, C, V, B: FORMATIONS 
     // =========================
     if (["z", "x", "c", "v", "b"].includes(key)) {
+        // Skip formation logic entirely if only 1 unit is selected
+        if (selectedUnits.length <= 1) return;
+
         if (key === "z") currentFormationStyle = "tight";  
-        if (key === "x") currentFormationStyle = "loose";  
+        if (key === "x") currentFormationStyle = "standard";  
         if (key === "c") currentFormationStyle = "line";   
         if (key === "v") currentFormationStyle = "circle"; 
         if (key === "b") currentFormationStyle = "square"; 
         
+        // 1. Calculate the Centroid (Average position of the selected group)
+        let sumX = 0, sumY = 0;
+        selectedUnits.forEach(u => {
+            sumX += u.x;
+            sumY += u.y;
+        });
+        let centroid = { 
+            x: sumX / selectedUnits.length, 
+            y: sumY / selectedUnits.length 
+        };
+
+        // 2. Calculate offsets based on the group's centroid, not the commander
+        calculateFormationOffsets(selectedUnits, currentFormationStyle, centroid);
+
+        // 3. Command the group to form up "In Place" at their centroid
         selectedUnits.forEach(u => {
             u.hasOrders = true;
-            u.orderType = "follow";
-            u.orderTargetPoint = null;
+            u.orderType = "move_to_point"; // Override follow behavior
+            
+            let rawDestX = centroid.x + (u.formationOffsetX || 0);
+            let rawDestY = centroid.y + (u.formationOffsetY || 0);
+            
+            u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
             u.formationTimer = 240; // 4 seconds at 60fps for ranged units to focus on moving
         });
-
-        if (commander) {
-            calculateFormationOffsets(selectedUnits, currentFormationStyle, commander);
-        }
         return;
     }
 
@@ -138,7 +157,14 @@ case "q": // SEEK & ENGAGE or SMART SIEGE ASSAULT
                 u.hasOrders = true;
                 u.orderType = "retreat";
                 let stagger = (Math.random() * 20); 
-                u.orderTargetPoint = { x: u.x, y: BATTLE_WORLD_HEIGHT - 50 - stagger }; 
+// Define the raw target
+        let targetX = u.x;
+        let targetY = BATTLE_WORLD_HEIGHT - 50 - stagger;
+
+        // HOOK CLAMP HERE
+// HOOK CLAMP HERE
+        u.orderTargetPoint = getSafeMapCoordinates(targetX, targetY);
+ 
                 u.formationTimer = 240;
             });
             break;
@@ -229,64 +255,129 @@ case "tight":
     // CAVALRY: Single-rank rear reserve (as per your previous revision)
     assignBlock(cavalry, 100, 15, 99, false);                  
     break;
-        case "loose":
+        case "standard":
             assignBlock([...shields, ...infantry], -50, 40, 20);
             assignBlock(ranged, -90, 40, 20);
             assignBlock(gunpowder, -20, 40, 15);
             assignBlock(cavalry, -50, 45, 5, true, 280); 
             break;
-        case "line":
-            assignBlock([...shields, ...infantry], -20, 22, 45); 
-            assignBlock(ranged, -45, 22, 45);
-            assignBlock(gunpowder, -70, 22, 45);
-            assignBlock(cavalry, -30, 22, 6, true, 250); 
+case "line":
+            // 1. Prepare and combine subgroups
+            const combinedRanged = [...gunpowder, ...ranged]; 
+            const centerGroup = [...shields, ...infantry];
+            
+            // 2. Split flank units (Cavalry and Ranged) to distribute evenly on both sides
+            const hCav = Math.floor(cavalry.length / 2);
+            const lCav = cavalry.slice(0, hCav);
+            const rCav = cavalry.slice(hCav);
+
+            const hRanged = Math.floor(combinedRanged.length / 2);
+            const lRanged = combinedRanged.slice(0, hRanged);
+            const rRanged = combinedRanged.slice(hRanged);
+
+            // 3. Assemble the full line: [L-Cav] [L-Ranged] [Center] [R-Ranged] [R-Cav]
+            const sortedLine = [...lCav, ...lRanged, ...centerGroup, ...rRanged, ...rCav];
+            
+            // ==========================================================
+            // 4. SPREAD WITH BOUNDARY WRAPPING (The "Anti-Clump" Surgery)
+            // ==========================================================
+            const lineSpacing = 30; 
+            const rankSpacing = 40; // How far back the 2nd/3rd lines fold
+            const totalInLine = sortedLine.length;
+
+            // Define the map boundaries (with a 60px safe margin)
+            const mapWidth = (typeof BATTLE_WORLD_WIDTH !== 'undefined') ? BATTLE_WORLD_WIDTH : 2400;
+            const margin = 60;
+            const leftBound = margin;
+            const rightBound = mapWidth - margin;
+
+            // Get commander's current X to calculate absolute positions
+            const cmdr = battleEnvironment.units.find(u => u.isCommander && u.side === 'player');
+            const cmdrX = cmdr ? cmdr.x : (mapWidth / 2);
+
+            // Calculate how many units can safely fit on each side of the commander
+            const maxLeftCapacity = Math.max(1, Math.floor((cmdrX - leftBound) / lineSpacing));
+            const maxRightCapacity = Math.max(1, Math.floor((rightBound - cmdrX) / lineSpacing));
+
+            // Counters for how many units have spilled over the edge
+            let leftSpillCount = 0;
+            let rightSpillCount = 0;
+
+            sortedLine.forEach((u, i) => {
+                // Calculate theoretical X offset
+                let rawOffsetX = (i - (totalInLine - 1) / 2) * lineSpacing;
+                let expectedAbsX = cmdrX + rawOffsetX;
+                
+                let finalOffsetX = rawOffsetX;
+                let finalOffsetY = -40; // Standard uniform line
+
+                // --- FLANK FOLDING LOGIC ---
+
+                // Left Boundary Overflow (Hitting the Left Red Line)
+                if (expectedAbsX < leftBound) {
+                    let rankMultiplier = Math.floor(leftSpillCount / maxLeftCapacity) + 1; 
+                    let positionInRank = leftSpillCount % maxLeftCapacity;
+                    
+                    // Fold inwards from the left edge
+                    finalOffsetX = (leftBound - cmdrX) + (positionInRank * lineSpacing);
+                    finalOffsetY = -40 + (rankSpacing * rankMultiplier); // Push back a rank
+                    
+                    leftSpillCount++;
+                } 
+                // Right Boundary Overflow (Hitting the Right Red Line)
+                else if (expectedAbsX > rightBound) {
+                    let rankMultiplier = Math.floor(rightSpillCount / maxRightCapacity) + 1;
+                    let positionInRank = rightSpillCount % maxRightCapacity;
+                    
+                    // Fold inwards from the right edge
+                    finalOffsetX = (rightBound - cmdrX) - (positionInRank * lineSpacing);
+                    finalOffsetY = -40 + (rankSpacing * rankMultiplier); // Push back a rank
+                    
+                    rightSpillCount++;
+                }
+
+// Apply offsets with slight human-like jitter
+let rawAbsX = cmdrX + finalOffsetX;
+let rawAbsY = (cmdr ? cmdr.y : (BATTLE_WORLD_HEIGHT / 2)) + finalOffsetY;
+
+// HOOK CLAMP HERE
+let safePos = getSafeMapCoordinates(rawAbsX, rawAbsY);
+
+// Re-calculate the offset based on the clamped absolute position
+u.formationOffsetX = safePos.x - cmdrX;
+u.formationOffsetY = safePos.y - (cmdr ? cmdr.y : (BATTLE_WORLD_HEIGHT / 2));
+            });
             break;
             
 case "circle":
             let allInfantry = [...shields, ...infantry, ...ranged, ...gunpowder];
             
-            // Expanded inner ring to give breathing room in the center
+            // 1. CAVALRY INNER RING
+            // We bypass applyRotation here to ensure the circle is always "Upright"
             assignRing(cavalry, 80); 
             
-            // Pushed outer ring further out (minimum 150px) to create a wide "lane" for pathing
+            // 2. INFANTRY OUTER RING
+            // Increased breathing room: 150px min, or scales with army size
             let outerRadius = Math.max(150, allInfantry.length * 4); 
             assignRing(allInfantry, outerRadius); 
-            break;
             
-        case "square":
-            let squarePool = [...cavalry, ...shields, ...infantry, ...gunpowder, ...ranged];
-            let sqCols = Math.ceil(Math.sqrt(squarePool.length));
-            let sqSpacing = 24;
-            let gridPoints = [];
-            
-            let half = (sqCols - 1) / 2;
-            for (let r = 0; r < sqCols; r++) {
-                for (let c = 0; c < sqCols; c++) {
-                    gridPoints.push({
-                        x: (c - half) * sqSpacing,
-                        y: (r - half) * sqSpacing
-                    });
-                }
-            }
-            
-            gridPoints.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
-            
-            squarePool.forEach((u, i) => {
-                let pt = gridPoints[i];
-                if (pt) {
-                    u.formationOffsetX = pt.x + (Math.random() - 0.5) * 5;
-                    u.formationOffsetY = pt.y + (Math.random() - 0.5) * 5;
-                }
+            // 3. SURGERY: Force-flat offsets
+            // Even if assignRing uses math, we ensure no external tilt is applied
+            units.forEach(u => {
+                // Ensure the offsets are purely based on the circle math, not the map edge tilt
+                u.formationOffsetX = u.formationOffsetX || 0;
+                u.formationOffsetY = u.formationOffsetY || 0;
             });
             break;
     }
 }
 
 // --- DYNAMIC AI OVERRIDE LOOP ---
+// --- DYNAMIC AI OVERRIDE LOOP ---
 function processTacticalOrders() {
     if (!inBattleMode || !battleEnvironment.units) return;
     
-const commander = battleEnvironment.units.find(u => u.isCommander && u.side === 'player');
+    const commander = battleEnvironment.units.find(u => u.isCommander && u.side === 'player');
 
     battleEnvironment.units.forEach(unit => {
         if (unit.side !== "player" || unit.isCommander || unit.hp <= 0) return;
@@ -328,6 +419,8 @@ const commander = battleEnvironment.units.find(u => u.isCommander && u.side === 
                 unit.originalRange = null;
             }
             
+            unit.reactionDelay = 0; // INSTANT reaction if in danger
+            
             // Snap out of the "marching trance" instantly
             unit.formationTimer = 0; 
             
@@ -339,13 +432,20 @@ const commander = battleEnvironment.units.find(u => u.isCommander && u.side === 
             return; 
         }
 
+        // ====================================================================
+        // STAGGERED REACTION DELAY (The "Anti-Telepathy" Block)
+        // ====================================================================
+        if (unit.reactionDelay > 0) {
+            unit.reactionDelay--;
+            return; // Skip ordering logic until the delay hits zero
+        }
+
         // 2. EXECUTE ORDERS (Safe Waypoints & Ranged Shooting Focus)
         if (unit.hasOrders) {
-			
-			
-			// ==========================
-// SEEK & ENGAGE (NEW LOGIC)
-// ==========================
+            
+            // ==========================
+            // SEEK & ENGAGE
+            // ==========================
 if (unit.orderType === "seek_engage") {
     if (nearestEnemy) {
         unit.target = nearestEnemy;
@@ -473,16 +573,25 @@ if (unit.orderType === "seek_engage") {
 
 //standard
 			
-            let destX = unit.x;
-            let destY = unit.y;
+         //standard
+			
+            let rawDestX = unit.x;
+            let rawDestY = unit.y;
 
             if (unit.orderType === "follow" && commander) {
-                destX = commander.x + (unit.formationOffsetX || 0);
-                destY = commander.y + (unit.formationOffsetY || 0);
+                rawDestX = commander.x + (unit.formationOffsetX || 0);
+                rawDestY = commander.y + (unit.formationOffsetY || 0);
             } else if (unit.orderTargetPoint) {
-                destX = unit.orderTargetPoint.x;
-                destY = unit.orderTargetPoint.y;
+                rawDestX = unit.orderTargetPoint.x;
+                rawDestY = unit.orderTargetPoint.y;
             }
+
+            // ULTIMATE HOOK: Clamp all final destinations to the Red Line
+            // If the commander moves out of bounds, the units will linger at the border line here.
+            // If an enemy gets close, the SURVIVAL OVERRIDE at the top of the function will trigger and they will attack!
+            let safeDest = getSafeMapCoordinates(rawDestX, rawDestY);
+            let destX = safeDest.x;
+            let destY = safeDest.y;
 
             let distToDest = Math.hypot(unit.x - destX, unit.y - destY);
             let shouldFocusOnShooting = false;
@@ -680,22 +789,32 @@ document.addEventListener('contextmenu', (e) => {
 
     const targetPos = getBattleMousePos(e);
 
-    // Calculate formation shape before issuing orders
-    calculateFormationOffsets(playerUnits, currentFormationStyle, null);
+    // Skip formation geometry if only 1 unit is moving
+    if (playerUnits.length === 1) {
+        let u = playerUnits[0];
+        u.hasOrders = true;
+        u.orderType = "move_to_point";
+        u.orderTargetPoint = getSafeMapCoordinates(targetPos.x, targetPos.y);
+        u.formationTimer = 200;
+        if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
+        return;
+    }
+
+    // Calculate formation shape centered around the DESTINATION point
+    calculateFormationOffsets(playerUnits, currentFormationStyle, targetPos);
 
     playerUnits.forEach(u => {
         u.hasOrders = true;
         u.orderType = "move_to_point";
         
-        // Ensure they have a fallback of 0 if formation failed
         let offX = u.formationOffsetX || 0;
         let offY = u.formationOffsetY || 0;
 
-        u.orderTargetPoint = {
-            x: targetPos.x + offX,
-            y: targetPos.y + offY
-        };
-        u.formationTimer = 240; 
+        let rawDestX = targetPos.x + offX;
+        let rawDestY = targetPos.y + offY;
+        u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
+        
+        u.formationTimer = 200; 
     });
 
     if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
@@ -789,4 +908,289 @@ function executeSiegeAssaultAI(units) {
     });
 
     if (typeof AudioManager !== 'undefined') AudioManager.playSound('charge');
+}
+// ============================================================================
+// UNIVERSAL MAP BOUNDARY CLAMP ENGINE (THE RED LINE)
+// ============================================================================
+function getSafeMapCoordinates(targetX, targetY, margin = 50) {
+    // Fallbacks in case city variables or normal variables are missing
+    const maxWidth = typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : 2400;
+    const maxHeight = typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600;
+
+    let safeX = targetX;
+    let safeY = targetY;
+
+    // Clamp X (Prevents walking past the Left and Right Red Lines)
+    if (safeX < margin) safeX = margin;
+    if (safeX > maxWidth - margin) safeX = maxWidth - margin;
+
+    // Clamp Y (Prevents walking past the Top and Bottom Red Lines)
+    if (safeY < margin) safeY = margin;
+    if (safeY > maxHeight - margin) safeY = maxHeight - margin;
+
+    return { x: safeX, y: safeY };
+}
+
+// --- FORMATION MATH (CENTROID & ROTATION ENGINE) ---
+function calculateFormationOffsets(units, style, centerPoint) {
+    if (!units || units.length === 0) return;
+
+    // 1. Establish Map Dimensions & Center Data
+    const mapWidth = typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : 2400;
+    const cp = centerPoint || { x: mapWidth / 2, y: (typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600) / 2 };
+
+    // 2. Progressive Angular Offset Logic (Lines become diagonal near map edges)
+ 
+    let distFromCenterX = cp.x - (mapWidth / 2);
+    let normalizedDist = distFromCenterX / (mapWidth / 2); // Ranges from -1 (Left) to 1 (Right)
+
+    // 1. FLIP THE ANGLE (Negative sign ensures Left = \ and Right = /)
+    // 2. FLAT CENTER (Cubing the distance keeps the center 80% perfectly flat, only curving at extreme edges)
+    let mapAngle = -(Math.pow(normalizedDist, 3)) * 1.13; 
+
+    // Disable diagonal rotation entirely for geometric shapes
+    if (style === "square" || style === "circle") {
+        mapAngle = 0;
+    }
+
+    // Helper: Rotates coordinates around a 0,0 center based on the map angle
+    const applyRotation = (x, y) => {
+        if (mapAngle === 0) return { x: x, y: y }; // Bypass math entirely for flat lines & squares
+        return {
+            x: x * Math.cos(mapAngle) - y * Math.sin(mapAngle),
+            y: x * Math.sin(mapAngle) + y * Math.cos(mapAngle)
+        };
+    };
+
+    // 3. Sort Units into Tactical Groups
+    let shields = [], infantry = [], ranged = [], gunpowder = [], cavalry = [], largeUnits = [];
+
+    units.forEach(u => {
+        let role = getTacticalRole(u);
+        let isLarge = u.stats && u.stats.isLarge; 
+        
+        // Group large mounts and beasts for specialized concentric rings
+        if (role === "CAVALRY" || isLarge) largeUnits.push(u); 
+
+        if (role === "CAVALRY") cavalry.push(u);
+        else if (role === "GUNPOWDER") gunpowder.push(u);
+        else if (role === "RANGED") ranged.push(u);
+        else if (role === "SHIELD") shields.push(u);
+        else infantry.push(u);
+    });
+
+    // --- FORMATION GENERATORS ---
+    const assignBlock = (group, startY, spacingX, spacingY, maxCols) => {
+        let rows = Math.ceil(group.length / maxCols);
+        group.forEach((u, i) => {
+            let r = Math.floor(i / maxCols);
+            let c = i % maxCols;
+            
+            // Auto-center the row mathematically based on unit count
+            let unitsInThisRow = Math.min(group.length - (r * maxCols), maxCols);
+            let rawX = (c - (unitsInThisRow - 1) / 2) * spacingX;
+            let rawY = startY + (r * spacingY);
+            
+            rawX += (Math.random() - 0.5) * 5; // Human Jitter
+            rawY += (Math.random() - 0.5) * 5;
+
+            // Apply angular diagonal rotation
+            let rotated = applyRotation(rawX, rawY);
+            u.formationOffsetX = rotated.x;
+            u.formationOffsetY = rotated.y;
+        });
+    };
+
+const assignRing = (group, radius) => {
+        group.forEach((u, i) => {
+            // Pure geometric circle math - ignores mapWidth/mapAngle entirely
+            let angle = (i / group.length) * Math.PI * 2;
+            u.formationOffsetX = Math.cos(angle) * radius + (Math.random() - 0.5) * 5;
+            u.formationOffsetY = Math.sin(angle) * radius + (Math.random() - 0.5) * 5;
+            
+            // Logic check: Since it's a circle, we don't apply the 'mapAngle' rotation here.
+            // This ensures the "North" of the circle is always the "North" of the map.
+        });
+    };
+    // --- GEOMETRY STYLES ---
+    switch (style) {
+        case "tight": 
+            assignBlock(shields, -40, 16, 16, 30); 
+            assignBlock(infantry, -20, 16, 16, 30);
+            assignBlock(ranged, 0, 16, 16, 30);
+            assignBlock(gunpowder, 20, 18, 16, 15); 
+            assignBlock(cavalry, 60, 20, 20, 40);                  
+            break;
+
+        case "standard":
+            assignBlock([...shields, ...infantry], -30, 40, 30, 20);
+            assignBlock(ranged, -60, 40, 30, 20);
+            assignBlock(gunpowder, 0, 40, 30, 15);
+            assignBlock(cavalry, 40, 50, 40, 10); 
+            break;
+
+        case "line":
+            let lineGroup = [...shields, ...infantry, ...ranged, ...gunpowder, ...cavalry];
+            assignBlock(lineGroup, 0, 35, 30, 40); // Base line wraps gracefully at 40 width
+            break;
+            
+        case "circle":
+            let nonLarge = [...shields, ...infantry, ...ranged, ...gunpowder];
+            
+            if (units.length <= 12) {
+                // Skirmish mode: Beasts in the middle, small guard ring around them
+                largeUnits.forEach(u => {
+                    u.formationOffsetX = (Math.random() - 0.5) * 15;
+                    u.formationOffsetY = (Math.random() - 0.5) * 15;
+                });
+                assignRing(nonLarge, Math.max(50, units.length * 8));
+            } else {
+                // Army mode: Dynamic scaling rings
+                let innerRadius = Math.max(60, nonLarge.length * 3.5);
+                assignRing(nonLarge, innerRadius);
+                
+                if (largeUnits.length > 0) {
+                    let outerRadius = innerRadius + 60 + (largeUnits.length * 1.5);
+                    assignRing(largeUnits, outerRadius);
+                }
+            }
+            break;
+            
+        case "square":
+            let squarePool = [...cavalry, ...shields, ...infantry, ...gunpowder, ...ranged];
+            let sqCols = Math.ceil(Math.sqrt(squarePool.length));
+            
+            // Dynamically tighten the grid based on how many units are in the box
+            let sqSpacing = Math.max(20, 40 - (squarePool.length * 0.1)); 
+            let gridPoints = [];
+            
+            let half = (sqCols - 1) / 2;
+for (let r = 0; r < sqCols; r++) {
+                for (let c = 0; c < sqCols; c++) {
+                    let rawX = (c - half) * sqSpacing;
+                    let rawY = (r - half) * sqSpacing;
+                    
+                    // Standard upright grid coordinates, ignoring all diagonal tilt math
+                    gridPoints.push({ x: rawX, y: rawY });
+                }
+            }
+            
+            gridPoints.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+            
+            squarePool.forEach((u, i) => {
+                let pt = gridPoints[i];
+                if (pt) {
+                    u.formationOffsetX = pt.x + (Math.random() - 0.5) * 5;
+                    u.formationOffsetY = pt.y + (Math.random() - 0.5) * 5;
+                }
+            });
+            break;
+    }
+}
+
+// ============================================================================
+// SURGERY: THE LAZY FORMATION ADJUSTMENT LOOP (Callable Function)
+// ============================================================================
+function applyFormationAdjustment() {
+    // 1. Safety Checks
+    if (typeof inBattleMode === 'undefined' || !inBattleMode || !battleEnvironment || !battleEnvironment.units) return;
+
+    // 2. Filter units that are currently ALIVE, HOLDING A POSITION, and belong to the correct side.
+    let adjustingUnits = battleEnvironment.units.filter(u =>
+        u.hasOrders &&
+        u.orderType === "move_to_point" &&
+        u.orderTargetPoint &&
+        u.hp > 0 &&
+        (
+            // --- PLAYER CONDITION ---
+            (u.side === "player" && u.selected) 
+            
+            // --- ENEMY AI CONDITION (Commented out for later) ---
+            // || (u.side === "enemy" && typeof u.aiSquadState !== 'undefined' && u.aiSquadState === "holding_formation")
+        )
+    );
+
+    if (adjustingUnits.length <= 1) return; // Need at least 2 units to adjust a formation
+
+    // 3. Check for nearby enemies (Interrupt adjustment if being attacked)
+    let inDanger = false;
+    let emergencyThreshold = 150; // Slightly larger than standard 100px survival override
+    
+    for (let u of adjustingUnits) {
+        let nearestDist = Infinity;
+        battleEnvironment.units.forEach(other => {
+            if (other.side !== u.side && other.hp > 0 && !other.isDummy) {
+                let dist = Math.hypot(u.x - other.x, u.y - other.y);
+                if (dist < nearestDist) nearestDist = dist;
+            }
+        });
+        if (nearestDist < emergencyThreshold) {
+            inDanger = true;
+            break; // Stop checking, the group is under threat
+        }
+    }
+
+    // Abort adjustment; the survival override in processTacticalOrders will handle combat
+    if (inDanger) return; 
+
+    // 4. Determine the current Target Centroid of the group
+    let sumX = 0, sumY = 0;
+    adjustingUnits.forEach(u => {
+        sumX += u.orderTargetPoint.x;
+        sumY += u.orderTargetPoint.y;
+    });
+    let currentCentroid = { 
+        x: sumX / adjustingUnits.length, 
+        y: sumY / adjustingUnits.length 
+    };
+
+    // 5. Recalculate pure offsets to clean up any messy lines over time
+    if (typeof currentFormationStyle !== 'undefined') {
+        calculateFormationOffsets(adjustingUnits, currentFormationStyle, currentCentroid);
+    }
+
+    // 6. BOUNDARY SHIFT: Calculate the bounding box of the IDEAL formation
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    adjustingUnits.forEach(u => {
+        let idealX = currentCentroid.x + (u.formationOffsetX || 0);
+        let idealY = currentCentroid.y + (u.formationOffsetY || 0);
+        
+        if (idealX < minX) minX = idealX;
+        if (idealX > maxX) maxX = idealX;
+        if (idealY < minY) minY = idealY;
+        if (idealY > maxY) maxY = idealY;
+    });
+
+    // 7. Calculate required shifts to keep the WHOLE formation out of the red lines
+    const maxWidth = typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : 2400;
+    const maxHeight = typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600;
+    const margin = 60; // Keep slightly away from the exact edge
+
+    let shiftX = 0;
+    let shiftY = 0;
+
+    // If the left edge of the circle is off-map, push the whole centroid right, etc.
+    if (minX < margin) shiftX = margin - minX; 
+    if (maxX > maxWidth - margin) shiftX = (maxWidth - margin) - maxX; 
+    if (minY < margin) shiftY = margin - minY; 
+    if (maxY > maxHeight - margin) shiftY = (maxHeight - margin) - maxY; 
+
+    // 8. Apply the shift to the Centroid
+    if (shiftX !== 0 || shiftY !== 0) {
+        currentCentroid.x += shiftX;
+        currentCentroid.y += shiftY;
+    }
+
+    // 9. Quietly update their target points
+    adjustingUnits.forEach(u => {
+        let rawDestX = currentCentroid.x + (u.formationOffsetX || 0);
+        let rawDestY = currentCentroid.y + (u.formationOffsetY || 0);
+        
+        if (typeof getSafeMapCoordinates === 'function') {
+            u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
+        } else {
+            u.orderTargetPoint = {x: rawDestX, y: rawDestY};
+        }
+    });
 }

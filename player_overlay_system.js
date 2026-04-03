@@ -66,7 +66,7 @@ function maintainSiegeUI() {
     if (player.isSieging && siegeGui && (siegeGui.style.display === 'none' || !siegeGui.style.display)) {
         // Look for existing siege record in global activeSieges array
         const mySiege = (typeof activeSieges !== 'undefined') ? 
-            activeSieges.find(s => s.attacker.isPlayer || s.attacker === player) : null;
+            activeSieges.find(s => s.attacker.disableAICombat || s.attacker === player) : null;
         
         if (mySiege && typeof showSiegeGUI === 'function') {
             showSiegeGUI(mySiege, mySiege.defender);

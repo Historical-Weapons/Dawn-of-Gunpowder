@@ -8,6 +8,20 @@ let currentSiegeCity = null;
 function enterSiegeBattlefield(enemyNPC, playerObj, cityObj) {
     console.log(`INITIALIZING SIEGE BATTLE: ${cityObj.name}`);
     
+	// --- SURGICAL FIX: Close Parle UI immediately ---
+    if (typeof closeParleUI === 'function') {
+        closeParleUI(); 
+    } else {
+        // Fallback if the function isn't globally available yet
+        const panel = document.getElementById('parle-panel');
+        if (panel) panel.style.display = 'none';
+        inParleMode = false;
+        if (player) player.isMapPaused = true; // Keep paused for battle, but clear Parle state
+    }
+
+    
+	
+	
     // 1. STATE HIJACK
     inBattleMode = true;
     inSiegeBattle = true;
@@ -676,7 +690,7 @@ function processSiegeEngines() {
         playerUnits.forEach((u, index) => {
             
             // ---> SURGICAL FIX: Stop the Siege Engine from hijacking the Commander! <---
-            if (u.isCommander || u.isPlayer) return; 
+            if (u.isCommander || u.disableAICombat) return; 
 
             if (u.state === "attacking" && u.target && !u.target.isDummy) return;
 

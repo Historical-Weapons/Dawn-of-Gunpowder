@@ -47,7 +47,22 @@
                 baseStats.missileBaseDamage = u.missileBaseDamage || 0;
                 baseStats.missileAPDamage = u.missileAPDamage || 0;
                 baseStats.accuracy = u.accuracy || 0;
-                baseStats.range = u.range || 0;
+    let displayRange = u.range || 0;
+
+    // SPECIAL CASE: Repeater Crossbowman practical range
+    if (u.name === "Repeater Crossbowman") {   // <-- change to your unit name
+        displayRange = Math.floor(displayRange / 2);
+    }
+	     
+    if (u.name === "Hand Cannoneer") {   // <-- change to your unit name
+        displayRange = Math.floor(displayRange / 2);
+    }
+	
+	if (u.name === "Camel Cannon") {   // <-- change to your unit name
+        displayRange = Math.floor(displayRange / 2);
+    }
+	
+	 baseStats.range = displayRange/4;
             }
             
             encyclopediaData.push({

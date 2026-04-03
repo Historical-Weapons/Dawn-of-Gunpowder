@@ -1176,119 +1176,86 @@ else if (type === "crossbow") {
         ctx.restore();
         return; 
     }
-	// --- RANGED COMBAT: Engine Sync ---
-let maxCool = (unitName === "Repeater Crossbowman") ? 360 : 300;
+// --- RANGED COMBAT: Engine Sync ---
 let cdown = (typeof cooldown !== 'undefined') ? cooldown : 0;
+// We use 300 as the baseline for the "Full Reload" cycle
+let maxCool = (unitName === "Repeater Crossbowman") ? 300 : 200; 
 let p = Math.max(0, Math.min(1.0, 1.0 - (cdown / maxCool)));
 
 if (unitName === "Repeater Crossbowman") {
-	
-	// ADD THESE TWO LINES:
-    if (typeof levelStartTime === 'undefined') window.levelStartTime = Date.now();
-    if (Date.now() - window.levelStartTime < 5000) p = 0; 
- 
-    let leverMove = 0, boltInTray = false, stringPull = 0;
-    let handX = 0, handY = 0, loadingMag = false, handOnLever = false;
-    let wobbleX = 0, wobbleY = 0, magOffset = 0;
+    let leverMove = 0, boltInTray = false, stringPull = 0, handX = 0, handY = 0;
+    let loadingMag = false, handOnLever = false, wobbleX = 0, wobbleY = 0, magOffset = 0;
 
-    // --- PHASE 1: THE INITIAL RELOAD ---
-    // Dedicate the first 25% of the cooldown ONLY to stuffing the magazine.
-    // No lever movement here. This ensures the mag is "full" before we start pumping.
-    if (p < 0.25) {
+    // --- PHASE 1: BOX MAG RELOAD (cdown > 50) ---
+    // This simulates the 300-tick "Empty to Full" transition.
+    if (cdown > 50) {
         loadingMag = true;
-        let loadP = p / 0.25;
-        // Hand moves from quiver to magazine area
-        handX = loadP < 0.5 ? -4 + (loadP * 2 * 12) : 8;
-        handY = loadP < 0.5 ? -2 : -10;
+        // Normalize progress for the 250-tick reload window (300 down to 50)
+        let reloadP = Math.max(0, Math.min(1, 1 - ((cdown - 50) / 250)));
         
-        // Weapon remains steady during reload
-        leverMove = 0;
-        stringPull = 0;
-        boltInTray = false;
+        // Hand "jumps" 5 times to simulate dropping 5 sets of bolts
+        let dropCycle = (reloadP * 5) % 1; 
+        handX = dropCycle < 0.5 ? -2 : 10; // Moves from pouch to mag
+        handY = dropCycle < 0.5 ? 5 : -16;   // Dipping down then up to the box
+        
+        leverMove = 0; // Lever is dead during mag reload
     } 
-    // --- PHASE 2: THE BURST (9 BOLTS) ---
-    else {
+    // --- PHASE 2: INDIVIDUAL BOLT FIRE (cdown <= 50) ---
+    // This handles the 50-tick rapid cycle per shot.
+    else if (cdown > 0) {
         handOnLever = true;
-        
-        // Safety: If p is reset by engine (loss of target), return to neutral
-        if (p >= 0.99 || cdown === 0) {
-            leverMove = 0; stringPull = 0; boltInTray = false;
-        } else {
-            // Normalize the remaining 75% of p into 9 clean cycles
-            let burstP = (p - 0.25) / 0.75;   
-            let shotProgress = burstP * 9; 
-            let cycleP = shotProgress % 1;  
-            
-            // Internal Cycle Logic: Push -> Pull -> Snap
-            if (cycleP < 0.35) {
-                // 1. PUSH: Magazine slides forward to catch the string
-                leverMove = (cycleP / 0.35) * 5; 
-                stringPull = 0; 
-                boltInTray = cycleP > 0.1; // Bolt drops in immediately
-            } else if (cycleP < 0.85) {
-                // 2. PULL: String is drawn back with the bolt
-                let drawP = (cycleP - 0.35) / 0.50;
-                leverMove = 5 - (drawP * 5); 
-                stringPull = drawP * 8;
-                boltInTray = true; 
-            } else {
-                // 3. SNAP: Bolt is fired
-                leverMove = 0; 
-                stringPull = 0; 
-                boltInTray = false; 
-                
-                // Recoil Wobble
-                wobbleX = (Math.random() - 0.5) * 4;
-                wobbleY = (Math.random() - 0.5) * 4;
-            }
+        // Normalize 50 to 0 into a 0.0 to 1.0 cycle
+        let shotP = 1.0 - (cdown / 50);
+
+        if (shotP < 0.4) { // Push
+            leverMove = (shotP / 0.4) * 5;
+            boltInTray = shotP > 0.1;
+        } else if (shotP < 0.9) { // Pull
+            let drawP = (shotP - 0.4) / 0.5;
+            leverMove = 5 - (drawP * 5);
+            stringPull = drawP * 8;
+            boltInTray = true;
+        } else { // Snap/Recoil
+            wobbleX = (Math.random() - 0.5) * 3;
+            wobbleY = (Math.random() - 0.5) * 3;
         }
         magOffset = leverMove * 0.8;
     }
 
     // --- RENDERING ---
     ctx.save();
-    ctx.translate(wobbleX, 8 + wobbleY); // Apply shift + recoil
-    
-    // Slight lean back at the very start of the reload
-    if (p < 0.05) ctx.translate(-2, 0);
-    
-    // Main Body
+    ctx.translate(wobbleX, 8 + wobbleY);
+
+    // Body & Bow
     ctx.fillStyle = "#4e342e"; ctx.fillRect(3, -11, 18, 3);
-    
-    // Bow Limb & String
-    ctx.strokeStyle = "#000000"; ctx.lineWidth = 2;
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(21, -15); ctx.quadraticCurveTo(24 - stringPull*0.2, -11, 21, -7); ctx.stroke();
     ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 0.8;
     ctx.beginPath(); ctx.moveTo(21, -15); ctx.lineTo(21 - stringPull, -11); ctx.lineTo(21, -7); ctx.stroke();
     
-    // The Magazine (The "Chuko Nu" block that slides)
-    ctx.fillStyle = "#5d4037"; 
-    ctx.fillRect(7 + magOffset, -18, 10, 7); 
-    ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 1;
+    // Magazine Box
+    ctx.fillStyle = "#5d4037"; ctx.fillRect(7 + magOffset, -18, 10, 7);
     ctx.strokeRect(7 + magOffset, -18, 10, 7);
 
-    // The Lever Pivot Logic
+    // Lever
     ctx.save();
-    ctx.translate(15 + magOffset, -10); // Pivots relative to the magazine
-    let leverRotate = handOnLever ? (leverMove / 5) * -0.7 : 0; 
-    ctx.rotate(leverRotate);
+    ctx.translate(15 + magOffset, -10);
+    ctx.rotate(handOnLever ? (leverMove / 5) * -0.7 : 0);
     ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-12, -8); ctx.stroke(); 
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-12, -8); ctx.stroke();
     ctx.restore();
-    
-    // Bolt in tray
+
     if (boltInTray) {
         ctx.fillStyle = "#5d4037"; ctx.fillRect(11, -11, 6, 1); 
         ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); 
         ctx.moveTo(17, -11.5); ctx.lineTo(20, -10.5); ctx.lineTo(17, -9.5); ctx.fill();
     }
     
-    // Hand Positioning
+    // Hand Logic
     ctx.fillStyle = "#ffccbc";
     if (loadingMag) { 
         ctx.beginPath(); ctx.arc(handX, handY, 2.5, 0, Math.PI * 2); ctx.fill(); 
     } else if (handOnLever) { 
-        // Track the end of the lever arm
         let arcX = (15 + magOffset) + Math.cos(Math.PI + 0.6 + (leverMove / 5) * -0.7) * 14;
         let arcY = -10 + Math.sin(Math.PI + 0.6 + (leverMove / 5) * -0.7) * 14;
         ctx.beginPath(); ctx.arc(arcX, arcY, 2.8, 0, Math.PI * 2); ctx.fill(); 
