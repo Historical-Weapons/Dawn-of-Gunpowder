@@ -1,3 +1,139 @@
+
+function drawDetailedChineseWagon(ctx, x, y, factionColor) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1.2, 1.2); // Balanced scale
+
+    // --- 1. THE SHADOW ---
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 35, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // --- 2. THE CHASSIS (Heavy Timber) ---
+    const woodDark = "#3e2723";
+    const woodMid = "#5d4037";
+    
+    // Main base beams
+    ctx.fillStyle = woodDark;
+    ctx.fillRect(-28, 5, 56, 6); // Main floor
+    ctx.fillStyle = woodMid;
+    ctx.fillRect(-28, 5, 56, 2); // Top highlight of beam
+    
+    // Front shafts (The "Tongue" for the horse/ox)
+    ctx.strokeStyle = woodDark;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-28, 8);
+    ctx.lineTo(-45, 12);
+    ctx.stroke();
+
+    // --- 3. THE CANVAS COVER (Barrel Vault) ---
+    const canvasBase = "#d7ccc8"; // Aged parchment/canvas color
+    const canvasShadow = "#bcaaa4";
+    
+    // Draw the main cloth body
+    ctx.fillStyle = canvasBase;
+    ctx.beginPath();
+    ctx.moveTo(-25, 5);
+    // The "Barrel" arch
+    ctx.bezierCurveTo(-25, -35, 25, -35, 25, 5);
+    ctx.fill();
+
+    // DRAW THE "LINES" (Structural Ribs/Folds)
+    // This gives it the realistic bamboo-frame look instead of a flat "salt" texture
+    ctx.save();
+ctx.beginPath();
+ctx.moveTo(-25, 5);
+ctx.bezierCurveTo(-25, -35, 25, -35, 25, 5);
+ctx.closePath();
+ctx.clip();
+
+ctx.strokeStyle = "rgba(0,0,0,0.12)";
+ctx.lineWidth = 1;
+
+for (let i = -20; i <= 20; i += 8) {
+    ctx.beginPath();
+    ctx.moveTo(i, 5);
+    ctx.lineTo(i, -30);
+    ctx.stroke();
+}
+
+ctx.restore();
+
+    // Front/Back Openings (The dark interior look)
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.moveTo(-25, 5);
+    ctx.quadraticCurveTo(-25, -28, -18, -20);
+    ctx.lineTo(-18, 5);
+    ctx.fill();
+
+    // --- 4. THE FACTION FLAG (Small & Detailed) ---
+    ctx.strokeStyle = "#212121";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(15, -15);
+    ctx.lineTo(15, -35); // Flag pole
+    ctx.stroke();
+
+    ctx.fillStyle = factionColor || "#cc0000";
+    ctx.beginPath();
+    ctx.moveTo(15, -35);
+    ctx.lineTo(28, -30);
+    ctx.lineTo(15, -25);
+    ctx.fill();
+    // Tiny flag detail
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.stroke();
+
+    // --- 5. THE WHEELS (Large Chinese Spoked Wheels) ---
+    // We draw two wheels, one slightly offset for 2.5D depth
+    drawSpokedWheel(ctx, -16, 12, 10); // Front wheel
+    drawSpokedWheel(ctx, 18, 12, 10);  // Back wheel
+
+    ctx.restore();
+}
+
+function drawSpokedWheel(ctx, x, y, radius) {
+    ctx.save();
+    ctx.translate(x, y);
+    
+    // Outer Rim (Tire)
+    ctx.strokeStyle = "#1a1a1a"; // Iron/Dark Wood rim
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner Wood Rim
+    ctx.strokeStyle = "#5d4037";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius - 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // The Hub (Center)
+    ctx.fillStyle = "#212121";
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // The Spokes (12 Spokes for 13th Century style)
+    ctx.strokeStyle = "#3e2723";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 12; i++) {
+        ctx.rotate(Math.PI / 6);
+        ctx.beginPath();
+        ctx.moveTo(0, 2);
+        ctx.lineTo(0, radius - 2);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+
 function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, type, side, unitName, isFleeing, cooldown, unitAmmo, unit, reloadProgress) {
     ctx.save();
     ctx.translate(x, y);
@@ -24,7 +160,7 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
     const isCamel = type === "camel" || (unitName && /camel/i.test(unitName));
   
 	
-    if (unitName === "PLAYER" || unitName === "Commander") armorVal = Math.max(armorVal, 40);
+    if (unitName === "PLAYER" || unitName === "Commander") armorVal = Math.max(armorVal, 10);
 
     let animFrame = frame || (Date.now() / 100);
     let dir = side === "player" ? 1 : -1;
@@ -616,11 +752,92 @@ if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
             ctx.moveTo(-6, -13); ctx.lineTo(-8, -15); // Left wing
             ctx.moveTo(6, -13); ctx.lineTo(8, -15);   // Right wing
             ctx.stroke();
-	} else {
-ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill(); ctx.stroke();
-    // Fixed Neck Guard: Shorter (1.0 height) so eyes are visible
-    ctx.fillStyle = factionColor; ctx.fillRect(-4, -13, 8, 1.2);
-        }
+	} else { 
+	// --- 1. RED FEATHER PLUME (Raised 1.5px) ---
+    ctx.fillStyle = "#d32f2f";
+    ctx.beginPath();
+    ctx.moveTo(0, -19.5);
+    ctx.quadraticCurveTo(-3, -25.5, -5, -23.5);
+    ctx.quadraticCurveTo(-1, -22.5, 0, -19.5);
+    ctx.quadraticCurveTo(3, -25.5, 5, -23.5);
+    ctx.quadraticCurveTo(1, -22.5, 0, -19.5);
+    ctx.fill();
+
+    // --- 2. MAIN HELMET DOME (Raised 1.5px) ---
+    ctx.fillStyle = "#9e9e9e";
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-5, -13.5);
+    ctx.quadraticCurveTo(0, -22.5, 5, -13.5);
+    ctx.lineTo(4.5, -12);
+    ctx.quadraticCurveTo(0, -11, -4.5, -12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // --- 3. TOP FINIAL SOCKET (Raised 1.5px) ---
+    ctx.fillStyle = "#ffd700";
+    ctx.beginPath();
+    ctx.moveTo(-1.2, -19);
+    ctx.lineTo(1.2, -19);
+    ctx.lineTo(0.8, -21);
+    ctx.lineTo(-0.8, -21);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // --- 4. HEAVY WRAP-AROUND FACE & NECK GUARD ---
+    ctx.fillStyle = factionColor;
+    ctx.beginPath();
+    // Start at the temple
+    ctx.moveTo(-5, -13); 
+    // Left side down to chin
+    ctx.lineTo(-5.5, -6); 
+    // The "Chin" - wrapping across the bottom
+    ctx.quadraticCurveTo(0, -4.5, 5.5, -6); 
+    // Right side up to temple
+    ctx.lineTo(5, -13);
+    // Eye Slit Top (Lower brow)
+    ctx.lineTo(3.5, -11.5);
+    ctx.quadraticCurveTo(0, -10.5, -3.5, -11.5); 
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // --- 5. EYE SLIT SHADOW ---
+    // Creates the depth inside the mask so the face is barely seen
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.moveTo(-3.5, -11.5);
+    ctx.quadraticCurveTo(0, -10.5, 3.5, -11.5);
+    ctx.lineTo(3.8, -10);
+    ctx.quadraticCurveTo(0, -9, -3.8, -10);
+    ctx.closePath();
+    ctx.fill();
+
+    // --- 6. ELITE LAMELLAR STITCHING ---
+    ctx.strokeStyle = "rgba(0,0,0,0.4)";
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    // Vertical plates on the face mask
+    for(let x = -4; x <= 4; x += 2) {
+        if (x === 0) continue; // Keep the center nose-line clean
+        ctx.moveTo(x, -9.5); 
+        ctx.lineTo(x * 1.1, -5.5);
+    }
+    // Horizontal row across the jaw
+    ctx.moveTo(-5.2, -8); ctx.lineTo(5.2, -8);
+    ctx.stroke();
+
+    // --- 7. RED CEREMONIAL TASSELS ---
+    ctx.strokeStyle = "#b71c1c";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-4.5, -11); ctx.lineTo(-6.5, -6); 
+    ctx.moveTo(4.5, -11);  ctx.lineTo(6.5, -6);
+    ctx.stroke();
+	}
     } else if (armorVal >= 8) {
         // Medium Tier Light Faction Hats
         if (factionColor === "#c2185b") { 
@@ -654,9 +871,64 @@ ctx.fillStyle = "#9e9e9e"; ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ct
             ctx.lineTo(1.5, -15.5);
             ctx.stroke();
         } else {
-            ctx.fillStyle = "#8d6e63"; 
-            ctx.beginPath(); ctx.moveTo(-6, -11); ctx.lineTo(0, -15); ctx.lineTo(6, -11);
-            ctx.quadraticCurveTo(0, -12.5, -6, -11); ctx.fill(); ctx.stroke();
+// --- 1. ROUNDED SKULL CAP (Raised 1.5px) ---
+    ctx.fillStyle = "#808080"; 
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    // Y shifted from -12 to -13.5
+    ctx.arc(0, -13.5, 4.8, Math.PI, 0); 
+    ctx.lineTo(4.8, -12.5); 
+    ctx.quadraticCurveTo(0, -12, -4.8, -12.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // --- 2. TOP RIVET (Raised 1.5px) ---
+    ctx.fillStyle = "#555555";
+    ctx.beginPath();
+    // Y shifted from -16.8 to -18.3
+    ctx.arc(0, -18.3, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // --- 3. LAMELLAR EAR FLAPS (Raised 1.5px) ---
+    ctx.fillStyle = factionColor;
+    
+    // Left Flap - Now starts higher to show more jawline/cheek
+    ctx.beginPath();
+    ctx.rect(-5.2, -12.5, 2.2, 3.5); 
+    ctx.fill();
+    ctx.stroke();
+
+    // Right Flap
+    ctx.beginPath();
+    ctx.rect(3, -12.5, 2.2, 3.5);  
+    ctx.fill();
+    ctx.stroke();
+
+    // --- 4. MINIMAL BACK NECK GUARD (Raised 1.5px) ---
+    ctx.beginPath();
+    ctx.moveTo(-3, -12.5);
+    ctx.quadraticCurveTo(0, -11.5, 3, -12.5);
+    ctx.lineTo(3, -10.5);
+    ctx.quadraticCurveTo(0, -10, -3, -10.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // --- 5. LAMELLAR STITCHING (Raised 1.5px) ---
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.lineWidth = 0.5;
+    
+    // Vertical split on ear flaps
+    ctx.beginPath();
+    ctx.moveTo(-4.1, -12.5); ctx.lineTo(-4.1, -9);
+    ctx.moveTo(4.1, -12.5);  ctx.lineTo(4.1, -9);
+    // Horizontal row (Y shifted from -9.2 to -10.7)
+    ctx.moveTo(-5.2, -10.7); ctx.lineTo(-3, -10.7);
+    ctx.moveTo(3, -10.7);    ctx.lineTo(5.2, -10.7);
+    ctx.stroke();
         }
     } 
 	else { //camel 

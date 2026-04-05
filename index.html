@@ -24,7 +24,7 @@
         <div class="stat"><span>Coordinates:</span> <span id="loc-text" class="val">0, 0</span></div>
         <div class="stat"><span>Zoom Level:</span> <span id="zoom-text" class="val">1.0x</span></div>
 
-        <div class="hint">Scroll to Zoom (0.1x - 3x)<br>WASD to explore. <br> Overworld Map - T for troops. <br> Battle/City - P for exit.</div>
+        <div class="hint">Scroll to Zoom<br>WASD to explore. <br> Overworld Map - T for troops. <br> Battle/City - P for exit.</div>
 
 <div class="hint" style="
     font-size: 11px; 
@@ -52,7 +52,7 @@
         <button id="dip-log-toggle-btn" onclick="toggleDipLog()">−</button>
         
         <button class="diplomacy-main-btn" onclick="toggleDiplomacyMenu()">
-            📜 Diplomacy
+            📜 Diplomacy Table
         </button>
     </div>
 
@@ -317,10 +317,12 @@ function toggleDipLog() {
 	
 	<script src="siegebattle.js"></script>
 	
-    <script src="battlefield_system.js"></script>
+    <script src="battlefield_launch.js"></script>
 	<script src="battlefield_damagelogic.js"></script>
+	<script src="enemyCommanderAI.js"></script>
+	<script src="ai_categories.js"></script>
     <script src="troop_system.js"></script>
-			    <script src="unit-encyclopedia.js"></script>
+	<script src="unit-encyclopedia.js"></script>
     <script src="infscript.js"></script>
     <script src="cavscript.js"></script>
     <script src="player_overlay_system.js"></script>
@@ -334,6 +336,8 @@ function toggleDipLog() {
 			
     <script src="audio_system.js"></script>
 	<script src="custom_battle_gui.js"></script>
+	<script src="customsiegebattle.js"></script>	
+
     <script src="RandomDialogue.js"></script>
     <script src="parler_system.js"></script>
     <script src="siege_system.js"></script>

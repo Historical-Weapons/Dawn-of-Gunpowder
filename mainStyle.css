@@ -1,4 +1,14 @@
-body, html { margin: 0; padding: 0; overflow: hidden; background-color: #111; font-family: 'Georgia', serif; }
+/* Prevent text selection / I-beam cursor everywhere */
+html, body, body * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  cursor: default;
+}
 canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
 h1 { margin: 0; font-size: 1.4rem; color: #f5d76e; text-shadow: 1px 1px 2px #000; border-bottom: 1px solid #5d4037; padding-bottom: 5px; }
 

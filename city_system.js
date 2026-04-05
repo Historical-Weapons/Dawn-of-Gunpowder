@@ -21,47 +21,18 @@ async function initAllCities(factions) {
     }
 }
  function city_system_generateTroops(factionName, grid) {
-    let maxTroops = 15; // UPDATED: Increased this so your targetTroops (15-25) actually spawn
-    city_system_troop_storage[factionName] = [];
-    
-    // 1. Find all valid road (1) and plaza (5) tiles across the city
-    let validSpots = [];
-    for (let x = 0; x < CITY_COLS; x++) {
-        for (let y = 0; y < CITY_ROWS; y++) {
-            if (grid[x] && (grid[x][y] === 1 || grid[x][y] === 5)) {
-                validSpots.push({ x: x, y: y });
-            }
-        }
-    }
-
-    let targetTroops = Math.floor(Math.random() * 10) + 15; 
-    const city_weapon_pool = ["spearman", "sword_shield", "archer", "crossbow", "shortsword"];
-
-    // 2. Pick random valid spots until target is reached
-    while (city_system_troop_storage[factionName].length < targetTroops && validSpots.length > 0) {
-        let rIndex = Math.floor(Math.random() * validSpots.length);
-        let spot = validSpots.splice(rIndex, 1)[0]; 
-
-        city_system_troop_storage[factionName].push({
-            x: spot.x * CITY_TILE_SIZE,
-            y: spot.y * CITY_TILE_SIZE,
-            vx: (Math.random() - 0.5) * 0.8, 
-            vy: (Math.random() - 0.5) * 0.8,
-            animOffset: Math.random() * 100,
-            weapon: city_weapon_pool[Math.floor(Math.random() * city_weapon_pool.length)],
-            dir: Math.random() > 0.5 ? 1 : -1,
-            onWall: false // <--- ADDED: This prevents the 'undefined' collision error
-        });
-
-        // OPTIMIZATION CHECK: Stop if we hit the hard limit
-        if (city_system_troop_storage[factionName].length >= maxTroops) break;
-    }
+ //I DONT NEED POLICE TROOPS
 }
+
+
 
 function city_system_renderTroops(ctx, factionName) {
     let troops = city_system_troop_storage[factionName];
     if (!troops) return;
-    
+    // Inside city_system_renderTroops loop:
+let currentTile = cityDimensions[factionName].grid[tx] ? cityDimensions[factionName].grid[tx][ty] : 0;
+if (currentTile === 9 || currentTile === 8) t.onWall = true; // Added 8 for dynamic wall floors
+else if (currentTile === 0 || currentTile === 1 || currentTile === 5) t.onWall = false;
     let currentRuler = (typeof activeCity !== 'undefined' && activeCity) ? activeCity.faction : factionName;
     let fColor = "#4a4a4a"; 
     if (typeof ARCHITECTURE !== 'undefined' && ARCHITECTURE[currentRuler]) {
@@ -93,7 +64,7 @@ function city_system_renderTroops(ctx, factionName) {
 
         drawHuman(ctx, t.x, t.y, true, frame, fColor);
 
-        // ... (Keep your weapon rendering logic exactly as is) ...
+ 
 
         ctx.save();
         ctx.translate(t.x, t.y - bob);
@@ -110,17 +81,22 @@ function city_system_renderTroops(ctx, factionName) {
         ctx.restore();
     }
 }
+
 function city_system_renderGateOverlays(ctx) {
- 
+    // If exploring the city, we still need to draw the gates!
+    if (typeof renderDynamicGates === 'function') {
+        renderDynamicGates(ctx);
+    }
 }
 
-// Add this listener to your main input handler or the bottom of city_system.js
 window.addEventListener('keydown', (e) => {
- if ((e.key === 'p' || e.key === 'P') && inCityMode) {
-        e.preventDefault(); // Stop the browser from switching focus
+    if ((e.key === 'p' || e.key === 'P') && inCityMode) {
+        e.preventDefault(); 
         
-        // Check if player is near any gate before letting them leave
-        for (let g of overheadCityGates) {
+        // NEW: Reference the dynamic environment gates
+        const gates = battleEnvironment.cityGates || [];
+        for (let g of gates) {
+            // Check distance to the gate's logical center
             let dist = Math.hypot(player.x - (g.x * CITY_TILE_SIZE), player.y - (g.y * CITY_TILE_SIZE));
             if (dist < 100) {
                 leaveCity(player);
@@ -500,14 +476,7 @@ if (typeof buildCityWalls === 'function') {
         generateCityCosmeticNPCs(factionName, grid);
     }
  
-  // Note: city_system_renderGateOverlays is usually called in the main 
-    // animation loop, not during generation, but if you need it here:
-    city_system_renderGateOverlays(ctx); 
-
-// This populates the walls with archers and the city with guards
-    if (typeof spawnFortificationTroops === 'function') {
-        spawnFortificationTroops(factionName, grid, arch);
-    }
+ 
 	
 }
 function isCityCollision(x, y, factionName = currentActiveCityFaction, isOnWall = false) {
@@ -871,4 +840,21 @@ for (let npc of npcs) {
         }   
 	
     }
+}
+
+function isNearWall(x, y, grid) {
+    for (let dx = -3; dx <= 3; dx++) {
+        for (let dy = -3; dy <= 3; dy++) {
+            let nx = x + dx;
+            let ny = y + dy;
+
+            if (grid[nx] && grid[nx][ny] !== undefined) {
+                let tile = grid[nx][ny];
+                if (tile === 8 || tile === 9 || tile === 10) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }

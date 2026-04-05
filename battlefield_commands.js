@@ -10,6 +10,53 @@ let isRightDragging = false;
 let dragStartPos = { x: 0, y: 0 };
 let dragCurrentPos = { x: 0, y: 0 };
 
+// --- LAZY GENERAL FEATURE ---
+let activeLazyGeneralInterval = null;
+
+function startLazyGeneral() {
+    if (activeLazyGeneralInterval) clearInterval(activeLazyGeneralInterval);
+    activeLazyGeneralInterval = setInterval(() => {
+        if (!inBattleMode || !battleEnvironment) {
+            stopLazyGeneral();
+            return;
+        }
+        
+        // Re-fetch currently selected units dynamically
+        // UPGRADE: Exclude our special siege roles from the braindead Lazy General charge!
+        const selectedUnits = battleEnvironment.units.filter(u => 
+            u.side === "player" && 
+            u.selected && 
+            u.hp > 0 && 
+            !u.isCommander && 
+            !u.disableAICombat &&
+            u.siegeRole !== "ladder_fanatic" && // Let the fanatics swarm!
+            u.siegeRole !== "counter_battery"   // Let snipers hold their ground and shoot!
+        );
+
+        if (selectedUnits.length === 0) return;
+
+        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+            if (typeof executeSiegeAssaultAI === 'function') {
+                executeSiegeAssaultAI(selectedUnits);
+            }
+        } else {
+            selectedUnits.forEach(u => {
+                u.hasOrders = true;
+                u.orderType = "seek_engage"; 
+                u.orderTargetPoint = null; 
+            });
+        }
+    }, 1000);
+}
+
+function stopLazyGeneral() {
+    if (activeLazyGeneralInterval) {
+        clearInterval(activeLazyGeneralInterval);
+        activeLazyGeneralInterval = null;
+    }
+}
+// --- END LAZY GENERAL FEATURE ---
+
 const COMMAND_GROUPS = {
     1: [ROLES.SHIELD, ROLES.PIKE, ROLES.INFANTRY, ROLES.TWO_HANDED, ROLES.THROWING], // Infantry & Skirmishers
     2: [ROLES.ARCHER, ROLES.CROSSBOW], // Ranged
@@ -61,9 +108,16 @@ document.addEventListener("keydown", (event) => {
             return;
         }
 
-        currentSelectionGroup = groupNum;
+currentSelectionGroup = groupNum;
         playerUnits.forEach(u => {
-            let willBeSelected = (groupNum === 5) ? true : (COMMAND_GROUPS[groupNum] && COMMAND_GROUPS[groupNum].includes(u.stats.role));
+            
+            // SURGERY: Use the fault-tolerant role checker instead of strict string matching
+            let roleCat = getTacticalRole(u);
+            let willBeSelected = (groupNum === 5);
+            if (groupNum === 1 && ["INFANTRY", "SHIELD"].includes(roleCat)) willBeSelected = true;
+            if (groupNum === 2 && roleCat === "RANGED") willBeSelected = true;
+            if (groupNum === 3 && roleCat === "CAVALRY") willBeSelected = true;
+            if (groupNum === 4 && roleCat === "GUNPOWDER") willBeSelected = true;
             
             if (u.selected && !willBeSelected) {
                 if (u.hasOrders && u.orderType === "follow") {
@@ -76,16 +130,16 @@ document.addEventListener("keydown", (event) => {
         return;
     }
 
- 
-
     const selectedUnits = playerUnits.filter(u => u.selected);
     if (selectedUnits.length === 0) return;
 
-// =========================
+    // =========================
     // Z, X, C, V, B: FORMATIONS 
     // =========================
     if (["z", "x", "c", "v", "b"].includes(key)) {
-        // Skip formation logic entirely if only 1 unit is selected
+        
+        stopLazyGeneral(); // Disable lazy spam if manual formation ordered
+         
         if (selectedUnits.length <= 1) return;
 
         if (key === "z") currentFormationStyle = "tight";  
@@ -126,7 +180,11 @@ document.addEventListener("keydown", (event) => {
     // Q, E, R, F: TACTICAL ORDERS
     // =========================
     switch (key) {
+
         case "f": // FOLLOW COMMANDER
+            
+        stopLazyGeneral(); // Disable lazy spam if manual formation ordered
+    
             if (!commander) break;
             selectedUnits.forEach(u => {
                 u.hasOrders = true;
@@ -137,7 +195,8 @@ document.addEventListener("keydown", (event) => {
             calculateFormationOffsets(selectedUnits, currentFormationStyle, commander);
             break;
 
-case "q": // SEEK & ENGAGE or SMART SIEGE ASSAULT
+        case "q": // SEEK & ENGAGE or SMART SIEGE ASSAULT
+
             if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
                 // Initialize the complex Siege Assault logic
                 executeSiegeAssaultAI(selectedUnits);
@@ -150,26 +209,32 @@ case "q": // SEEK & ENGAGE or SMART SIEGE ASSAULT
                     u.formationTimer = 120;      
                 });
             }
+            startLazyGeneral();//reactivate
             break;
 
         case "r": // RETREAT 
+            
+        stopLazyGeneral(); // Disable lazy spam if manual formation ordered
+    
             selectedUnits.forEach(u => {
                 u.hasOrders = true;
                 u.orderType = "retreat";
                 let stagger = (Math.random() * 20); 
-// Define the raw target
-        let targetX = u.x;
-        let targetY = BATTLE_WORLD_HEIGHT - 50 - stagger;
+                // Define the raw target
+                let targetX = u.x;
+                let targetY = BATTLE_WORLD_HEIGHT - 50 - stagger;
 
-        // HOOK CLAMP HERE
-// HOOK CLAMP HERE
-        u.orderTargetPoint = getSafeMapCoordinates(targetX, targetY);
+                // HOOK CLAMP HERE
+                u.orderTargetPoint = getSafeMapCoordinates(targetX, targetY);
  
                 u.formationTimer = 240;
             });
             break;
 
         case "e": // STOP / CANCEL ORDERS
+            
+        stopLazyGeneral(); // Disable lazy spam if manual formation ordered
+    
             selectedUnits.forEach(u => {
                 u.hasOrders = false;
                 u.orderType = null;
@@ -185,195 +250,34 @@ case "q": // SEEK & ENGAGE or SMART SIEGE ASSAULT
     }
 });
 
-// --- TACTICAL ROLE HELPER ---
 function getTacticalRole(unit) {
-    if (!unit.stats) return "INFANTRY";
-    let r = unit.stats.role ? unit.stats.role : "";
+    if (!unit) return "INFANTRY";
     
-    if ([ROLES.BOMB, ROLES.ROCKET, ROLES.FIRELANCE, ROLES.GUNNER].includes(r)) return "GUNPOWDER";
-    if ([ROLES.CAVALRY, ROLES.HORSE_ARCHER, ROLES.MOUNTED_GUNNER, ROLES.CAMEL, ROLES.ELEPHANT].includes(r)) return "CAVALRY";
-    if ([ROLES.ARCHER, ROLES.CROSSBOW, ROLES.THROWING].includes(r)) return "RANGED";
-    if (r === ROLES.SHIELD) return "SHIELD";
+    // 1. Primary Check: Official Stats Role
+    let r = unit.stats && unit.stats.role ? String(unit.stats.role).toUpperCase() : "";
     
-    return "INFANTRY";
-}
+    // 2. Secondary Safety Net: Parse the unit's name/type for keywords
+    let textCheck = String((unit.stats?.name || "") + " " + (unit.unitType || "")).toUpperCase();
 
-// --- FORMATION MATH ---
-function calculateFormationOffsets(units, style, commander) {
-    let shields = [], infantry = [], ranged = [], gunpowder = [], cavalry = [];
-
-    units.forEach(u => {
-        let role = getTacticalRole(u);
-        if (role === "GUNPOWDER") gunpowder.push(u);
-        else if (role === "CAVALRY") cavalry.push(u);
-        else if (role === "RANGED") ranged.push(u);
-        else if (role === "SHIELD") shields.push(u);
-        else infantry.push(u);
-    });
-
-    const assignBlock = (group, startY, spacing, maxCols, isFlank = false, flankOffset = 250) => {
-        group.forEach((u, i) => {
-            let r = Math.floor(i / maxCols);
-            let c = i % maxCols;
-            let offset_X = (c - (Math.min(group.length - (r * maxCols), maxCols) - 1) / 2) * spacing;
-            
-            if (isFlank) {
-                let sideMult = (i % 2 === 0) ? 1 : -1;
-                offset_X = (flankOffset + (Math.floor(i/2) * spacing)) * sideMult;
-            }
-            
-            u.formationOffsetX = offset_X + (Math.random() - 0.5) * 5; 
-            u.formationOffsetY = startY + (r * spacing) + (Math.random() - 0.5) * 5;
-        });
-    };
-
-    const assignRing = (group, radius) => {
-        group.forEach((u, i) => {
-            let angle = (i / group.length) * Math.PI * 2;
-            u.formationOffsetX = Math.cos(angle) * radius + (Math.random() - 0.5) * 5;
-            u.formationOffsetY = Math.sin(angle) * radius + (Math.random() - 0.5) * 5;
-        });
-    };
-
-    switch (style) {
-case "tight": 
-    // LINE 1: SHIELDS (Absolute Front)
-    // -75 puts them at the very tip of the formation
-    assignBlock(shields, -75, 16, 30); 
-
-    // LINE 2: OTHER INFANTRY (Directly behind shields)
-    // -50 keeps them close enough to support the shield wall
-    assignBlock(infantry, -50, 16, 30);
-
-    // LINE 3: RANGED (Behind the infantry)
-    // -25 gives them a clear view over the heads of the front lines
-    assignBlock(ranged, -25, 16, 30);
-
-    // GUNPOWDER: Specialized narrow line
-    assignBlock(gunpowder, -55, 18, 5, true, 180); 
-    
-    // CAVALRY: Single-rank rear reserve (as per your previous revision)
-    assignBlock(cavalry, 100, 15, 99, false);                  
-    break;
-        case "standard":
-            assignBlock([...shields, ...infantry], -50, 40, 20);
-            assignBlock(ranged, -90, 40, 20);
-            assignBlock(gunpowder, -20, 40, 15);
-            assignBlock(cavalry, -50, 45, 5, true, 280); 
-            break;
-case "line":
-            // 1. Prepare and combine subgroups
-            const combinedRanged = [...gunpowder, ...ranged]; 
-            const centerGroup = [...shields, ...infantry];
-            
-            // 2. Split flank units (Cavalry and Ranged) to distribute evenly on both sides
-            const hCav = Math.floor(cavalry.length / 2);
-            const lCav = cavalry.slice(0, hCav);
-            const rCav = cavalry.slice(hCav);
-
-            const hRanged = Math.floor(combinedRanged.length / 2);
-            const lRanged = combinedRanged.slice(0, hRanged);
-            const rRanged = combinedRanged.slice(hRanged);
-
-            // 3. Assemble the full line: [L-Cav] [L-Ranged] [Center] [R-Ranged] [R-Cav]
-            const sortedLine = [...lCav, ...lRanged, ...centerGroup, ...rRanged, ...rCav];
-            
-            // ==========================================================
-            // 4. SPREAD WITH BOUNDARY WRAPPING (The "Anti-Clump" Surgery)
-            // ==========================================================
-            const lineSpacing = 30; 
-            const rankSpacing = 40; // How far back the 2nd/3rd lines fold
-            const totalInLine = sortedLine.length;
-
-            // Define the map boundaries (with a 60px safe margin)
-            const mapWidth = (typeof BATTLE_WORLD_WIDTH !== 'undefined') ? BATTLE_WORLD_WIDTH : 2400;
-            const margin = 60;
-            const leftBound = margin;
-            const rightBound = mapWidth - margin;
-
-            // Get commander's current X to calculate absolute positions
-            const cmdr = battleEnvironment.units.find(u => u.isCommander && u.side === 'player');
-            const cmdrX = cmdr ? cmdr.x : (mapWidth / 2);
-
-            // Calculate how many units can safely fit on each side of the commander
-            const maxLeftCapacity = Math.max(1, Math.floor((cmdrX - leftBound) / lineSpacing));
-            const maxRightCapacity = Math.max(1, Math.floor((rightBound - cmdrX) / lineSpacing));
-
-            // Counters for how many units have spilled over the edge
-            let leftSpillCount = 0;
-            let rightSpillCount = 0;
-
-            sortedLine.forEach((u, i) => {
-                // Calculate theoretical X offset
-                let rawOffsetX = (i - (totalInLine - 1) / 2) * lineSpacing;
-                let expectedAbsX = cmdrX + rawOffsetX;
-                
-                let finalOffsetX = rawOffsetX;
-                let finalOffsetY = -40; // Standard uniform line
-
-                // --- FLANK FOLDING LOGIC ---
-
-                // Left Boundary Overflow (Hitting the Left Red Line)
-                if (expectedAbsX < leftBound) {
-                    let rankMultiplier = Math.floor(leftSpillCount / maxLeftCapacity) + 1; 
-                    let positionInRank = leftSpillCount % maxLeftCapacity;
-                    
-                    // Fold inwards from the left edge
-                    finalOffsetX = (leftBound - cmdrX) + (positionInRank * lineSpacing);
-                    finalOffsetY = -40 + (rankSpacing * rankMultiplier); // Push back a rank
-                    
-                    leftSpillCount++;
-                } 
-                // Right Boundary Overflow (Hitting the Right Red Line)
-                else if (expectedAbsX > rightBound) {
-                    let rankMultiplier = Math.floor(rightSpillCount / maxRightCapacity) + 1;
-                    let positionInRank = rightSpillCount % maxRightCapacity;
-                    
-                    // Fold inwards from the right edge
-                    finalOffsetX = (rightBound - cmdrX) - (positionInRank * lineSpacing);
-                    finalOffsetY = -40 + (rankSpacing * rankMultiplier); // Push back a rank
-                    
-                    rightSpillCount++;
-                }
-
-// Apply offsets with slight human-like jitter
-let rawAbsX = cmdrX + finalOffsetX;
-let rawAbsY = (cmdr ? cmdr.y : (BATTLE_WORLD_HEIGHT / 2)) + finalOffsetY;
-
-// HOOK CLAMP HERE
-let safePos = getSafeMapCoordinates(rawAbsX, rawAbsY);
-
-// Re-calculate the offset based on the clamped absolute position
-u.formationOffsetX = safePos.x - cmdrX;
-u.formationOffsetY = safePos.y - (cmdr ? cmdr.y : (BATTLE_WORLD_HEIGHT / 2));
-            });
-            break;
-            
-case "circle":
-            let allInfantry = [...shields, ...infantry, ...ranged, ...gunpowder];
-            
-            // 1. CAVALRY INNER RING
-            // We bypass applyRotation here to ensure the circle is always "Upright"
-            assignRing(cavalry, 80); 
-            
-            // 2. INFANTRY OUTER RING
-            // Increased breathing room: 150px min, or scales with army size
-            let outerRadius = Math.max(150, allInfantry.length * 4); 
-            assignRing(allInfantry, outerRadius); 
-            
-            // 3. SURGERY: Force-flat offsets
-            // Even if assignRing uses math, we ensure no external tilt is applied
-            units.forEach(u => {
-                // Ensure the offsets are purely based on the circle math, not the map edge tilt
-                u.formationOffsetX = u.formationOffsetX || 0;
-                u.formationOffsetY = u.formationOffsetY || 0;
-            });
-            break;
+    // GUNPOWDER
+    if (["BOMB", "ROCKET", "FIRELANCE", "GUNNER"].includes(r) || textCheck.match(/(BOMB|ROCKET|FIRE|CANNON|GUN)/)) {
+        return "GUNPOWDER";
     }
+    // CAVALRY & BEASTS
+    if (["CAVALRY", "HORSE_ARCHER", "MOUNTED_GUNNER", "CAMEL", "ELEPHANT"].includes(r) || textCheck.match(/(CAV|HORSE|MOUNT|CAMEL|LANCER|ELEPH|KESHIG)/)) {
+        return "CAVALRY";
+    }
+    // RANGED
+    if (["ARCHER", "CROSSBOW", "THROWING"].includes(r) || textCheck.match(/(ARCHER|BOW|CROSSBOW|SLING|JAVELIN)/)) {
+        return "RANGED";
+    }
+    // SHIELD
+    if (r === "SHIELD" || textCheck.match(/(SHIELD)/)) {
+        return "SHIELD";
+    }
+    
+    return "INFANTRY"; // Ultimate fallback
 }
-
-// --- DYNAMIC AI OVERRIDE LOOP ---
-// --- DYNAMIC AI OVERRIDE LOOP ---
 function processTacticalOrders() {
     if (!inBattleMode || !battleEnvironment.units) return;
     
@@ -385,7 +289,6 @@ function processTacticalOrders() {
         // Decrement formation timer
         if (unit.formationTimer > 0) unit.formationTimer--;
 
-        // 1. SELF-PRESERVATION / EMERGENCY CHECK
         let nearestDist = Infinity;
         let nearestEnemy = null;
         
@@ -406,93 +309,111 @@ function processTacticalOrders() {
 
         const tacticalRole = getTacticalRole(unit);
         const isRanged = (tacticalRole === "RANGED" || tacticalRole === "GUNPOWDER");
-        
         let emergencyThreshold = 100; 
 
+        // ---> SURGERY: THE ABSOLUTE OVERRIDE CHECK <---
+        // Determine if the player has issued a command that requires ignoring local threats
+        const isStrictCommand = unit.hasOrders && ["move_to_point", "retreat", "follow", "siege_assault"].includes(unit.orderType);
+
         // ====================================================================
-        // SURVIVAL OVERRIDE (FIXED): Absolute priority if enemy is < 100px
+        // SURVIVAL OVERRIDE: Only triggers if the unit IS NOT under strict orders
         // ====================================================================
-        if (nearestDist < emergencyThreshold && nearestEnemy) {
-            // Restore weapons if they were lowered for marching
+        if (nearestDist < emergencyThreshold && nearestEnemy && !isStrictCommand) {
             if (unit.originalRange) {
                 unit.stats.range = unit.originalRange;
                 unit.originalRange = null;
             }
             
-            unit.reactionDelay = 0; // INSTANT reaction if in danger
-            
-            // Snap out of the "marching trance" instantly
+            unit.reactionDelay = 0; 
             unit.formationTimer = 0; 
-            
-            // Lock onto the immediate threat
             unit.target = nearestEnemy;
-            
-            // The 'return' halts all waypoint/formation logic below. 
-            // They will fight the danger instead of walking past it. 
-            return; 
+            return; // Halts waypoint logic so they fight
         }
 
         // ====================================================================
-        // STAGGERED REACTION DELAY (The "Anti-Telepathy" Block)
+        // STAGGERED REACTION DELAY
         // ====================================================================
         if (unit.reactionDelay > 0) {
             unit.reactionDelay--;
-            return; // Skip ordering logic until the delay hits zero
+            return; 
         }
 
-        // 2. EXECUTE ORDERS (Safe Waypoints & Ranged Shooting Focus)
+        // 2. EXECUTE ORDERS
         if (unit.hasOrders) {
             
             // ==========================
-            // SEEK & ENGAGE
+            // SEEK & ENGAGE (The only order where they are allowed to be distracted)
             // ==========================
-if (unit.orderType === "seek_engage") {
-    if (nearestEnemy) {
-        unit.target = nearestEnemy;
+            if (unit.orderType === "seek_engage") {
+                if (nearestEnemy) {
+                    unit.target = nearestEnemy;
+                    if (unit.stats.morale > 5) {
+                        let dx = nearestEnemy.x - unit.x;
+                        let dy = nearestEnemy.y - unit.y;
+                        let dist = Math.hypot(dx, dy);
 
-        // OPTIONAL: mild forward bias (keeps army advancing instead of stalling)
-        if (unit.stats.morale > 5) {
-            let dx = nearestEnemy.x - unit.x;
-            let dy = nearestEnemy.y - unit.y;
-            let dist = Math.hypot(dx, dy);
-
-            if (dist > unit.stats.range * 0.9) {
-                // set a soft waypoint instead of forcing it
-                unit.target = nearestEnemy;
+                        if (dist > unit.stats.range * 0.9) {
+                            unit.target = nearestEnemy;
+                        }
+                    }
+                }
+                return; 
             }
-        }
-    }
-    return; // CRITICAL: skip formation movement logic
-}
-// ==========================
+            
+          // ==========================
             // SMART SIEGE ASSAULT LOGIC
             // ==========================
             if (unit.orderType === "siege_assault") {
                 let wallBoundaryY = (typeof CITY_LOGICAL_HEIGHT !== 'undefined' ? CITY_LOGICAL_HEIGHT : 3200) - 40;
                 let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
-                let gateBreached = southGate && (southGate.gateHP <= 0 || southGate.isOpen);
                 
-                // --- PHASE 2: GATE IS BREACHED OR WE ARE OVER THE WALL ---
+                // Ensure we catch the global breach flag too
+                let gateBreached = window.__SIEGE_GATE_BREACHED__ || (southGate && (southGate.gateHP <= 0 || southGate.isOpen));
+                
+                if (gateBreached && unit.siegeRole !== "assault_complete") {
+                    unit.siegeRole = "assault_complete"; 
+                    
+                    // SURGERY: Force them to immediately charge into the city to bypass the broken gate
+                    let plazaX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : 1200;
+                    let plazaY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : 800;
+                    unit.target = { 
+                        x: plazaX + (Math.random() - 0.5) * 200, 
+                        y: plazaY + (Math.random() - 0.5) * 200, 
+                        isDummy: true, 
+                        priority: "plaza" 
+                    };
+                    unit.orderTargetPoint = null; 
+                }
+
                 if (gateBreached || unit.y < wallBoundaryY || unit.onWall) {
-                    // 1. Force Ranged into Melee mode once inside the city walls
-                    if (unit.y < wallBoundaryY && (unit.stats.role === "archer" || unit.stats.role === "crossbow" || getTacticalRole(unit) === "GUNPOWDER")) {
-                        unit.stats.range = 10; // Lock to melee
-                        unit.stats.currentStance = "statusmelee";
+                    const unitRole = unit.stats.role;
+                    const isRangedAssault = (
+                        unitRole === "archer" || 
+                        unitRole === "horse_archer" || 
+                        unitRole === "crossbow" || 
+                        unitRole === "gunner" || 
+                        unitRole === "mounted_gunner" || 
+                        unitRole === "Rocket" || 
+                        unitRole === "bomb" || 
+                        unitRole === "throwing" || 
+                        unitRole === "firelance"
+                    );
+
+                    if (isRangedAssault) {
+                        unit.stats.range = 10; 
+                        unit.stats.currentStance = "statusmelee"; 
+                        unit.forceMelee = true; 
                     }
 
-                    // 2. Everyone drops siege roles and floods the city
                     if (nearestEnemy) {
                         unit.target = nearestEnemy;
-                        
-                        // Cavalry gets aggressive pathing straight through the gate
                         if (unit.siegeRole === "cavalry_reserve" && unit.y > wallBoundaryY && southGate) {
                             unit.target = { x: southGate.x * BATTLE_TILE_SIZE, y: southGate.y * BATTLE_TILE_SIZE - 50, isDummy: true };
                         }
                     }
-                    return; // Skip standard movement, let them swarm
+                    return; 
                 }
 
-                // --- PHASE 1: SIEGE EQUIPMENT PUSH ---
                 let destX = unit.x;
                 let destY = unit.y;
 
@@ -500,23 +421,20 @@ if (unit.orderType === "seek_engage") {
                     case "ram_pusher":
                         if (unit.siegeTarget && unit.siegeTarget.hp > 0) {
                             destX = unit.siegeTarget.x + (Math.random() - 0.5) * 15;
-                            // Queue system: First 6 push, the rest line up behind them
                             let queueOffset = unit.queuePos > 6 ? (unit.queuePos * 4) : 0; 
                             destY = unit.siegeTarget.y + 15 + queueOffset;
                         } else {
-                            unit.siegeRole = "infantry_reserve"; // Ram destroyed, become reserve
+                            unit.siegeRole = "infantry_reserve"; 
                         }
                         break;
 
-                    case "ladder_carrier":
+                   case "ladder_carrier":
                         if (unit.siegeTarget && unit.siegeTarget.hp > 0) {
                             if (!unit.siegeTarget.isDeployed) {
-                                // Move to carry or escort the ladder
-                                destX = unit.siegeTarget.x + (Math.random() - 0.5) * 20;
-                                let queueOffset = unit.queuePos > 2 ? (unit.queuePos * 5) : 0;
-                                destY = unit.siegeTarget.y + 10 + queueOffset;
+                                // SURGERY: Total swarm logic. No queues, no orderly lines.
+                                destX = unit.siegeTarget.x + (Math.random() - 0.5) * 60;
+                                destY = unit.siegeTarget.y + (Math.random() - 0.5) * 50;
                             } else {
-                                // Ladder is up! Climb it.
                                 destX = unit.siegeTarget.x;
                                 destY = unit.siegeTarget.y - 10;
                             }
@@ -524,7 +442,7 @@ if (unit.orderType === "seek_engage") {
                             unit.siegeRole = "infantry_reserve";
                         }
                         break;
-
+						
                     case "trebuchet_crew":
                         if (unit.siegeTarget && unit.siegeTarget.hp > 0) {
                             destX = unit.siegeTarget.x + (Math.random() - 0.5) * 25;
@@ -535,13 +453,18 @@ if (unit.orderType === "seek_engage") {
                         break;
 
                     case "ranged_support":
-                        // Move up close behind the infantry line / mantlets
-                        destX = unit.x; // Keep horizontal spread
+                        destX = unit.x; 
                         let frontLineY = siegeEquipment.rams[0] ? siegeEquipment.rams[0].y : wallBoundaryY + 300;
                         destY = Math.max(frontLineY + 120, wallBoundaryY + 150);
                         
-                        // If they have a clean shot at a wall defender, take it
-                        if (nearestEnemy && nearestEnemy.onWall && Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y) < unit.stats.range) {
+                        if (nearestEnemy && nearestEnemy.onWall) {
+                            let dist = Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y);
+                            if (dist < unit.stats.range * 0.9) {
+                                unit.target = nearestEnemy;
+                                unit.orderTargetPoint = { x: unit.x, y: unit.y }; 
+                                return;
+                            }
+                        } else if (nearestEnemy && Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y) < unit.stats.range) {
                             unit.target = nearestEnemy;
                             return;
                         }
@@ -549,16 +472,15 @@ if (unit.orderType === "seek_engage") {
 
                     case "infantry_reserve":
                         destX = unit.x;
-                        destY = wallBoundaryY + 200; // Wait patiently outside arrow range
+                        destY = wallBoundaryY + 200; 
                         break;
 
                     case "cavalry_reserve":
                         destX = unit.x;
-                        destY = wallBoundaryY + 350; // Wait behind the archers
+                        destY = wallBoundaryY + 350; 
                         break;
                 }
 
-                // Assign the calculated staging waypoint
                 unit.target = { 
                     x: destX, 
                     y: destY, 
@@ -568,13 +490,12 @@ if (unit.orderType === "seek_engage") {
                     stats: { meleeDefense: 0, armor: 0, health: 100 } 
                 };
                 
-                return; // Override standard pathing
+                return; 
             }
 
-//standard
-			
-         //standard
-			
+            // ==========================
+            // STANDARD / FIELD MOVEMENT
+            // ==========================
             let rawDestX = unit.x;
             let rawDestY = unit.y;
 
@@ -586,9 +507,6 @@ if (unit.orderType === "seek_engage") {
                 rawDestY = unit.orderTargetPoint.y;
             }
 
-            // ULTIMATE HOOK: Clamp all final destinations to the Red Line
-            // If the commander moves out of bounds, the units will linger at the border line here.
-            // If an enemy gets close, the SURVIVAL OVERRIDE at the top of the function will trigger and they will attack!
             let safeDest = getSafeMapCoordinates(rawDestX, rawDestY);
             let destX = safeDest.x;
             let destY = safeDest.y;
@@ -597,7 +515,6 @@ if (unit.orderType === "seek_engage") {
             let shouldFocusOnShooting = false;
             
             if (distToDest > 20) {
-                // Ranged units prioritize shooting over strict formation movement if timer is out
                 if (isRanged && unit.formationTimer <= 0) {
                     if (unit.originalRange) {
                         unit.stats.range = unit.originalRange;
@@ -612,7 +529,6 @@ if (unit.orderType === "seek_engage") {
                     }
                 }
 
-                // Lower weapons and keep marching if not focusing on shooting
                 if (!shouldFocusOnShooting) {
                     if (!unit.originalRange && unit.stats.range > 20) {
                         unit.originalRange = unit.stats.range;
@@ -620,14 +536,12 @@ if (unit.orderType === "seek_engage") {
                     unit.stats.range = 10; 
                 }
             } else {
-                // Arrived at formation spot! Restore range so they can fire.
                 if (unit.originalRange) {
                     unit.stats.range = unit.originalRange;
                     unit.originalRange = null; 
                 }
             }
 
-            // Assign the formation target only if they aren't currently distracted by shooting
             if (!shouldFocusOnShooting) {
                 unit.target = { 
                     x: destX, 
@@ -641,7 +555,6 @@ if (unit.orderType === "seek_engage") {
             }
             
         } else {
-            // Fallback cleanup if orders are cancelled manually via the 'e' key
             if (unit.originalRange) {
                 unit.stats.range = unit.originalRange;
                 unit.originalRange = null;
@@ -649,6 +562,117 @@ if (unit.orderType === "seek_engage") {
         }
     });
 }
+// ============================================================================
+// SIEGE ASSAULT COMMAND ENGINE
+// ============================================================================
+function executeSiegeAssaultAI(units) {
+    if (!siegeEquipment) return;
+    const gateBreached = window.__SIEGE_GATE_BREACHED__;
+    let meleeInfantry = [];
+    let gunpowder = [];
+    let archers = [];
+    let cavalry = [];
+
+    // 1. Categorize Troops
+    units.forEach(u => {
+        
+        const isCav = !canUseSiegeEngines(u);
+
+        // If it's cavalry and the gate is NOT broken
+        if (isCav && !gateBreached) {
+            // ONLY allow movement if the player explicitly gave an order (right-click)
+            if (!u.hasOrders) {
+                u.state = "idle";
+                u.target = null;
+                return; 
+            }
+        }
+        
+        let role = getTacticalRole(u);
+        // STRICT FILTER: Catch any mention of mount, horse, camel, elephant, cav
+        let textCheck = String((u.stats?.name || "") + " " + (u.unitType || "") + " " + (u.stats?.role || "")).toLowerCase();
+        
+        if (role === "CAVALRY" || u.stats?.isLarge || textCheck.match(/(cav|horse|mount|camel|lancer|eleph)/)) {
+            cavalry.push(u);
+        } else if (role === "GUNPOWDER") {
+            gunpowder.push(u);
+        } else if (role === "RANGED") {
+            archers.push(u);
+        } else {
+            meleeInfantry.push(u);
+        }
+    });
+
+    // 2. Identify Artillery Crews (Gunpowder first, then Archers if needed)
+    let artilleryCrews = [];
+    let trebCount = siegeEquipment.trebuchets.length;
+    let crewsNeeded = trebCount * 3; // 3 men per trebuchet visually
+
+    while (artilleryCrews.length < crewsNeeded && gunpowder.length > 0) {
+        artilleryCrews.push(gunpowder.shift());
+    }
+    while (artilleryCrews.length < crewsNeeded && archers.length > 0) {
+        artilleryCrews.push(archers.shift());
+    }
+
+    // 3. Assign Orders
+    let ramIndex = 0;
+    let ladderIndex = 0;
+
+    // Distribute Melee Infantry
+    meleeInfantry.forEach((u, index) => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "infantry_reserve";
+        
+        // Assign to Rams (Front of the queue)
+        if (siegeEquipment.rams.length > 0 && index < 25) { 
+            u.siegeRole = "ram_pusher";
+            u.siegeTarget = siegeEquipment.rams[ramIndex % siegeEquipment.rams.length];
+            u.queuePos = index; // Used to line them up behind the ram
+            ramIndex++;
+        } 
+        // Assign to Ladders
+        else if (siegeEquipment.ladders.length > 0 && index >= 25 && index < 60) {
+            u.siegeRole = "ladder_carrier";
+            u.siegeTarget = siegeEquipment.ladders[ladderIndex % siegeEquipment.ladders.length];
+            u.queuePos = index - 25;
+            ladderIndex++;
+        }
+    });
+
+    // Distribute Artillery Crews
+    artilleryCrews.forEach((u, index) => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "trebuchet_crew";
+        u.siegeTarget = siegeEquipment.trebuchets[index % trebCount];
+    });
+
+    // Distribute remaining Ranged (Support fire behind infantry)
+    [...gunpowder, ...archers].forEach(u => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "ranged_support";
+    });
+
+    // --- SURGERY 2: CAVALRY STAGING & "HUNTING" THE GATE ---
+    let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
+    
+    // Distribute Cavalry (Rear Guard)
+    cavalry.forEach(u => {
+        u.hasOrders = true;
+        u.orderType = "siege_assault";
+        u.siegeRole = "cavalry_reserve";
+        // Point them at the gate area so they are ready to flood in
+        if (southGate) {
+            u.orderTargetPoint = { x: southGate.x * BATTLE_TILE_SIZE, y: (southGate.y * BATTLE_TILE_SIZE) + 100 };
+        }
+    });
+
+    if (typeof AudioManager !== 'undefined') AudioManager.playSound('charge');
+}
+
 // ============================================================================
 // RTS MOUSE CONTROLS (SELECTION & MOVEMENT) - FIXED VERSION
 // ============================================================================
@@ -784,6 +808,8 @@ document.addEventListener('contextmenu', (e) => {
 
     if (!isCommanderAlive()) return;
 
+    stopLazyGeneral(); // Disable lazy spam on manual move
+
     const playerUnits = battleEnvironment.units.filter(u => u.selected && u.hp > 0);
     if (playerUnits.length === 0) return;
 
@@ -820,95 +846,6 @@ document.addEventListener('contextmenu', (e) => {
     if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
 });
 
-// ============================================================================
-// SIEGE ASSAULT COMMAND ENGINE
-// ============================================================================
-function executeSiegeAssaultAI(units) {
-    if (!siegeEquipment) return;
-
-    let meleeInfantry = [];
-    let gunpowder = [];
-    let archers = [];
-    let cavalry = [];
-
-    // 1. Categorize Troops
-    units.forEach(u => {
-        let role = getTacticalRole(u);
-        let textCheck = (u.stats.name + " " + u.unitType).toLowerCase();
-        
-        if (role === "CAVALRY" || u.stats.isLarge || textCheck.includes("elephant") || textCheck.includes("camel")) {
-            cavalry.push(u);
-        } else if (role === "GUNPOWDER") {
-            gunpowder.push(u);
-        } else if (role === "RANGED") {
-            archers.push(u);
-        } else {
-            meleeInfantry.push(u);
-        }
-    });
-
-    // 2. Identify Artillery Crews (Gunpowder first, then Archers if needed)
-    let artilleryCrews = [];
-    let trebCount = siegeEquipment.trebuchets.length;
-    let crewsNeeded = trebCount * 3; // 3 men per trebuchet visually
-
-    while (artilleryCrews.length < crewsNeeded && gunpowder.length > 0) {
-        artilleryCrews.push(gunpowder.shift());
-    }
-    while (artilleryCrews.length < crewsNeeded && archers.length > 0) {
-        artilleryCrews.push(archers.shift());
-    }
-
-    // 3. Assign Orders
-    let ramIndex = 0;
-    let ladderIndex = 0;
-
-    // Distribute Melee Infantry
-    meleeInfantry.forEach((u, index) => {
-        u.hasOrders = true;
-        u.orderType = "siege_assault";
-        u.siegeRole = "infantry_reserve";
-        
-        // Assign to Rams (Front of the queue)
-        if (siegeEquipment.rams.length > 0 && index < 25) { 
-            u.siegeRole = "ram_pusher";
-            u.siegeTarget = siegeEquipment.rams[ramIndex % siegeEquipment.rams.length];
-            u.queuePos = index; // Used to line them up behind the ram
-            ramIndex++;
-        } 
-        // Assign to Ladders
-        else if (siegeEquipment.ladders.length > 0 && index >= 25 && index < 60) {
-            u.siegeRole = "ladder_carrier";
-            u.siegeTarget = siegeEquipment.ladders[ladderIndex % siegeEquipment.ladders.length];
-            u.queuePos = index - 25;
-            ladderIndex++;
-        }
-    });
-
-    // Distribute Artillery Crews
-    artilleryCrews.forEach((u, index) => {
-        u.hasOrders = true;
-        u.orderType = "siege_assault";
-        u.siegeRole = "trebuchet_crew";
-        u.siegeTarget = siegeEquipment.trebuchets[index % trebCount];
-    });
-
-    // Distribute remaining Ranged (Support fire behind infantry)
-    [...gunpowder, ...archers].forEach(u => {
-        u.hasOrders = true;
-        u.orderType = "siege_assault";
-        u.siegeRole = "ranged_support";
-    });
-
-    // Distribute Cavalry (Rear Guard)
-    cavalry.forEach(u => {
-        u.hasOrders = true;
-        u.orderType = "siege_assault";
-        u.siegeRole = "cavalry_reserve";
-    });
-
-    if (typeof AudioManager !== 'undefined') AudioManager.playSound('charge');
-}
 // ============================================================================
 // UNIVERSAL MAP BOUNDARY CLAMP ENGINE (THE RED LINE)
 // ============================================================================
@@ -1001,7 +938,7 @@ function calculateFormationOffsets(units, style, centerPoint) {
         });
     };
 
-const assignRing = (group, radius) => {
+    const assignRing = (group, radius) => {
         group.forEach((u, i) => {
             // Pure geometric circle math - ignores mapWidth/mapAngle entirely
             let angle = (i / group.length) * Math.PI * 2;
@@ -1065,7 +1002,7 @@ const assignRing = (group, radius) => {
             let gridPoints = [];
             
             let half = (sqCols - 1) / 2;
-for (let r = 0; r < sqCols; r++) {
+            for (let r = 0; r < sqCols; r++) {
                 for (let c = 0; c < sqCols; c++) {
                     let rawX = (c - half) * sqSpacing;
                     let rawY = (r - half) * sqSpacing;
@@ -1182,8 +1119,18 @@ function applyFormationAdjustment() {
         currentCentroid.y += shiftY;
     }
 
-    // 9. Quietly update their target points
+// 9. Quietly update their target points
     adjustingUnits.forEach(u => {
+        // --- SURGERY: PROTECT LADDER FANATICS FROM MOVEMENT COMMANDS ---
+        if (u.siegeRole === "ladder_fanatic") return; // They ignore commands to keep swarming
+        
+        // --- SURGERY: ALLOW SNIPERS TO MOVE, BUT DON'T BREAK THEIR FIRING STANCE ---
+        if (u.siegeRole === "counter_battery" && u.orderType === "attack") {
+            // Keep their attack order active even if they are repositioning
+        } else {
+             u.orderType = "move";
+        }
+
         let rawDestX = currentCentroid.x + (u.formationOffsetX || 0);
         let rawDestY = currentCentroid.y + (u.formationOffsetY || 0);
         
@@ -1193,4 +1140,19 @@ function applyFormationAdjustment() {
             u.orderTargetPoint = {x: rawDestX, y: rawDestY};
         }
     });
+}
+
+function isRangedType(unit) {
+    if (!unit || !unit.stats) return false;
+    const r = unit.stats.role;
+    return ["archer", "horse_archer", "crossbow", "gunner", "mounted_gunner", "Rocket", "bomb", "throwing", "firelance"].includes(r);
+}
+
+// ============================================================================
+// --- SURGERY 4: SIEGE EQUIPMENT HELPER ---
+// ============================================================================
+function canUseSiegeEngines(unit) {
+    const role = getTacticalRole(unit);
+    // Cavalry and Large Beasts cannot push rams or climb ladders
+    return !(role === "CAVALRY" || (unit.stats && unit.stats.isLarge));
 }

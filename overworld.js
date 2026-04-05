@@ -212,7 +212,7 @@ const PALETTE = {
         desert: "#bfa373", dune: "#cfae7e",
         plains: "#a3a073", meadow: "#6b7a4a",
         forest: "#425232", jungle: "#244222",
-        highlands: "#626b42", mountains: "#58694f", snow: "#7B5E3F"
+        highlands: "#626b42", mountains: "#3E2723", snow: "#7B5E3F"
     };
 
     const worldMap = [];
@@ -1243,31 +1243,40 @@ for (let j = 0; j < ROWS; j++) {
         let py = j * TILE_SIZE;
         let nx = i / COLS;
         let ny = j / ROWS;
+// 1. DYNAMIC FOREST FADE (FAST + NO STRAIGHT BORDER)
+if (tile.name.includes("Forest")) {
+    // Cheap irregular border wobble, no fbm
+    const borderWobble =
+        (hash(i >> 1, j >> 1) - 0.5) * 0.14 +
+        (hash(i, j) - 0.5) * 0.05 +
+        Math.sin(ny * 14) * 0.01;
 
-        // 1. DYNAMIC FOREST FADE (Jurchen/Northeast)
-        if (tile.name.includes("Forest")) {
-            // How deep into the Jurchen lands are we? (0.0 at Mongol border, 1.0 at Core)
-            let jurchenFade = Math.max(0, Math.min(1, (nx - 0.45) / 0.25));
-            
-            // DENSITY: Sparse (0.5) at the edge, Thick (0.05) at the core
-            let densityThreshold = 0.5 - (jurchenFade * 0.45); 
+    // Slightly warped eastward fade instead of a perfect vertical line
+    let jurchenFade = Math.max(0, Math.min(1, (nx + borderWobble - 0.45) / 0.25));
 
-            if (Math.random() > densityThreshold) {
-                bgCtx.fillStyle = tile.color === PALETTE.jungle ? "#232e1a" : "#364528";
-                bgCtx.beginPath();
-                // SIZE: Smaller trees at the "fading" edge, larger in the core
-                let treeSize = TILE_SIZE * (0.3 + (jurchenFade * 0.5));
-                bgCtx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, treeSize, 0, Math.PI, true);
-                bgCtx.fill();
-            }
-						// Inside the if(tile.name.includes("Forest")) block:
-			let isKorea = (nx > 0.65 && ny > 0.35 && ny < 0.65);
+    // Keep your original density feel
+    let densityThreshold = 0.5 - (jurchenFade * 0.45);
 
-			// If it's Korea, make the density much lower regardless of other fades
-			if (isKorea) {
-				densityThreshold = 0.95; // Only 5% chance of a tree blob
-			}
-        } 
+    // Korea suppression BEFORE the spawn test so it actually works
+    const isKorea =
+        (nx > 0.65 + (hash(i >> 2, j >> 2) - 0.5) * 0.03) &&
+        (ny > 0.35) &&
+        (ny < 0.65);
+
+    if (isKorea) {
+        densityThreshold = 0.95;
+    }
+
+    if (Math.random() > densityThreshold) {
+        bgCtx.fillStyle = tile.color === PALETTE.jungle ? "#232e1a" : "#364528";
+        bgCtx.beginPath();
+
+        // Keep your original tree shape
+        let treeSize = TILE_SIZE * (0.3 + (jurchenFade * 0.5));
+        bgCtx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, treeSize, 0, Math.PI, true);
+        bgCtx.fill();
+    }
+}
 else if (tile.name === "Highlands") {
     // --- 0. WATER SAFETY CHECK ---
     // Check neighbors to ensure we aren't drawing hills/trees into a river or ocean
@@ -1392,7 +1401,6 @@ else if (tile.name !== "Ocean" && tile.name !== "River"&& tile.name !== "Coastal
                
             }
         }
-
 // --- BIOMATIC FOREST ENGINE ---
 if(tile.name.includes("Forest") || tile.color === PALETTE.jungle) {
     let nx = i / COLS;
@@ -1400,9 +1408,29 @@ if(tile.name.includes("Forest") || tile.color === PALETTE.jungle) {
     
     // Calculate regional influences
     let jurchenFade = Math.max(0, Math.min(1, (nx - 0.45) / 0.20));
-    let isFarNorth = ny < 0.35;
-    let isDeepSouth = ny > 0.70 || tile.color === PALETTE.jungle;
-    let isAridWest = nx < 0.30;
+    
+    // --- NEW BOUNDARY LOGIC: CURVED & BLENDED ---
+    
+    // 1. Far North Curve (y ≈ 0.35)
+    let northCurve = 0.35 + (Math.sin(nx * Math.PI * 4) * 0.03) + (Math.cos(nx * Math.PI * 8) * 0.015);
+    let northBlendChance = Math.max(0, Math.min(1, (northCurve + 0.05 - ny) / 0.10));
+    
+    // 2. Deep South / Jungle Curve (y ≈ 0.70)
+    // Highland Perturbation: The tree transition will naturally climb and wrap around elevation (tile.e > 0.55 is highland)
+    let highlandPerturbation = tile.e > 0.55 ? (tile.e - 0.55) * 0.15 : 0;
+    let southCurve = 0.70 + (Math.sin(nx * Math.PI * 5) * 0.035) + (Math.cos(nx * Math.PI * 7) * 0.015) - highlandPerturbation;
+    let southBlendChance = Math.max(0, Math.min(1, (ny - (southCurve - 0.05)) / 0.10));
+    
+    // 3. Arid West Curve (x ≈ 0.30)
+    let westCurve = 0.30 + (Math.sin(ny * Math.PI * 4) * 0.03) + (Math.cos(ny * Math.PI * 9) * 0.02);
+    let westBlendChance = Math.max(0, Math.min(1, (westCurve + 0.05 - nx) / 0.10));
+    
+    // 4. Roll the dice for this specific tree's biome style
+    let isFarNorth = Math.random() < northBlendChance;
+    let isJungleTile = tile.color === PALETTE.jungle;
+    // Jungle palettes organically blend into regular south trees, avoiding hard color cutoffs on highland borders
+    let isDeepSouth = Math.random() < southBlendChance || (isJungleTile && Math.random() > 0.15);
+    let isAridWest = Math.random() < westBlendChance;
 
     // Density: Thicker in the South and Jurchen East
     let densityThreshold = (0.45 - (jurchenFade * 0.1) - (ny * 0.2)) / 3;
@@ -1422,7 +1450,6 @@ if(tile.name.includes("Forest") || tile.color === PALETTE.jungle) {
 
         if (isFarNorth) {
             // 1. MANCHURIAN LARCH / TAIGA (Tiered Conifers)
-            // Dark, sharp, and narrow to survive heavy snow
             let tiers = 2 + Math.floor(Math.random() * 2);
             bgCtx.fillStyle = `rgb(${10 + Math.random()*10}, ${20 + Math.random()*10}, 15)`;
             
@@ -1440,7 +1467,6 @@ if(tile.name.includes("Forest") || tile.color === PALETTE.jungle) {
         else if (isDeepSouth) {
             if (treeRand > 0.4) {
                 // 2. ANCIENT BANYAN (Wide Broadleaf)
-                // Massive, dark-teal silhouettes with lumpy canopies
                 let leafColors = ["#0D1F1D", "#1A2F18", "#142414"];
                 for(let l = 0; l < 3; l++) {
                     bgCtx.fillStyle = leafColors[Math.floor(Math.random() * leafColors.length)];
@@ -1471,7 +1497,6 @@ if(tile.name.includes("Forest") || tile.color === PALETTE.jungle) {
         } 
         else if (isAridWest) {
             // 4. STEPPE CYPRESS / SCRUB (Stunted & Thin)
-            // Dark olive, vertical, and sparse
             bgCtx.fillStyle = "#222B1A";
             bgCtx.beginPath();
             bgCtx.ellipse(cx, cy, treeSize * 0.3, treeSize, 0, 0, Math.PI * 2);
@@ -1479,7 +1504,6 @@ if(tile.name.includes("Forest") || tile.color === PALETTE.jungle) {
         } 
         else {
             // 5. CENTRAL SONG WILLOW / OAK (Drooping & Round)
-            // Classic temperate look but with a deeper "Old World" shadow
             bgCtx.fillStyle = `rgb(${25 + Math.random()*10}, ${35 + Math.random()*10}, 20)`;
             bgCtx.beginPath();
             // Main canopy

@@ -78,6 +78,7 @@ let worldMapRef = null;
 let tSize = 8;
 let maxCols = 0, maxRows = 0;
 let lastBattleTime = 0;
+const MAX_GARRISON = 60;          ///////////DEBUG LOW NUMBER
 const BATTLE_COOLDOWN = 2000;  
 const MAX_GLOBAL_NPCS = 500; // NEW: Hard cap to save CPU
 // ============================================================================
@@ -228,7 +229,7 @@ function initializeCityData(city, worldWidth, worldHeight) {
     city.pop = Math.floor(city.pop * 1);//population factor
     
     city.conscriptionRate = 0.04 + (Math.random() * 0.08);
-    city.militaryPop = Math.floor(city.pop * city.conscriptionRate);
+city.militaryPop = Math.min(MAX_GARRISON, Math.floor(city.pop * city.conscriptionRate));
     city.civilianPop = city.pop - city.militaryPop;
     city.troops = city.militaryPop; 
 
@@ -337,7 +338,7 @@ function updateCityEconomies(cities) {
         if (city.gold < 0) city.gold = 0;
 
         // Underdog garrison logic
-        let targetGarrison = Math.floor(city.pop * city.conscriptionRate * 0.9 * mods.draftMultiplier);
+let targetGarrison = Math.min(MAX_GARRISON, Math.floor(city.pop * city.conscriptionRate * 0.9 * mods.draftMultiplier));
 
         if (city.militaryPop < targetGarrison) {
             let draft = Math.min(3, targetGarrison - city.militaryPop);
@@ -950,7 +951,8 @@ function updateNPCs(cities) {
                         }
                         if (tc.militaryPop <= 10) {
                             tc.faction = npc.faction; tc.color = npc.color;
-                            tc.militaryPop = Math.max(10, Math.floor(npc.count * 0.5)); //you expend half your troops for garrison
+tc.militaryPop = Math.min(MAX_GARRISON, Math.max(10, Math.floor(npc.count * 0.5))); 
+//you expend half your troops for garrison
                             tc.troops = tc.militaryPop; tc.pop += tc.militaryPop;
                             npc.count -= tc.militaryPop; npc.targetCity = null; 
                         }
@@ -968,12 +970,26 @@ function updateNPCs(cities) {
                             let cost = Math.floor(foodToTake * 0.05);
                             if (npc.gold >= cost) { npc.gold -= cost; tc.gold += cost; }
                         }
-                         let targetGarrison = Math.floor(tc.pop * tc.conscriptionRate * 0.9);
-                        if (tc.militaryPop < targetGarrison) {
-                          let absorb = Math.min(3, npc.count, targetGarrison - tc.militaryPop);
-                            tc.militaryPop += absorb; tc.pop += absorb; tc.troops = tc.militaryPop;
-                            npc.count -= absorb;
-                        }
+let targetGarrison = Math.min(
+    MAX_GARRISON,
+    Math.floor(tc.pop * tc.conscriptionRate * 0.3)
+);
+
+if (tc.militaryPop < targetGarrison) {
+    let absorb = Math.min(
+        3,
+        npc.count,
+        targetGarrison - tc.militaryPop,
+        MAX_GARRISON - tc.militaryPop
+    );
+
+    if (absorb > 0) {
+        tc.militaryPop += absorb;
+        tc.pop += absorb;
+        tc.troops = tc.militaryPop;
+        npc.count -= absorb;
+    }
+}
                         if (npc.count > 0) {
                             npc.targetCity = (typeof getEnemyCity === 'function' ? getEnemyCity(tc, cities) : null) || (typeof getRandomTargetCity === 'function' ? getRandomTargetCity(cities, tc) : null);
                             if (npc.targetCity) { npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y; }

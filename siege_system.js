@@ -181,7 +181,7 @@ if (attackerDead || isInBattle) {
         let defenderMilitary = def.militaryPop || def.troops || 0;
 
 // Condition: Defenders MUST outnumber attacker to trigger this event
-        if (defenderMilitary > attackerCount && Math.random() < 0.00005) {         //for DEBUGGING I HAVE IT AS LOWER BUT ORIGINAL IS 0.005
+        if (defenderMilitary > attackerCount && Math.random() < 0.001) {         //for DEBUGGING I HAVE IT AS LOWER BUT ORIGINAL IS 0.005
             console.log(`${def.name} garrison sallies out to break the siege!`);
 
 			if (atk.disableAICombat) {
@@ -472,10 +472,10 @@ function restoreSiegeAfterBattle(didPlayerWin) {
     if (continueBtn) continueBtn.style.display = 'block';
 
     if (didPlayerWin) {
-        statusText.innerText = "VICTORY: The sally was repelled. What now?";
+        statusText.innerText = "VICTORY: The sally was repelled.";
         statusText.style.color = "#8bc34a";
     } else {
-        statusText.innerText = "DEFEAT: You retreated, but the blockade holds. What now?";
+        statusText.innerText = "DEFEAT...";
         statusText.style.color = "#ffca28";
     }
 }

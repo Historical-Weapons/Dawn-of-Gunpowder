@@ -3,7 +3,7 @@
 // ============================================================================
 
 (function () {
- 
+ let customBattleMode = "field"; // Can be "field" or "siege"
     // --- STATE MANAGEMENT ---
     let customBattleActive = false;
     let customFunds = 500;
@@ -20,17 +20,7 @@
         "Desert", "Highlands", "Large Mountains"
     ];
 
-    // ============================================================================
-    // --- FACTION ROSTER RULES (EASY TO EDIT) ---
-    // Add factions here to restrict what they can recruit. 
-    // If a faction is NOT on this list, they can recruit EVERYTHING.
-    // Use 'bannedRoles' to ban whole classes (like all Cavalry), 
-    // and 'bannedUnits' to ban specific units by name.
-    // ============================================================================
-// ============================================================================
-    // --- FACTION ROSTER RULES ---
-    // Uses the "Literal Names" from troop_system.js for 100% reliability.
-    // ============================================================================
+
 const FactionUnitRules = {
         
 "Tran Realm": {
@@ -74,12 +64,12 @@ const FactionUnitRules = {
         "Hong Dynasty": {
             bannedRoles: [], 
             // Banned Xia's unique tech and the nomad elites
-            bannedUnits: ["War Elephant", "Keshig", "Camel Cannon","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer", "Hand Cannoneer","Heavy Horse Archer", "Lancer", "Heavy Lancer","Horse Archer","Heavy Firelance"] 
+            bannedUnits: ["War Elephant", "Keshig", "Camel Cannon","Slinger","Javelinier", "Poison Crossbowman","Elite Lancer", "Hand Cannoneer", "Lancer", "Heavy Lancer","Horse Archer","Heavy Firelance"] 
         },
 
         "Jinlord Confederacy": {
             bannedRoles: ["Rocket", "bomb"], 
-            bannedUnits: ["War Elephant","Heavy Lancer", "Camel Cannon", "Keshig","Slinger","Javelinier", "Poison Crossbowman", "Repeater Crossbowman", "Glaiveman","Lancer","Crossbowman","Heavy Horse Archer"]
+            bannedUnits: ["War Elephant","Heavy Lancer", "Camel Cannon", "Keshig","Slinger","Javelinier", "Poison Crossbowman", "Repeater Crossbowman", "Glaiveman","Lancer","Crossbowman"]
         },
 
         "Goryun Kingdom": {
@@ -89,7 +79,7 @@ const FactionUnitRules = {
 
         "High Plateau Kingdoms": {
             bannedRoles: ["gunner", "mounted_gunner", "Rocket", "bomb", "firelance"],
-            bannedUnits: ["War Elephant", "Camel Cannon", "Hand Cannoneer", "Heavy Lancer", "Elite Lancer", "Keshig", "Poison Crossbowman", "Repeater Crossbowman","Crossbowman","Heavy Crossbowman","Heavy Two Handed", "Glaiveman"]
+            bannedUnits: ["War Elephant", "Camel Cannon", "Hand Cannoneer", "Heavy Lancer", "Elite Lancer", "Keshig", "Poison Crossbowman", "Repeater Crossbowman","Crossbowman","Heavy Crossbowman","Heavy Two Handed", "Glaiveman","Heavy Horse Archer"]
         }
     };
 
@@ -180,12 +170,22 @@ const FactionUnitRules = {
         settingsBox.style.gap = "20px";
         settingsBox.style.alignItems = "center";
         settingsBox.innerHTML = `
-            <div>
-                <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Map</label><br>
-                <select id="cb-map-select" style="background: #3e2723; color: #fff; border: 1px solid #d4b886; padding: 5px; font-family: Georgia;">
-                    ${MAP_TYPES.map(m => `<option value="${m}" ${m === selectedMap ? 'selected' : ''}>${m}</option>`).join('')}
-                </select>
-            </div>
+<div>
+    <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Map</label><br>
+    <select id="cb-map-select" 
+        style="background: #3e2723; color: #fff; border: 1px solid #d4b886; padding: 5px; font-family: Georgia;"
+        ${customBattleMode === "siege" ? 'disabled' : ''}> ${MAP_TYPES.map(m => `<option value="${m}" ${m === selectedMap ? 'selected' : ''}>${m}</option>`).join('')}
+    </select>
+</div>
+
+<div>
+    <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Type</label><br>
+    <select id="cb-mode-select" style="background: #3e2723; color: #ff9800; border: 1px solid #d4b886; padding: 5px;">
+        <option value="field" ${customBattleMode === "field" ? 'selected' : ''}>Field</option>
+        <option value="siege" ${customBattleMode === "siege" ? 'selected' : ''}>Siege</option>
+    </select>
+</div>
+
             <div>
                 <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Funds</label><br>
                 <input id="cb-funds-input" type="number" value="${customFunds}" min="100" max="2000" step="100"style="background: #3e2723; color: #f5d76e; border: 1px solid #d4b886; padding: 5px; width: 100px; font-family: Georgia; text-align: right;">
@@ -244,6 +244,12 @@ const FactionUnitRules = {
             
             updateUI();
         });
+		
+		document.getElementById("cb-mode-select").addEventListener("change", (e) => {
+    customBattleMode = e.target.value;
+    const mapSelect = document.getElementById("cb-map-select");
+    if (mapSelect) mapSelect.disabled = (customBattleMode === "siege");
+});
 
         document.getElementById("cb-map-select").addEventListener("change", (e) => {
             selectedMap = e.target.value;
@@ -549,57 +555,64 @@ const tray = document.createElement("div");
         });
     }
 
-    // --- RANDOM BATTLE GENERATOR ---
+// --- RANDOM BATTLE GENERATOR ---
     function launchRandomBattle() {
-        // Set funds to 500
+        // 1. HARD RESET: Clear all manual selections and influence
         customFunds = 500;
         const fundsInput = document.getElementById("cb-funds-input");
         if (fundsInput) fundsInput.value = customFunds;
 
-        // Pick Random Map
+        playerSetup.roster = [];
+        playerSetup.cost = 0;
+        enemySetup.roster = [];
+        enemySetup.cost = 0;
+
+        // 2. Randomize Map
         selectedMap = MAP_TYPES[Math.floor(Math.random() * MAP_TYPES.length)];
 
-        // Helper to randomly fill an army
-        const factionNames = typeof FACTIONS !== 'undefined' ? Object.keys(FACTIONS) : ["Generic"];
-        
-        // Safety check to ensure UnitRoster exists before filtering
-        if (typeof UnitRoster === 'undefined' || !UnitRoster.allUnits) {
-            console.error("UnitRoster not found!");
-            return;
-        }
-        const validUnits = Object.keys(UnitRoster.allUnits).filter(k => k !== "Commander");
+        // 3. Faction Selection (Excluding neutral/special factions)
+        const factionNames = typeof FACTIONS !== 'undefined' ? 
+            Object.keys(FACTIONS).filter(f => f !== "Bandits" && f !== "Player's Kingdom") : 
+            ["Generic"];
 
-        function populateRandomArmy(setupObj) {
-            setupObj.faction = factionNames[Math.floor(Math.random() * factionNames.length)];
-            setupObj.color = (typeof FACTIONS !== 'undefined' && FACTIONS[setupObj.faction]) ? FACTIONS[setupObj.faction].color : "#ffffff";
-            setupObj.roster = [];
-            setupObj.cost = 0;
+        // 4. Procedural Army Population (No nested functions)
+        const setups = [playerSetup, enemySetup];
+        
+        for (let i = 0; i < setups.length; i++) {
+            let setup = setups[i];
+
+            // Pick a random faction
+            setup.faction = factionNames[Math.floor(Math.random() * factionNames.length)];
+            setup.color = (typeof FACTIONS !== 'undefined' && FACTIONS[setup.faction]) ? 
+                FACTIONS[setup.faction].color : "#ffffff";
+            
+            // Respect Faction-Specific Unit Rules
+            let allowedUnits = (typeof getAvailableUnitsForFaction === 'function') ? 
+                getAvailableUnitsForFaction(setup.faction) : 
+                Object.keys(UnitRoster.allUnits).filter(k => k !== "Commander");
 
             let attempts = 0;
-						// Target ~500 funds with max 30 units
-			while (setupObj.roster.length < 30 && attempts < 100) {
-				attempts++;
+            // Target the 500 budget limit
+            while (setup.roster.length < 30 && attempts < 200) {
+                attempts++;
 
-				let randomUnit = validUnits[Math.floor(Math.random() * validUnits.length)];
-				let unitData = UnitRoster.allUnits[randomUnit];
-				let cost = unitData.cost || 50;
+                let unitKey = allowedUnits[Math.floor(Math.random() * allowedUnits.length)];
+                let unitData = UnitRoster.allUnits[unitKey];
+                let cost = unitData ? (unitData.cost || 50) : 50;
 
-				// Check if this unit fits in the 500-2000 budget
-				if (setupObj.cost + cost <= customFunds) {
-					setupObj.roster.push(randomUnit);
-					setupObj.cost += cost;
-				} 
-				// Note: if it's too expensive, we don't 'break', we 'continue' 
-				// to see if a cheaper unit fits in the remaining budget.
-			}
+                // Only add if it fits the remaining budget
+                if (setup.cost + cost <= customFunds) {
+                    setup.roster.push(unitKey);
+                    setup.cost += cost;
+                } 
+            }
+            
+            // Sort to keep the deployment looking organized
+            setup.roster.sort();
         }
 
-        populateRandomArmy(playerSetup);
-        populateRandomArmy(enemySetup);
-
-        updateUI();
-
-        // Launch instantly after building the random armies
+        // 5. Sync UI and Launch
+        updateUI(); // Refreshes the menu to show the new random units
         launchCustomBattle();
     }
 
@@ -718,56 +731,60 @@ if (typeof window.player === "undefined" || !window.player) {
         if (!originalLeaveBattlefield) originalLeaveBattlefield = window.leaveBattlefield;
         window.leaveBattlefield = handleCustomBattleExit;
 
-        // Battlefield size
-        BATTLE_WORLD_WIDTH = 2400;
-        BATTLE_WORLD_HEIGHT = 1600;
-        BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
-        BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+// FORK: Field vs Siege
+        if (customBattleMode === "siege" && typeof window.launchCustomSiege === "function") { //siege mode
+            window.launchCustomSiege(playerSetup, enemySetup);
+        } else { //gemeni help me  I AM NOT ACTUALLY SURE IF THE BELOW NEEDS TO BE REPLICATED FOR THE SIEGE MODE.
+					
+					BATTLE_WORLD_WIDTH = 2400;
+					BATTLE_WORLD_HEIGHT = 1600;
+					BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
+					BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
 
-        // Reset battle container
-        if (typeof battleEnvironment === "undefined" || !battleEnvironment) {
-            window.battleEnvironment = {};
-        }
-        battleEnvironment.units = [];
-        battleEnvironment.projectiles = [];
-        battleEnvironment.groundEffects = [];
+					// Reset battle container
+					if (typeof battleEnvironment === "undefined" || !battleEnvironment) {
+						window.battleEnvironment = {};
+					}
+					battleEnvironment.units = [];
+					battleEnvironment.projectiles = [];
+					battleEnvironment.groundEffects = [];
 
-        // Build battlefield
-        if (typeof generateBattlefield === "function") {
-            generateBattlefield(selectedMap);
-            console.log("battle bgCanvas:", !!battleEnvironment.bgCanvas);
-            console.log("battle grid:", !!battleEnvironment.grid, battleEnvironment.grid?.length);
-            console.log("battle units:", battleEnvironment.units.length);
-        }
+					// Build battlefield
+					if (typeof generateBattlefield === "function") {
+						generateBattlefield(selectedMap);
+						console.log("battle bgCanvas:", !!battleEnvironment.bgCanvas);
+						console.log("battle grid:", !!battleEnvironment.grid, battleEnvironment.grid?.length);
+						console.log("battle units:", battleEnvironment.units.length);
+					}
 
-        currentBattleData = {
-            playerFaction: playerSetup.faction,
-            enemyFaction: enemySetup.faction,
-            playerColor: playerSetup.color,
-            enemyColor: enemySetup.color,
-            initialCounts: {
-                player: playerSetup.roster.length + 1,
-                enemy: enemySetup.roster.length + 1
-            }
-        };
-		// Spawn armies
-        customSpawnLoop(playerSetup.roster, "player", playerSetup.faction, playerSetup.color);
-        customSpawnLoop(enemySetup.roster, "enemy", enemySetup.faction, enemySetup.color);
+					currentBattleData = {
+						playerFaction: playerSetup.faction,
+						enemyFaction: enemySetup.faction,
+						playerColor: playerSetup.color,
+						enemyColor: enemySetup.color,
+						initialCounts: {
+							player: playerSetup.roster.length + 1,
+							enemy: enemySetup.roster.length + 1
+						}
+					};
+					// Spawn armies
+					customSpawnLoop(playerSetup.roster, "player", playerSetup.faction, playerSetup.color);
+					customSpawnLoop(enemySetup.roster, "enemy", enemySetup.faction, enemySetup.color);
 
+					// =========================================================
+					// ---> SURGERY: LAZY GENERAL AUTO-CHARGE (CUSTOM BATTLE)
+					// =========================================================
+					battleEnvironment.units.forEach(u => {
+						if (u.side === "player" && !u.isCommander && !u.disableAICombat) {
+							u.selected = true;           // Simulates '5' (Select All)
+							u.hasOrders = true;          // Activates the command state
+							u.orderType = "seek_engage"; // Simulates 'Q' (Seek & Engage)
+							u.orderTargetPoint = null;   // Clears waypoints 
+							u.formationTimer = 120;      // Brief buffer to orient
+						}
+					});
         // =========================================================
-        // ---> SURGERY: LAZY GENERAL AUTO-CHARGE (CUSTOM BATTLE)
-        // =========================================================
-        battleEnvironment.units.forEach(u => {
-            if (u.side === "player" && !u.isCommander && !u.disableAICombat) {
-                u.selected = true;           // Simulates '5' (Select All)
-                u.hasOrders = true;          // Activates the command state
-                u.orderType = "seek_engage"; // Simulates 'Q' (Seek & Engage)
-                u.orderTargetPoint = null;   // Clears waypoints 
-                u.formationTimer = 120;      // Brief buffer to orient
-            }
-        });
-        // =========================================================
-
+		}
         // Use the player commander as the battle anchor
         const playerCommander = battleEnvironment.units.find(
             u => u.isCommander && u.side === "player"
@@ -1033,6 +1050,7 @@ function handleCustomBattleExit() {
 
     if (typeof battleEnvironment !== "undefined" && battleEnvironment) {
         battleEnvironment.units = [];
+		if (typeof window.cleanupCustomSiege === "function") window.cleanupCustomSiege();
         battleEnvironment.projectiles = [];
         battleEnvironment.groundEffects = [];
         battleEnvironment.grid = null;
@@ -1049,9 +1067,12 @@ function handleCustomBattleExit() {
     if (typeof keys !== "undefined") {
         Object.keys(keys).forEach(k => keys[k] = false);
     }
+    // Restore overworld control
+    player.hp = Math.max(1, player.maxHealth || 100);   // or set to full if you prefer
     player.isMoving = false;
     player.stunTimer = 0;
     player.onWall = false;
+
 
     const overworldUI = document.getElementById("ui");
     if (overworldUI) overworldUI.style.display = "block";

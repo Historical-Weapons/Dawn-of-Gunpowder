@@ -31,34 +31,58 @@
     }
 
     const nextX = player.x + dx, nextY = player.y + dy;
-            
-    // --- 3. ENVIRONMENT & COLLISION LOGIC ---
-    if (inBattleMode) {
-        const bW = (!isNaN(typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : NaN)) ? BATTLE_WORLD_WIDTH : 2000;
-        const bH = (!isNaN(typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : NaN)) ? BATTLE_WORLD_HEIGHT : 2000;
+  
+ 
+  
+// --- 3. ENVIRONMENT & COLLISION LOGIC ---
+if (inBattleMode) {
+    const bW = (typeof BATTLE_WORLD_WIDTH !== 'undefined') ? BATTLE_WORLD_WIDTH : 2000;
+    const bH = (typeof BATTLE_WORLD_HEIGHT !== 'undefined') ? BATTLE_WORLD_HEIGHT : 2000;
 
-        const canMoveX = typeof isBattleCollision !== 'function' || !isBattleCollision(nextX, player.y, player.onWall);
-        const canMoveY = typeof isBattleCollision !== 'function' || !isBattleCollision(player.x, nextY, player.onWall);
+    // PREDICTIVE CHECK: Check next position before moving
+    const canMoveX = !isBattleCollision(nextX, player.y, player.onWall, player);
+    const canMoveY = !isBattleCollision(player.x, nextY, player.onWall, player);
 
-        if (canMoveX) player.x = Math.max(0, Math.min(nextX, bW));
-        if (canMoveY) player.y = Math.max(0, Math.min(nextY, bH));
+    // Apply movement independently to allow "sliding" against walls
+    if (canMoveX) player.x = Math.max(0, Math.min(nextX, bW));
+    if (canMoveY) player.y = Math.max(0, Math.min(nextY, bH));
 
-        // Ladder Logic
-        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && battleEnvironment?.grid && typeof BATTLE_TILE_SIZE !== 'undefined') {
-            const pTx = Math.floor(player.x / BATTLE_TILE_SIZE), pTy = Math.floor(player.y / BATTLE_TILE_SIZE);
-            const tile = battleEnvironment.grid[pTx]?.[pTy];
-            if (tile === 9) player.onWall = true;
-            else if (tile === 1 || tile === 5) player.onWall = false;
-        }
-    } 
-    else if (isCity) {
+// Ladder/Wall Transition Logic
+if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && battleEnvironment?.grid) {
+    const pTx = Math.floor(player.x / BATTLE_TILE_SIZE);
+    const pTy = Math.floor(player.y / BATTLE_TILE_SIZE);
+    const tile = battleEnvironment.grid[pTx]?.[pTy];
+
+    // BLOCK TILE 9: do not allow climbing
+    if (tile === 1 || tile === 5) {
+        player.onWall = false; // normal wall/floor behavior
+    } else {
+        player.onWall = false; // ensures ladder tile does NOT trigger climbing
+    }
+}}
+
+
+else if (isCity) {
         const cityW = (typeof CITY_WORLD_WIDTH !== 'undefined') ? CITY_WORLD_WIDTH : 2000;
-        if (nextX > 50 && nextX < cityW - 50 && nextY > 50) {
-            if (typeof isCityCollision !== 'function' || !isCityCollision(nextX, nextY)) {
-                player.x = nextX; player.y = nextY;
+        if (nextX > 25 && nextX < cityW - 25 && nextY > 25) {
+            const txx = Math.floor(nextX / CITY_TILE_SIZE);
+            const tyy = Math.floor(nextY / CITY_TILE_SIZE);
+            const nextTile = cityDimensions[currentActiveCityFaction]?.grid?.[txx]?.[tyy];
+
+            const isStairs = (nextTile === 9); 
+
+            // ---> SURGERY 1: Check current tile & pass player.onWall to collision <---
+            const curTx = Math.floor(player.x / CITY_TILE_SIZE);
+            const curTy = Math.floor(player.y / CITY_TILE_SIZE);
+            const currentlyOnStairs = cityDimensions[currentActiveCityFaction]?.grid?.[curTx]?.[curTy] === 9;
+
+            // If walking onto stairs, or walking OFF stairs, bypass the strict height collision
+            if (isStairs || currentlyOnStairs || typeof isCityCollision !== 'function' || !isCityCollision(nextX, nextY, currentActiveCityFaction, player.onWall)) {
+                player.x = nextX;
+                player.y = nextY;
             }
         }
-    } 
+    }
     else if (map?.length > 0) {
         const ntx = Math.floor(nextX / tileSize), nty = Math.floor(nextY / tileSize);
         if (ntx >= 0 && ntx < (cols || 0) && nty >= 0 && nty < (rows || 0) && map[ntx]?.[nty]?.impassable === false) {
@@ -109,17 +133,34 @@ let player = {
     // --- DIPLOMACY ---
     faction: "Player's Kingdom",
     enemies: ["Bandits"],
-
-    // --- ARMY ROSTER ---
-    roster: [
-        "Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", 
-        "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", 
-        "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", 
-        "Heavy Lancer", "Elite Lancer", "Rocket", "Hand Cannoneer", 
-        "Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", 
-        "Slinger", "Glaiveman", "Javelinier"
-    ].map(u => ({ type: u, exp: 1 })),
-
+roster: [
+    "Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", 
+    "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", 
+    "General", "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", 
+    "Lancer", "Heavy Lancer", "Elite Lancer", "Rocket", "Keshig", 
+    "Hand Cannoneer", "Camel Cannon", "Poison Crossbowman", "War Elephant", 
+    "Repeater Crossbowman", "Slinger", "Glaiveman", "Javelinier",
+    "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", 
+    "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia",
+    "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", 
+    "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", 
+    "Spearman", "Spearman", "Spearman", "Spearman",
+    "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", 
+    "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", 
+    "Shielded Infantry", "Shielded Infantry",
+    "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", 
+    "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", 
+    "Crossbowman", "Crossbowman",
+    "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", 
+    "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman",
+    "Archer", "Archer", "Archer", "Archer", "Archer", "Archer",
+    "Firelance", "Firelance", "Firelance", "Firelance",
+    "Heavy Firelance", "Heavy Firelance",
+    "Bomb",
+    "Repeater Crossbowman", "Repeater Crossbowman", "Repeater Crossbowman",
+    "Poison Crossbowman",
+    "Slinger"
+].map(unitName => ({ type: unitName, exp: 1 })),
     // --- SYSTEM ---
     isInitialized: false
 };
@@ -146,6 +187,9 @@ function enterOverworldMode() {
 
     player.x = w * 0.5;
     player.y = h * 0.45;
+    player.hp = Math.max(1, player.maxHealth || 100);
+    player.stunTimer = 0;
+    player.isMoving = false;
     player.isInitialized = true;
     
     console.log("Overworld Started: Player spawned at", player.x, player.y);
@@ -246,19 +290,32 @@ window.onwheel = (e) => {
             ctx.restore();
         }
     } 
-    else if (typeof inCityMode !== 'undefined' && inCityMode) {
+else if (typeof inCityMode !== 'undefined' && inCityMode) {
         player.size = 8;
-        player.onWall = typeof cityLadders !== 'undefined' && cityLadders.some(l => Math.hypot(player.x - l.x, player.y - l.y) < 25);
-
-        if (!player.onWall && cityDimensions[currentActiveCityFaction]) {
-            const tx = Math.floor(player.x / CITY_TILE_SIZE), ty = Math.floor(player.y / CITY_TILE_SIZE);
-            if (cityDimensions[currentActiveCityFaction].grid[tx]?.[ty] === 0) player.onWall = false;
+        
+        // ---> SURGERY 2: PERSISTENT WALL STATE <---
+        if (cityDimensions[currentActiveCityFaction]) {
+            const tx = Math.floor(player.x / CITY_TILE_SIZE);
+            const ty = Math.floor(player.y / CITY_TILE_SIZE);
+            const currentTile = cityDimensions[currentActiveCityFaction].grid[tx]?.[ty];
+            
+            // Tile 8 = Parapet, 9 = Ladder, 10 = Tower
+            if (currentTile === 9 || currentTile === 8 || currentTile === 10) {
+                player.onWall = true;
+            } 
+            // Drop back to ground physics ONLY if stepping onto pure terrain
+            else if (currentTile === 0 || currentTile === 1 || currentTile === 5) {
+                player.onWall = false;
+            }
         }
 
-        calculateMovement(player.baseSpeed / 9, null, CITY_TILE_SIZE, null, null, true, player.onWall);
+        // Removed the invalid 7th argument passed to calculateMovement
+        calculateMovement(player.baseSpeed / 9, null, CITY_TILE_SIZE, null, null, true);
 
         if (cityDimensions[currentActiveCityFaction]) handleEntityGateTeleport(player, cityDimensions[currentActiveCityFaction].grid);
         if (typeof updateCityCosmeticNPCs === 'function') updateCityCosmeticNPCs(currentActiveCityFaction);
+        
+        // ... (rest of the block remains the same)
         
         if (player.y > CITY_WORLD_HEIGHT - 20 || keys['p']) {
             player.onWall = false;
@@ -365,7 +422,6 @@ window.onwheel = (e) => {
     
     if (++uiSyncTick % 30 === 0) syncSiegeUIVisibility();
 }
-
 function draw() {
     if (!player || isNaN(player.x) || isNaN(player.y)) {
         console.warn("NaN caught in draw! Healing coordinates to prevent black screen.");
@@ -383,21 +439,31 @@ function draw() {
     ctx.translate(-player.x, -player.y);
 
     if (inBattleMode) {
+        // 1. Draw Infinite Floor
         ctx.fillStyle = battleEnvironment.groundColor || "#767950";
         ctx.fillRect(-3000, -3000, 8400, 7600);
 
+        // 2. Draw Background Terrain
         if (battleEnvironment.bgCanvas) {
             ctx.drawImage(battleEnvironment.bgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
         }
 
+        // 3. Draw Units
         drawBattleUnits(ctx);
 
+        // 4. Draw Foreground Terrain (Trees/Canopy)
         if (battleEnvironment.fgCanvas) {
             ctx.drawImage(battleEnvironment.fgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
         }
 
+        // 5. Draw Dynamic Assets (Gates & Engines)
+        if (typeof renderDynamicGates === 'function') {
+            renderDynamicGates(ctx);
+        }
+
         if (typeof renderSiegeEngines === 'function') renderSiegeEngines(ctx);
 
+        // 6. Draw Battle UI overlays
         const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
 
         ctx.font = "bold 18px Georgia";
@@ -416,15 +482,8 @@ function draw() {
             );
         } else {
             ctx.fillStyle = "#ffca28";
-            let drawX, drawY;
-
-            if (player && player.hp > 0) {
-                drawX = player.x;
-                drawY = player.y - 60;
-            } else {
-                drawX = canvas.width / 2;
-                drawY = canvas.height - 200;
-            }
+            let drawX = (player && player.hp > 0) ? player.x : canvas.width / 2;
+            let drawY = (player && player.hp > 0) ? player.y - 60 : canvas.height - 200;
 
             ctx.fillText("BATTLE OVER - Press [p] to Exit", drawX, drawY);
         }
@@ -460,6 +519,7 @@ function draw() {
         ctx.restore();
 
     } else {
+        // WORLD MAP MODE
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(bgCanvas, 0, 0);
 
