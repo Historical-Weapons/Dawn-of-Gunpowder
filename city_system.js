@@ -479,7 +479,8 @@ if (typeof buildCityWalls === 'function') {
  
 	
 }
-function isCityCollision(x, y, factionName = currentActiveCityFaction, isOnWall = false) {
+
+function isCityCollision(x, y, factionName = currentActiveCityFaction, isOnWall = false, isLarge = false) {
     if (!inCityMode || !factionName || !cityDimensions[factionName]) return false;
     
     let tileX = Math.floor(x / CITY_TILE_SIZE);
@@ -489,19 +490,23 @@ function isCityCollision(x, y, factionName = currentActiveCityFaction, isOnWall 
     
     let tile = cityDimensions[factionName].grid[tileX][tileY];
     
-    // FIX: 9 = Ladder Bridge. This is the transition zone, it's universally walkable!
-    if (tile === 9) return false;
+    // ---> SURGERY: Cavalry/Large Units cannot climb ladders or walk on walls <---
+    if (isLarge && (tile === 8 || tile === 9 || tile === 10 || tile === 12)) {
+        return true; // Hard blocked
+    }
+
+    // FIX: 9 = Ladder Bridge, 12 = Wooden Stairs. These are universally walkable for infantry!
+    if (tile === 9 || tile === 12) return false;
 
     if (isOnWall) {
-        // LAYER: ON WALL
-        // 8 = Parapet floor, 10 = Tower/Gate top. 
+        // LAYER: ON WALL (8 = Parapet floor, 10 = Tower/Gate top)
         return !(tile === 8 || tile === 10);
     } 
 
     // LAYER: GROUND
-    // Notice Tile 9 isn't blocked here either, allowing ground troops to step onto it.
-    return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7 || tile === 8;
+    return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7 || tile === 8 || tile === 10;
 }
+
 // --- City Entry/Exit ---
 function enterCity(factionName, playerObj) {
     generateCity(factionName);

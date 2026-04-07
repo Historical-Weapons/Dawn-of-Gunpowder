@@ -795,16 +795,20 @@ else if (type === "two_handed") {
 	        return; 
 	    }
 
-	   // --- RANGED COMBAT ---
+// --- RANGED COMBAT ---
 	
-	// Set your archer's max cooldown (adjust 150 to whatever your engine uses for this unit)
-	let maxCool = (typeof unitMaxCool !== 'undefined') ? unitMaxCool : 150; 
+	// SURGERY: Dynamically fetch reload time so future tweaks never break sync
+	let maxCool = (typeof getReloadTime === 'function' && typeof unit !== 'undefined') ? getReloadTime(unit) : 170; 
 	let cdown = (typeof cooldown !== 'undefined') ? cooldown : 0;
 	
-	// cycle progresses perfectly from 0.0 (attack starts) to 1.0 (projectile spawns)
-	let cycle = isAttacking ? Math.max(0, Math.min(1.0, 1.0 - (cdown / maxCool))) : 0;
+	// ---> THE FIX: DECOUPLE FROM FLAWED ENGINE VARIABLE <---
+	// troop_system.js turns 'isAttacking' false when cooldown hits 30!
+	// We MUST ignore it and track the cooldown directly to 0, just like the Horse Archer.
+	let isActionActive = (unit.state === "attacking" && cdown > 0); 
 	
-	let handX = 6, handY = -8; 
+	// cycle progresses perfectly from 0.0 (attack starts) to 1.0 (projectile spawns)
+	let cycle = isActionActive ? Math.max(0, Math.min(1.0, 1.0 - (cdown / maxCool))) : 0;
+	let handX = 6, handY = -8;
 	
 	// Strict Anchor Points
 	let restX = handX - 5; 
@@ -824,11 +828,19 @@ else if (type === "two_handed") {
 	let bowKhatra = 0;
 
 	// Phase Logic
-	if (!isAttacking) {
-		// Idle resting pose
-		drawHandX = restX; drawHandY = restY;
-		stringX = restX; stringY = restY;
-	} else if (cycle < 0.15) { 
+// --- SURGERY: INITIAL STATE NOCKED & READY ---
+	if (!isActionActive) {
+		// Instead of a totally relaxed bow, we show a "Combat Ready" pose:
+		// Arrow is nocked and pulled back ~30% of the way.
+		let readyPull = 0.3; 
+		drawHandX = restX + (fullDrawX - restX) * readyPull;
+		drawHandY = restY;
+		stringX = drawHandX; 
+		stringY = drawHandY;
+		hasArrow = true;
+		arrowAngle = 0; // Pointing straight forward
+	} else if (cycle < 0.15) {
+        // ... (rest of your phases)
 		// 1. Reach back to quiver
 		let ph = cycle / 0.15;
 		drawHandX = restX + (quiverX - restX) * ph; 
@@ -849,23 +861,32 @@ else if (type === "two_handed") {
 		hasArrow = true;
 		stringX = drawHandX; // String follows hand
 		stringY = drawHandY;
-	} else if (cycle < 0.98) { 
-		// 4. Hold full draw 
+} else if (cycle < 0.95) { 
+		// 4. Hold full draw (Tightened to match Horse Archer timing)
 		drawHandX = fullDrawX;
 		drawHandY = fullDrawY;
-		hasArrow = true;
+		hasArrow = true; // Arrow stays NOCKED during the hold
 		stringX = fullDrawX; 
 		stringY = fullDrawY;
 	} else { 
-		// 5. Loose / Khatra - Snaps precisely as cooldown hits 0
-		let ph = (cycle - 0.98) / 0.02; 
-		drawHandX = fullDrawX + (restX - fullDrawX) * ph; // Hand drops back to rest
-		drawHandY = fullDrawY + (restY - fullDrawY) * ph;
-		stringX = restX; // String snaps instantly
+		// 5. Loose / Khatra (The "Snap" window: 0.95 to 1.0)
+		let ph = (cycle - 0.95) / 0.05; 
+		
+		// SURGERY: The arrow vanishes instantly the moment the string snaps forward.
+		// This restores the perfect visual sync seen in the Horse Archer.
+		hasArrow = false; 
+		
+		// The String snaps to rest instantly (snappy feel)
+		stringX = restX; 
 		stringY = restY;
-		bowKhatra = 0.3 * Math.sin(ph * Math.PI); // Quick bow twist
-	}
 
+		// The Hand follows through more realistically
+		drawHandX = fullDrawX + (restX - fullDrawX) * ph;
+		drawHandY = fullDrawY + (restY - fullDrawY) * ph;
+
+		// Khatra (Bow Twist) - Peak twist mid-release
+		bowKhatra = 0.4 * Math.sin(ph * Math.PI); 
+	}
 	// --- BOW RENDERING (With dynamic limb tension) ---
 	let tension = (restX - stringX) / (restX - fullDrawX); // 0 at rest, 1 at full draw
 	let tipX = (handX - 5) - (tension * 4); // Limbs bend back up to 4px
@@ -1227,65 +1248,63 @@ else if (type === "crossbow") {
         ctx.restore();
         return; 
     }
-// --- RANGED COMBAT: Engine Sync ---
-let cdown = (typeof cooldown !== 'undefined') ? cooldown : 0;
+	
+	
+	// --- RANGED COMBAT: Engine Sync ---
+        let cdown = (typeof cooldown !== 'undefined') ? cooldown : 0;
 
-// Distinguish between Long Reload (> 50) and Rapid Burst (<= 50)
-let isLongReload = cdown > 50; 
-let maxCool = isLongReload ? 300 : 15; // Use 15 as the assumed max for a rapid burst shot
-let p = Math.max(0, Math.min(1.0, 1.0 - (cdown / maxCool)));
-
-if (unitName === "Repeater Crossbowman") {
-    let leverMove = 0, boltInTray = false, stringPull = 0, handX = 0, handY = 0;
-    let loadingMag = false, handOnLever = false, wobbleX = 0, wobbleY = 0, magOffset = 0;
-
-    // --- PHASE 1: BOX MAG RELOAD (cdown > 50) ---
-    // This simulates the 300-tick "Empty to Full" transition.
-    if (isLongReload) {
-        loadingMag = true;
-        // Normalize progress for the 250-tick reload window (300 down to 50)
-        let reloadP = Math.max(0, Math.min(1, 1 - ((cdown - 50) / 250)));
+        // 1. Dynamically grab the unit's true max cooldown to future-proof tweaks
+        let maxCool = (typeof getReloadTime === 'function' && typeof unit !== 'undefined') ? getReloadTime(unit) : 300;
         
-        // Hand "jumps" 5 times to simulate dropping 5 sets of bolts
-        let dropCycle = (reloadP * 5) % 1; 
-        handX = dropCycle < 0.5 ? -2 : 10; // Moves from pouch to mag
-        handY = dropCycle < 0.5 ? 5 : -4;   // Dipping down then up to the box
-        
-        leverMove = 0; // Lever is dead during mag reload
-    } 
-    // --- PHASE 2: INDIVIDUAL BOLT FIRE (cdown <= 50) ---
-    // This handles the rapid cycle per shot during the 10-round burst.
-    else if (cdown > 0) {
-        handOnLever = true;
-        
-        // SURGERY: Normalize against a short burst cooldown (15) instead of 50.
-        // Math.min ensures that if the engine's burst cooldown is slightly higher than 15,
-        // it doesn't break the animation sequence by producing a negative number.
-        let burstStart = Math.min(cdown, 15);
-        let shotP = 1.0 - (burstStart / 15);
+        // 2. Isolate the Repeater's 50-tick burst so it doesn't infect standard crossbows!
+        let isRepeaterBurst = (unitName === "Repeater Crossbowman" && cdown <= 50 && cdown > 0);
+        if (isRepeaterBurst) maxCool = 50; 
 
-        if (shotP < 0.4) { // Push
-            leverMove = (shotP / 0.4) * 5;
-            boltInTray = shotP > 0.1;
-        } else if (shotP < 0.9) { // Pull
-            let drawP = (shotP - 0.4) / 0.5;
-            leverMove = 5 - (drawP * 5);
-            stringPull = drawP * 8;
-            boltInTray = true;
-        } else { // Snap/Recoil
-            wobbleX = (Math.random() - 0.5) * 3;
-            wobbleY = (Math.random() - 0.5) * 3;
-            boltInTray = false; // Bolt leaves the tray when snapped
-        }
-        magOffset = leverMove * 0.8;
-    } else {
-        // --- IDLE STATE ---
-        // Ensures the lever is held and bolt is ready when the unit is fully cooled down
-        handOnLever = true;
-        boltInTray = true;
-    }
+        // Smooth 0.0 to 1.0 cycle for EVERY unit
+        let p = Math.max(0, Math.min(1.0, 1.0 - (cdown / maxCool)));
 
-    // --- RENDERING --- (100% UNTOUCHED)
+        if (unitName === "Repeater Crossbowman") {
+            let leverMove = 0, boltInTray = false, stringPull = 0, handX = 0, handY = 0;
+            let loadingMag = false, handOnLever = false, wobbleX = 0, wobbleY = 0, magOffset = 0;
+
+            // --- PHASE 1: BOX MAG RELOAD ---
+            if (!isRepeaterBurst && cdown > 0) {
+                loadingMag = true;
+                // Normalize progress for the remaining ticks above 50
+                let reloadRange = Math.max(1, maxCool - 50); 
+                let reloadP = Math.max(0, Math.min(1, 1 - ((cdown - 50) / reloadRange)));
+                
+                let dropCycle = (reloadP * 5) % 1; 
+                handX = dropCycle < 0.5 ? -2 : 10; 
+                handY = dropCycle < 0.5 ? 5 : -4;   
+            } 
+            // --- PHASE 2: INDIVIDUAL BOLT FIRE ---
+            else if (isRepeaterBurst) {
+                handOnLever = true;
+                let shotP = p; // Already normalized 0.0 to 1.0 by the maxCool override
+
+                if (shotP < 0.4) { // Push
+                    leverMove = (shotP / 0.4) * 5;
+                    boltInTray = shotP > 0.1;
+                } else if (shotP < 0.95) { // Pull
+                    let drawP = (shotP - 0.4) / 0.55;
+                    leverMove = 5 - (drawP * 5);
+                    stringPull = drawP * 8;
+                    boltInTray = true;
+                } else { // Snap/Recoil
+                    wobbleX = (Math.random() - 0.5) * 3;
+                    wobbleY = (Math.random() - 0.5) * 3;
+                    boltInTray = false; 
+                }
+                magOffset = leverMove * 0.8;
+            } else {
+                // Idle
+                handOnLever = true;
+                boltInTray = true;
+            }
+
+            // --- RENDERING --- (100% UNTOUCHED)
+			
     ctx.save();
     ctx.translate(wobbleX, 8 + wobbleY);
 
@@ -1332,10 +1351,17 @@ if (unitName === "Repeater Crossbowman") {
         let isHeavy = (unitName === "Heavy Crossbowman");
         let isPoison = (unitName === "Poison Crossbowman");
 
-        // PHASE LOGIC: Added bodyShift to prevent the "Teleporting Stirrup"
+        // PHASE LOGIC: Added dynamic recoil snap
         if (p < 0.05) { 
-            weaponX = -3; weaponRot = -0.1; 
-        } 
+            // SURGERY: Active kickback phase immediately following the shot
+            let ph = p / 0.05;
+            weaponX = -3 * (1 - ph); 
+            weaponRot = -0.1 * (1 - ph); 
+            stringPull = 0;
+            hasBolt = false;
+            bodyShift = -5; // Keep aimed stance
+            weaponY = 5;
+        }
         else if (p < 0.20) { 
             let ph = (p - 0.05) / 0.15; 
             weaponRot = ph * (Math.PI / 2); 

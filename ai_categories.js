@@ -1,4 +1,7 @@
+
 function canUseSiegeEngines(unit) {
+	
+	
     if (!unit || !unit.stats) return false; 
     if (unit.isCommander) return false; // SURGERY 1: Hard block commander
 
@@ -9,10 +12,30 @@ function canUseSiegeEngines(unit) {
     ).toLowerCase();
 
     const isCavalry = /(cav|horse|mounted|camel|eleph|lancer|keshig)/.test(txt);
+    if (unit.stats.isLarge || unit.isMounted || isCavalry) return false;
+   
+ 
+// --- SURGERY: PROMOTE SPECIALISTS TO SIEGE ROLES ---
+// Ensure txt is lowercase once at the start
+const unitLabel = txt.toLowerCase();
+
+// Use \b (word boundaries) so 'bombardier' doesn't trigger 'bomb'
+const isRanged = unit.stats.isRanged || /\b(archer|bow|crossbow|slinger|rocket)\b/.test(unitLabel);
+
+const isSpecialist = /\b(firelance|bomb|javelinier|repeater)\b/.test(unitLabel);
+
+if (isRanged && !isSpecialist) {
+    if (unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew" || unit.siegeRole === "counter_battery") return true;
     
-    return !(unit.stats.isLarge || unit.isMounted || isCavalry);
+    // Standard archers only touch equipment if explicitly forced
+    if (unit.siegeRole === "ram_pusher" || unit.siegeRole === "ladder_carrier" || unit.siegeRole === "ladder_fanatic") return true;
+    
+    return false; 
 }
 
+// Firelances, Bombs, and Javelins now count as "Infantry" for siege purposes!
+return true;
+}
 const AICategories = {
 
     cleanupDeadUnits: function(units, now) {
@@ -34,11 +57,11 @@ const AICategories = {
         currentBattleData.frames++;
     },
 
-    handlePlayerOverride: function(unit, units, keys) {
+handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
         if (!unit.target || unit.target.hp <= 0) {
             let nearestDist = Infinity;
             units.forEach(other => {
-                if (other.side !== unit.side && other.hp > 0) {
+                if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
                     let d = Math.hypot(unit.x - other.x, unit.y - other.y);
                     if (d < nearestDist) {
                         nearestDist = d;
@@ -50,8 +73,13 @@ const AICategories = {
 
         if (unit.target) {
             let distToTarget = Math.hypot(unit.target.x - unit.x, unit.target.y - unit.y);
-            if (distToTarget < 50) {
-                unit.state = "idle";
+            unit.stats.updateStance(distToTarget);
+            let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
+
+            if (distToTarget <= effectiveRange) {
+                // SURGERY: Force the combat execution to run for the player commander
+                this._handleCombatExecution(unit, unit.target.x - unit.x, unit.target.y - unit.y, distToTarget, battleEnv, player);
+                unit.state = "attacking";
             } else {
                 unit.state = (keys['w'] || keys['a'] || keys['s'] || keys['d']) ? "moving" : "idle";
             }
@@ -125,9 +153,11 @@ const AICategories = {
                         unit.target = plazaTarget;
                     }
                     return; // Lock in the macro-target
-                } else if (!canUseSiegeEngines(unit) && !isGateBreached) {
+		} else if (!canUseSiegeEngines(unit) && !isGateBreached) {
                     // Cavalry/Large sit back if walls are up to avoid clustering and dying to towers
-                    unit.target = { x: BATTLE_WORLD_WIDTH / 2, y: BATTLE_WORLD_HEIGHT - 300, hp: 9999, isDummy: true };
+                    let campY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.campPixelY + 40 : BATTLE_WORLD_HEIGHT - 50;
+                    // FIX: Pushed back to +500 so they stay safely behind the trebuchets (which spawn at +350)
+                    unit.target = { x: unit.x, y: campY, hp: 9999, isDummy: true };
                     return;
                 }
             }
@@ -143,8 +173,7 @@ const AICategories = {
                 }
             }
         }
-        // ==========================================
-
+ 
 // ==========================================
         // COUNTER-BATTERY TARGET OVERRIDE
         // ==========================================
@@ -173,19 +202,19 @@ const AICategories = {
                 return; // Lock target and abort standard targeting
             }
         }
-        // ==========================================
  
-
-        let currentTargetDist = (unit.target && unit.target.hp > 0) 
+// SURGERY: Treat dummy targets as infinitely far so AI instantly snaps to real enemies!
+        let currentTargetDist = (unit.target && unit.target.hp > 0 && !unit.target.isDummy) 
             ? Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y) 
             : Infinity;
 
-        // Open field or micro-targeting fallback
-        if (!unit.target || unit.target.hp <= 0 || (currentTargetDist > 80 && Math.random() < 0.02) || (unit.target.isDummy && Math.random() < 0.05)) {
+        // ---> SURGERY 1: Drop the target if they become inaccessible (e.g., climbing a ladder) <---
+        if (!unit.target || unit.target.hp <= 0 || unit.target.disableAICombat || (currentTargetDist > 80 && Math.random() < 0.02) || (unit.target.isDummy && Math.random() < 0.05)) {
             let nearestDist = Infinity;
             let nearestEnemy = null;
             units.forEach(other => {
-                if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
+                // ---> SURGERY 1: Ensure new targets are not also inaccessible <---
+                if (other.side !== unit.side && other.hp > 0 && !other.isDummy && !other.disableAICombat) {
                     let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
                     if (dist < nearestDist) {
                         nearestDist = dist;
@@ -202,52 +231,82 @@ const AICategories = {
 
     processAction: function(unit, battleEnv, currentBattleData, player) {
         
-        // --- STAIR/LADDER OVERRIDE SURGERY ---
-        if (unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall && canUseSiegeEngines(unit)) {
-            const activeLadders = typeof siegeEquipment !== 'undefined' ? 
-                siegeEquipment.ladders.filter(l => l.isDeployed && l.hp > 0) : [];
-            
-            if (activeLadders.length > 0) {
-                // Find best ladder (closest, plus minor randomization to prevent single-file lines)
-                let bestLadder = activeLadders.reduce((prev, curr) => {
-                    let scorePrev = Math.hypot(prev.x - unit.x, prev.y - unit.y) + (Math.random() * 50);
-                    let scoreCurr = Math.hypot(curr.x - unit.x, curr.y - unit.y) + (Math.random() * 50);
-                    return scoreCurr < scorePrev ? curr : prev;
-                });
+      // --- STAIR/LADDER OVERRIDE SURGERY ---
+if (unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall && canUseSiegeEngines(unit)) {
+    
+    // SURGERY: Only seek outer siege ladders if you are on the ground trying to get UP.
+    if (!unit.onWall) { 
+        const activeLadders = typeof siegeEquipment !== 'undefined' ? 
+            siegeEquipment.ladders.filter(l => l.isDeployed && l.hp > 0) : [];
+        
+        if (activeLadders.length > 0) {
+            let bestLadder = activeLadders.reduce((prev, curr) => {
+                let scorePrev = Math.hypot(prev.x - unit.x, prev.y - unit.y) + (Math.random() * 50);
+                let scoreCurr = Math.hypot(curr.x - unit.x, curr.y - unit.y) + (Math.random() * 50);
+                return scoreCurr < scorePrev ? curr : prev;
+            });
 
-                unit.target = { 
-                    x: bestLadder.x, 
-                    y: unit.onWall ? bestLadder.y + 20 : bestLadder.y - 20, 
-                    onWall: !unit.onWall, 
-                    isDummy: true,
-                    isLadderAssault: true // Tag it for movement logic
-                };
-                unit.state = "moving";
-                unit.hasOrders = true;
+            unit.target = { 
+                x: bestLadder.x, 
+                y: bestLadder.y - 20, // Always point to the base to climb up
+                onWall: true, 
+                isDummy: true,
+                isLadderAssault: true
+            };
+            unit.state = "moving";
+            unit.hasOrders = true;
+        }
+    }
+}
+		let oldX = unit.x;
+        let oldY = unit.y;
+        
+        let inSiege = typeof inSiegeBattle !== "undefined" && inSiegeBattle;
+
+        // =========================================================
+        // ---> FIX: PRE-BREACH CAVALRY HARD FREEZE <---
+        // =========================================================
+        if (inSiege && unit.side === "player" && unit.siegeRole === "cavalry_reserve") {
+            let southGate = (typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates) 
+                ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
+            let isGateBreached = window.__SIEGE_GATE_BREACHED__ || (southGate && (southGate.isOpen || southGate.gateHP <= 0));
+
+            if (!isGateBreached) {
+                unit.vx = 0;
+                unit.vy = 0;
+                unit.state = "idle";
+                // Restore stamina while resting, but absolutely NO pathfinding, pinballing, or attacking
+                if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+                return; 
             }
         }
-        // --- END SURGERY ---
-        
-        let oldX = unit.x;
-        let oldY = unit.y;
-
-        // ---> SURGERY 2: THE COMBAT/ACTION HARD BLOCK <---
-        if (unit.disableAICombat || unit.orderType === "ladder_crew" || unit.orderType === "siege_assault") {
+  
+       // ---> SURGERY 2: THE COMBAT/ACTION HARD BLOCK <---
+        // Kept the hard block ONLY for pure pacifist roles like ladder carriers
+        if (unit.disableAICombat || unit.orderType === "ladder_crew") {
             if (unit.target) {
                 let dx = unit.target.x - unit.x;
                 let dy = unit.target.y - unit.y;
                 let dist = Math.hypot(dx, dy);
-                
                 this._handleMovement(unit, dx, dy, dist, battleEnv);
-                
                 let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
                 unit.state = hasMoved ? "moving" : "idle";
             }
             return; 
         }
-        // -------------------------------------------------
-            
-        const inSiege = typeof inSiegeBattle !== "undefined" && inSiegeBattle;
+
+        // SURGERY: Allow 'siege_assault' and 'move_to_point' to fight back if their target is a REAL enemy.
+        // If the target is just a dummy waypoint, they skip combat and keep walking.
+        if ((unit.orderType === "siege_assault" || unit.orderType === "move_to_point") && unit.target && unit.target.isDummy) {
+             let dx = unit.target.x - unit.x;
+             let dy = unit.target.y - unit.y;
+             let dist = Math.hypot(dx, dy);
+             this._handleMovement(unit, dx, dy, dist, battleEnv);
+             let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
+             unit.state = hasMoved ? "moving" : "idle";
+             return;
+        }
+         
         const txt = String(
             (unit.unitType || "") + " " +
             (unit.stats?.role || "") + " " +
@@ -440,14 +499,17 @@ if (inSiege && unit.side === "enemy" && typeof battleEnvironment !== 'undefined'
         }
     },
     
-    _handleMovement: function(unit, dx, dy, dist, battleEnv) {
+_handleMovement: function(unit, dx, dy, dist, battleEnv) {
         if (unit.isCommander) return;
 
         let shouldHold = false;
         let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
         let speedMod = 1.0;
 
-       // --- 1. LADDER TRANSITION STATE CHECK ---
+        // ADD IT RIGHT HERE: Define it once so the whole function can use it
+        let isLargeUnit = unit.stats?.isLarge || unit.isMounted || (unit.unitType && unit.unitType.toLowerCase().includes("cav"));
+
+        // --- 1. LADDER TRANSITION STATE CHECK ---
         let isOnLadderTile = false;
         if (inSiege && unit.side === "player" && canUseSiegeEngines(unit) && battleEnv.grid && typeof BATTLE_TILE_SIZE !== 'undefined') {
             let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
@@ -481,11 +543,31 @@ if (inSiege && unit.side === "enemy" && typeof battleEnvironment !== 'undefined'
             if (unit.stats.isRanged) shouldHold = true;
             else if (dist > 50) shouldHold = true; 
         }
-
-        // =========================================================
+// =========================================================
         // SIEGE MOVEMENT & ANTI-STUCK OVERHAUL
         // =========================================================
-        if (inSiege) {
+if (inSiege) {
+            // ---> SURGERY: DETECT CLIMBING TILE <---
+            let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+            let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
+            let currentTile = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty]) ? battleEnvironment.grid[tx][ty] : 0;
+            isOnLadderTile = (currentTile === 9 || currentTile === 12);
+            
+            // Determine if unit is cavalry/large
+          
+          // If they are on the wall, their target is on the ground, and they are out of range, STOP moving.
+if (unit.onWall && unit.target && !unit.target.onWall && !unit.target.isDummy) {
+    let effRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
+    if (dist > effRange * 0.8) {
+        
+        // SURGERY: Only DEFENDERS should hold the wall. Attackers must push inward!
+        if (unit.side === "enemy") { 
+            shouldHold = true;
+            unit.vx = 0; 
+            unit.vy = 0;
+        }
+    }
+}
             // Anti-Stuck Tracking: Monitors physical coordinate changes over time
             if (!unit.stuckLog) unit.stuckLog = { x: unit.x, y: unit.y, ticks: 0 };
             
@@ -565,8 +647,24 @@ if (inSiege && unit.side === "enemy" && typeof battleEnvironment !== 'undefined'
                 moveVector = getSiegePathfindingVector(unit, unit.target, dx, dy, dist);
             }
 
+          // Calculate base velocity
             let vx = (moveVector.dx / moveVector.dist) * (unit.stats.speed * speedMod);
             let vy = (moveVector.dy / moveVector.dist) * (unit.stats.speed * speedMod);
+
+// ---> SURGERY: LADDER PHYSICS ENGINE <---
+            if (isOnLadderTile) {
+                if (isLargeUnit) {
+                    // 1. HARD BLOCK: Cavalry cannot move on ladder tiles
+                    vx = 0;
+                    vy = 0;
+                    unit.vx = 0;
+                    unit.vy = 0;
+                } else {
+                    // 2. SPEED DEBUFF & STONE TRAP FIX: Infantry moves straight up
+                    vx = 0; // Lock horizontal movement so they cannot phase into stone walls
+                    vy *= 0.30;
+                }
+            }
 
             if (unit.stats.morale > 3 && unit.stats.morale < 10) {
                 let dir = unit.side === "player" ? 1 : -1;
@@ -608,18 +706,36 @@ if (inSiege && unit.side === "enemy" && typeof battleEnvironment !== 'undefined'
            let nextX = unit.x + vx;
             let nextY = unit.y + vy;
 
-            if (typeof isBattleCollision === 'function') {
-                // ---> SURGERY: Let Ladder Fanatics phase through each other so they don't deadlock <---
+			if (typeof isBattleCollision === 'function') {
+                // 1. Determine if this unit should phase through others (Ladders/Stairs)
+                // Tile 9 = Ground Ladders, Tile 12 = Tower Wrap-around Ladders
                 let ignoreCollision = (unit.siegeRole === "ladder_fanatic" || isOnLadderTile);
 
-                let canMoveX = ignoreCollision || !isBattleCollision(nextX, unit.y, unit.onWall, unit);
-                let canMoveY = ignoreCollision || !isBattleCollision(unit.x, nextY, unit.onWall, unit);
+                // 2. SURGERY: CAVALRY BAN LOGIC
+                // If the unit is large/mounted and they are on a ladder tile, 
+                // we FORCE canMove to false so they cannot overlap with the ladder.
+                let isBlockedCavalry = (isLargeUnit && isOnLadderTile);
+
+                let canMoveX = !isBlockedCavalry && (ignoreCollision || !isBattleCollision(nextX, unit.y, unit.onWall, unit));
+                let canMoveY = !isBlockedCavalry && (ignoreCollision || !isBattleCollision(unit.x, nextY, unit.onWall, unit));
 
                 if (canMoveX) unit.x = nextX;
                 if (canMoveY) unit.y = nextY;
+
+                // 3. SURGERY: STUCK PROTECTION FOR LADDERS
+                // If a large unit somehow ends up stuck inside Tile 12, push them back
+                if (isBlockedCavalry) {
+                    unit.vx = 0; unit.vy = 0;
+                    // Optional: nudge them slightly south to get them off the ladder tile
+                    unit.y += 2; 
+                }
+
             } else {
-                unit.x = nextX;
-                unit.y = nextY;
+                // Fallback for when collision function is missing
+                if (!(isLargeUnit && isOnLadderTile)) {
+                    unit.x = nextX;
+                    unit.y = nextY;
+                }
             }
 
             if (typeof applyPinballEscape === 'function') {
@@ -644,17 +760,31 @@ if (inSiege && unit.side === "enemy" && typeof battleEnvironment !== 'undefined'
                 unit.stats.currentStance = "statusmelee";
             }
 
-            if (unit.stats.currentStance === "statusrange") {
-                let isRepeater = unit.unitType === "Repeater Crossbowman";
-
-                if (isRepeater && unit.stats.magazine > 0) {
-                    unit.cooldown = 50; 
-                    unit.stats.magazine--;
-                } else {
-                    unit.cooldown = getReloadTime(unit);
-                    if (isRepeater) unit.stats.magazine = 10;
+          if (unit.stats.currentStance === "statusrange") {
+                
+                // --- UNIVERSAL MAGAZINE SURGERY ---
+                // 1. Get the max magazine size (Defaults to 1 for standard archers)
+                let maxMag = (unit.stats && unit.stats.magazine) ? unit.stats.magazine : 1;
+                
+                // 2. Initialize current magazine if it doesn't exist
+                if (unit.currentMag === undefined) {
+                    unit.currentMag = maxMag;
                 }
+
+                // 3. Spend ammo
+                unit.currentMag--;
                 unit.stats.ammo--;
+
+                // 4. Cooldown Routing
+                if (unit.currentMag <= 0) {
+                    // Magazine Empty: Trigger the full reload (e.g., 300 for repeater, 170 for archers)
+                    unit.cooldown = getReloadTime(unit);
+                    unit.currentMag = maxMag; // Refill the internal magazine
+                } else {
+                    // Magazine has ammo: Trigger the rapid burst
+                    unit.cooldown = 50; 
+                }
+                // ----------------------------------
 
                 let spread = (100 - unit.stats.accuracy) * 2.5;
                 let targetX = unit.target.x + (Math.random() - 0.5) * spread;
@@ -880,15 +1010,19 @@ function applyPinballEscape(unit) {
         let dx = unit.x - oldPos.x;
         let dy = unit.y - oldPos.y;
         let distanceMovedSq = (dx * dx) + (dy * dy);
+if (distanceMovedSq < 9) { // 5 pixels squared
+            
+            // ---> SURGERY 4B: DO NOT BOUNCE UNITS MOVING TO DUMMY WAYPOINTS! ---
+            if (unit.target && unit.target.isDummy) {
+                unit.positionHistory = []; 
+                return false; 
+            }
 
-      if (distanceMovedSq < 9) { // 5 pixels squared
-            // --- NEW GUARD: DO NOT BOUNCE LADDER SWARMERS! ---
-            // They are SUPPOSED to be stuck in a massive, tight crowd pushing the ladder.
-            if (unit.siegeRole === "ladder_fanatic") {
+            // --- NEW GUARD: DO NOT BOUNCE INTENTIONALLY IDLE UNITS OR LADDER SWARMERS! ---
+            if (unit.siegeRole === "ladder_fanatic" || unit.state === "idle" || unit.siegeRole === "cavalry_reserve" || unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew") {
                 unit.positionHistory = []; // Clear history to prevent memory bloat
                 return; // Abort the pinball logic entirely for this unit
             }
-
             // UNIT IS STUCK! INITIATE PINBALL BOUNCE!
             
             // Generate a random aggressive bounce vector to knock them loose

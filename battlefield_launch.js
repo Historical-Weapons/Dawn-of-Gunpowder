@@ -607,13 +607,16 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
     generateBattlefield(currentWorldMapTile.name || "Plains");
 
 
-   // FIX: Pull the real troop count from the player object
-    let playerTroopCount = playerObj.troops || 0; 
+let playerTroopCount = playerObj.troops || 0; 
     let playerUniqueType = playerObj.uniqueUnit || null; 
+    
+    // ---> NEW: GLOBAL BATTLE SCALE <---
+    let totalCombatants = playerTroopCount + enemyNPC.count;
+    // If total troops exceed 400, dynamically scale them down together
+    window.GLOBAL_BATTLE_SCALE = totalCombatants > 400 ? Math.ceil(totalCombatants / 300) : 1;
+
     deployArmy(currentBattleData.playerFaction, playerTroopCount, "player"); 
     deployArmy(enemyNPC.faction, enemyNPC.count, "enemy");
-
-// ---> SURGERY: SNAP WASD TO COMMANDER <---
     // Find exactly where the army deployed the commander and move the invisible WASD player there
     let deployedCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
     if (deployedCmdr) {
@@ -637,9 +640,8 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
             u.formationTimer = 120;      // Brief buffer to orient before breaking line
         }
     });
-    // =========================================================
-    let totalCombatants = playerTroopCount + enemyNPC.count;
-    
+
+
 
     if (typeof AudioManager !== 'undefined') {
         AudioManager.init();
@@ -678,9 +680,9 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
         let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
         if (southGate) {
             // Push them 500 pixels North (deep inside the walls/plaza)
-            spawnY = (southGate.y * BATTLE_TILE_SIZE) - 600; 
+            spawnY = (southGate.y * BATTLE_TILE_SIZE) - 800; 
         } else {
-            spawnY = BATTLE_WORLD_HEIGHT - 1000; // Safe fallback deep inside walls
+            spawnY = BATTLE_WORLD_HEIGHT - 1300; // Safe fallback deep inside walls
         }
     }
 	
@@ -916,24 +918,29 @@ if (isSiege) {
 
 }
 	 
+// ==== REPLACE WITH
+// Block all cavalry and beasts from deploying in sieges (Both Player and Enemy)
 if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
-    composition.forEach(comp => {
-        let bt = UnitRoster.allUnits[comp.type];
-        if (bt) {
-            let checkStr = String((bt.role || "") + " " + (comp.type || "")).toLowerCase();
-            // REMOVED \b boundaries. Now catches "lancers", "horses", etc.
-            if (bt.isLarge || checkStr.match(/(cav|cavalry|keshig|horse|lancer|mount|camel|eleph|cataphract|knight)/)) {
-                comp.type = "Spearman"; 
-            }
-        }
+    composition = composition.filter(comp => {
+        const bt = UnitRoster.allUnits[comp.type];
+        if (!bt || bt.isCommander) return true;
+
+        const role = (bt.role || "").toLowerCase();
+        const type = (comp.type || "").toLowerCase();
+        const combined = `${role} ${type}`;
+
+        const isIllegal = bt.isLarge || 
+                          combined.match(/(cav|horse|lancer|mount|camel|eleph|beast|keshig|cataphract|zamburak)/);
+        
+        return !isIllegal; 
     });
 }
     currentBattleData.initialCounts[side] += totalTroops;
  
-
-   // --- 3. Spawning Engine (Distributed side-by-side) ---
-let visualScale = totalTroops > 300 ? 5 : 1; 
-let unitsToSpawn = Math.round(totalTroops / visualScale); 
+// --- 3. Spawning Engine (Distributed side-by-side) ---
+    // ---> SURGERY: Use the unified Global Scale <---
+    let visualScale = window.GLOBAL_BATTLE_SCALE || 1; 
+    let unitsToSpawn = Math.round(totalTroops / visualScale);
 
 // First, calculate the total width of all "Line" units (non-cavalry)
 // This ensures we can center the entire army perfectly.
@@ -1068,7 +1075,7 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
             target: null,
             state: "idle", 
             animOffset: Math.random() * 100,
-            cooldown: 0,
+            cooldown:170,
             hasOrders: false
         });
     }
@@ -1120,7 +1127,7 @@ function getSiegePlazaOverride({ side, baseTemplate, comp, row, col, spawnXCente
     // --- DEFENDER LOGIC (Keep whatever existing logic you have here) ---
     if (side === "enemy") {
         if (isPlazaUnit(baseTemplate, comp)) {
-            let plazaY = getSiegePlazaY();
+            let plazaY = getSiegePlazaY()-100;
             let safeX = Math.max(100, Math.min(BATTLE_WORLD_WIDTH - 100, spawnXCenter + currentLineXOffset));
             return { x: safeX, y: plazaY + (row * spacingX) };
         }

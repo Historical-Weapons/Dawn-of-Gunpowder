@@ -11,18 +11,49 @@
         return;
     }
     
-    let dx = 0, dy = 0;
+let dx = 0, dy = 0;
     player.isMoving = false;
 
     // --- 2. TERRAIN SPEED & INPUT ---
     let currentSpeed = speed;
-    if (!isCity && !inBattleMode && map?.length > 0) {
-        const tx = Math.floor(player.x / tileSize), ty = Math.floor(player.y / tileSize);
-        if (map[tx]?.[ty]) currentSpeed = speed * (map[tx][ty].speed || 1.0);
+    let isClimbing = false;
+    let isMounted = false;
+
+    // PREDICTIVE CHECK: Map the active unit to the commander if in battle
+    let activeUnit = player;
+    if (inBattleMode && typeof battleEnvironment !== 'undefined') {
+        let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+        if (pCmdr) activeUnit = pCmdr;
     }
+    
+    // Check for heavy mounts or large units
+    isMounted = activeUnit.stats?.isLarge || activeUnit.isMounted || String(activeUnit.unitType || "").toLowerCase().match(/(cav|horse|camel|eleph)/);
+
+    if (inCityMode && !inBattleMode) {
+        // CIVILIAN MODE: Check city grid
+        const tx = Math.floor(player.x / CITY_TILE_SIZE);
+        const ty = Math.floor(player.y / CITY_TILE_SIZE);
+        const tile = cityDimensions[currentActiveCityFaction]?.grid[tx]?.[ty];
+        
+        // Only trigger climb physics if NOT mounted
+        if (!isMounted && (tile === 9 || tile === 12)) isClimbing = true;
+    } 
+    else if (inBattleMode) {
+        // SIEGE BATTLE MODE: Check battle environment grid
+        const tx = Math.floor(player.x / BATTLE_TILE_SIZE);
+        const ty = Math.floor(player.y / BATTLE_TILE_SIZE);
+        const tile = battleEnvironment.grid[tx]?.[ty];
+        
+        if (!isMounted && (tile === 9 || tile === 12)) isClimbing = true;
+    }
+
     currentSpeed *= 0.5;
 
+    if (isClimbing) {
+        currentSpeed *= 0.20; 
+    }
     if (player.hp > 0) {
+        // ... (Keep keyboard input logic the same)
         if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
         if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
         if (keys['a'] || keys['arrowleft']) { dx -= currentSpeed; player.isMoving = true; }
@@ -32,18 +63,31 @@
 
     const nextX = player.x + dx, nextY = player.y + dy;
   
- 
-  
 // --- 3. ENVIRONMENT & COLLISION LOGIC ---
 if (inBattleMode) {
     const bW = (typeof BATTLE_WORLD_WIDTH !== 'undefined') ? BATTLE_WORLD_WIDTH : 2000;
     const bH = (typeof BATTLE_WORLD_HEIGHT !== 'undefined') ? BATTLE_WORLD_HEIGHT : 2000;
 
-    // PREDICTIVE CHECK: Check next position before moving
-    const canMoveX = !isBattleCollision(nextX, player.y, player.onWall, player);
-    const canMoveY = !isBattleCollision(player.x, nextY, player.onWall, player);
+    let tileX = battleEnvironment.grid[Math.floor(nextX / BATTLE_TILE_SIZE)]?.[Math.floor(player.y / BATTLE_TILE_SIZE)];
+    let tileY = battleEnvironment.grid[Math.floor(player.x / BATTLE_TILE_SIZE)]?.[Math.floor(nextY / BATTLE_TILE_SIZE)];
+// ---> SURGERY 2: Massively expand the Gate Bypass so the General's horse ignores the 96-pixel thick stone wall tunnel!
+    let bypassGateCollision = false;
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && typeof SiegeTopography !== 'undefined') {
+        let isBreached = window.__SIEGE_GATE_BREACHED__;
+        if (isBreached) {
+            let distToGateX = Math.abs(nextX - SiegeTopography.gatePixelX);
+            let distToGateY = Math.abs(nextY - SiegeTopography.gatePixelY);
+            
+            // SURGERY: Shrunk X from 120 to 45. 
+            // This perfectly fits the 104-pixel gap, keeping the pillars completely solid!
+            if (distToGateX < 45 && distToGateY < 250) bypassGateCollision = true;
+        }
+    }
 
-    // Apply movement independently to allow "sliding" against walls
+    // Bind the bypass strictly around the wall floor check too!
+    const canMoveX = bypassGateCollision || (!isBattleCollision(nextX, player.y, player.onWall, activeUnit) && tileX !== 8);
+    const canMoveY = bypassGateCollision || (!isBattleCollision(player.x, nextY, player.onWall, activeUnit) && tileY !== 8);
+    
     if (canMoveX) player.x = Math.max(0, Math.min(nextX, bW));
     if (canMoveY) player.y = Math.max(0, Math.min(nextY, bH));
 
@@ -70,14 +114,14 @@ else if (isCity) {
             const nextTile = cityDimensions[currentActiveCityFaction]?.grid?.[txx]?.[tyy];
 
             const isStairs = (nextTile === 9); 
+            const isWallFloor = (nextTile === 8); // SURGERY: Detect Wall Floors
 
-            // ---> SURGERY 1: Check current tile & pass player.onWall to collision <---
             const curTx = Math.floor(player.x / CITY_TILE_SIZE);
             const curTy = Math.floor(player.y / CITY_TILE_SIZE);
             const currentlyOnStairs = cityDimensions[currentActiveCityFaction]?.grid?.[curTx]?.[curTy] === 9;
 
-            // If walking onto stairs, or walking OFF stairs, bypass the strict height collision
-            if (isStairs || currentlyOnStairs || typeof isCityCollision !== 'function' || !isCityCollision(nextX, nextY, currentActiveCityFaction, player.onWall)) {
+            // SURGERY: Hard block movement onto Tile 8
+            if (!isWallFloor && (isStairs || currentlyOnStairs || typeof isCityCollision !== 'function' || !isCityCollision(nextX, nextY, currentActiveCityFaction, player.onWall))) {
                 player.x = nextX;
                 player.y = nextY;
             }
@@ -255,15 +299,18 @@ window.onwheel = (e) => {
         if (pCmdr && player) {
             player.hp = pCmdr.hp;
             disableAICombatDefeated = (pCmdr.hp <= 0); 
+if (!disableAICombatDefeated) {
+    pCmdr.x = player.x; pCmdr.y = player.y;
+    pCmdr.isMoving = player.isMoving;
+    if (player.isMoving) pCmdr.state = "moving";
+    if (keys['a'] || keys['arrowleft']) pCmdr.direction = player.direction = -1;
+    if (keys['d'] || keys['arrowright']) pCmdr.direction = player.direction = 1;
+    pCmdr.vx = pCmdr.vy = 0; 
+    // SURGERY: Removed 'pCmdr.target = null' so the Commander can hold an attack lock!
+}
 
-            if (!disableAICombatDefeated) {
-                pCmdr.x = player.x; pCmdr.y = player.y;
-                pCmdr.isMoving = player.isMoving;
-                if (player.isMoving) pCmdr.state = "moving";
-                if (keys['a'] || keys['arrowleft']) pCmdr.direction = player.direction = -1;
-                if (keys['d'] || keys['arrowright']) pCmdr.direction = player.direction = 1;
-                pCmdr.vx = pCmdr.vy = 0; pCmdr.target = null; 
-            } else {
+
+			else {
                 player.x = pCmdr.x; player.y = pCmdr.y; player.isMoving = false;
             }
         }

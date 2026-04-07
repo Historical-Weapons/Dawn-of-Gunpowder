@@ -1,14 +1,8 @@
-// ============================================================================
-// EMPIRE OF THE 13TH CENTURY - CUSTOM SIEGE BATTLE EXTENSION
-// File: customsiegebattle.js
-// ============================================================================
-
-(function () {
-
-    // --- LAUNCH SIEGE HOOK ---
-    window.launchCustomSiege = function(playerSetup, enemySetup) {
+(function () { //customBATTLE version OF enter siege battle
+		window.launchCustomSiege = function(playerSetup, enemySetup) {
         inSiegeBattle = true;
         window.__SIEGE_GATE_BREACHED__ = false;
+        window.__SIEGE_AUTO_RETREAT_TRIGGERED__ = false; // FIX: Hard reset the win-timer flag
 
         // 1. Setup Siege Dimensions
         BATTLE_WORLD_WIDTH = CITY_WORLD_WIDTH;  
@@ -56,6 +50,25 @@ establishSiegeTopography();
         let pStartY = SiegeTopography.campPixelY + 200;
         spawnAttackerCamp(playerSetup.roster, playerSetup.faction, playerSetup.color, pStartY);
         spawnSiegeCommander("player", playerSetup.faction, playerSetup.color, BATTLE_WORLD_WIDTH / 2, pStartY + 80);
+
+// right after spawnSiegeCommander("player", ...)
+const playerCommander = battleEnvironment.units.find(
+    u => u.isCommander && u.side === "player"
+);
+
+if (playerCommander && typeof player !== "undefined") {
+    player.x = playerCommander.x;
+    player.y = playerCommander.y;
+    player.hp = playerCommander.hp;
+    player.maxHealth = playerCommander.maxHp || playerCommander.hp;
+}
+
+if (typeof camera !== "undefined" && playerCommander) {
+    camera.x = playerCommander.x - (window.innerWidth / 2 / (zoom || 1));
+    camera.y = playerCommander.y - (window.innerHeight / 2 / (zoom || 1));
+}
+
+battleEnvironment.visualPadding = 0;
 
         // 6. Initialize Assets & AI
         initSiegeEquipment();

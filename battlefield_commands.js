@@ -21,16 +21,16 @@ function startLazyGeneral() {
             return;
         }
         
-        // Re-fetch currently selected units dynamically
-        // UPGRADE: Exclude our special siege roles from the braindead Lazy General charge!
-        const selectedUnits = battleEnvironment.units.filter(u => 
+      const selectedUnits = battleEnvironment.units.filter(u => 
             u.side === "player" && 
             u.selected && 
             u.hp > 0 && 
             !u.isCommander && 
             !u.disableAICombat &&
-            u.siegeRole !== "ladder_fanatic" && // Let the fanatics swarm!
-            u.siegeRole !== "counter_battery"   // Let snipers hold their ground and shoot!
+            u.siegeRole !== "ladder_fanatic" && 
+            u.siegeRole !== "counter_battery" &&
+            u.siegeRole !== "treb_crew" &&       // SURGERY 3: Keep crews on the artillery!
+            u.siegeRole !== "trebuchet_crew" 
         );
 
         if (selectedUnits.length === 0) return;
@@ -107,18 +107,21 @@ document.addEventListener("keydown", (event) => {
             });
             return;
         }
-
-currentSelectionGroup = groupNum;
+		currentSelectionGroup = groupNum;
         playerUnits.forEach(u => {
-            
-            // SURGERY: Use the fault-tolerant role checker instead of strict string matching
             let roleCat = getTacticalRole(u);
-            let willBeSelected = (groupNum === 5);
+            let willBeSelected = false;
+            
+            if (groupNum === 5) willBeSelected = true;
             if (groupNum === 1 && ["INFANTRY", "SHIELD"].includes(roleCat)) willBeSelected = true;
             if (groupNum === 2 && roleCat === "RANGED") willBeSelected = true;
-            if (groupNum === 3 && roleCat === "CAVALRY") willBeSelected = true;
+			if (groupNum === 3 && isMountedOrBeast(u)) willBeSelected = true;
             if (groupNum === 4 && roleCat === "GUNPOWDER") willBeSelected = true;
-            
+
+            // STRICT OVERRIDE: Check the central logic gate
+            if (willBeSelected && !canSelectUnitNow(u)) {
+                willBeSelected = false;
+            }
             if (u.selected && !willBeSelected) {
                 if (u.hasOrders && u.orderType === "follow") {
                     u.orderType = "hold_position";
@@ -249,34 +252,37 @@ currentSelectionGroup = groupNum;
             break;
     }
 });
-
 function getTacticalRole(unit) {
     if (!unit) return "INFANTRY";
     
-    // 1. Primary Check: Official Stats Role
+    // 1. Setup the identifiers
     let r = unit.stats && unit.stats.role ? String(unit.stats.role).toUpperCase() : "";
+    let textCheck = String((unit.stats?.name || "") + " " + (unit.unitType || "") + " " + (unit.stats?.role || "")).toLowerCase();
     
-    // 2. Secondary Safety Net: Parse the unit's name/type for keywords
-    let textCheck = String((unit.stats?.name || "") + " " + (unit.unitType || "")).toUpperCase();
-
-    // GUNPOWDER
-    if (["BOMB", "ROCKET", "FIRELANCE", "GUNNER"].includes(r) || textCheck.match(/(BOMB|ROCKET|FIRE|CANNON|GUN)/)) {
-        return "GUNPOWDER";
-    }
-    // CAVALRY & BEASTS
-    if (["CAVALRY", "HORSE_ARCHER", "MOUNTED_GUNNER", "CAMEL", "ELEPHANT"].includes(r) || textCheck.match(/(CAV|HORSE|MOUNT|CAMEL|LANCER|ELEPH|KESHIG)/)) {
+    // 2. CAVALRY & BEASTS (The "Never Siege" Group)
+    // We check for keywords like 'lancer', 'eleph', and 'keshig' here.
+    if (["CAVALRY", "HORSE_ARCHER", "MOUNTED_GUNNER", "CAMEL", "ELEPHANT"].includes(r) || 
+        unit.stats?.isLarge || 
+        textCheck.match(/(cav|horse|mount|camel|lancer|eleph|keshig)/)) {
         return "CAVALRY";
     }
-    // RANGED
-    if (["ARCHER", "CROSSBOW", "THROWING"].includes(r) || textCheck.match(/(ARCHER|BOW|CROSSBOW|SLING|JAVELIN)/)) {
+
+    // 3. GUNPOWDER
+    if (["BOMB", "ROCKET", "FIRELANCE", "GUNNER"].includes(r) || textCheck.match(/(bomb|rocket|fire|cannon|gun)/)) {
+        return "GUNPOWDER";
+    }
+
+    // 4. RANGED
+    if (["ARCHER", "CROSSBOW", "THROWING"].includes(r) || textCheck.match(/(archer|bow|crossbow|sling|javelin)/)) {
         return "RANGED";
     }
-    // SHIELD
-    if (r === "SHIELD" || textCheck.match(/(SHIELD)/)) {
+
+    // 5. SHIELD
+    if (r === "SHIELD" || textCheck.match(/(shield)/)) {
         return "SHIELD";
     }
     
-    return "INFANTRY"; // Ultimate fallback
+    return "INFANTRY"; // Default for everyone else
 }
 function processTacticalOrders() {
     if (!inBattleMode || !battleEnvironment.units) return;
@@ -284,7 +290,8 @@ function processTacticalOrders() {
     const commander = battleEnvironment.units.find(u => u.isCommander && u.side === 'player');
 
     battleEnvironment.units.forEach(unit => {
-        if (unit.side !== "player" || unit.isCommander || unit.hp <= 0) return;
+        // SURGERY 1: Protect specialized AI crews from having their targets wiped by formation logic
+        if (unit.side !== "player" || unit.isCommander || unit.disableAICombat || unit.hp <= 0) return;
 
         // Decrement formation timer
         if (unit.formationTimer > 0) unit.formationTimer--;
@@ -311,14 +318,13 @@ function processTacticalOrders() {
         const isRanged = (tacticalRole === "RANGED" || tacticalRole === "GUNPOWDER");
         let emergencyThreshold = 100; 
 
-        // ---> SURGERY: THE ABSOLUTE OVERRIDE CHECK <---
-        // Determine if the player has issued a command that requires ignoring local threats
-        const isStrictCommand = unit.hasOrders && ["move_to_point", "retreat", "follow", "siege_assault"].includes(unit.orderType);
+// Removed move_to_point and siege_assault from the absolute strict list
+        const isStrictCommand = unit.hasOrders && ["retreat", "follow"].includes(unit.orderType);
 
         // ====================================================================
-        // SURVIVAL OVERRIDE: Only triggers if the unit IS NOT under strict orders
+        // SURVIVAL OVERRIDE: 100px Emergency Self-Defense
         // ====================================================================
-        if (nearestDist < emergencyThreshold && nearestEnemy && !isStrictCommand) {
+        if (nearestDist < emergencyThreshold && nearestEnemy && !isStrictCommand && !unit.disableAICombat) {
             if (unit.originalRange) {
                 unit.stats.range = unit.originalRange;
                 unit.originalRange = null;
@@ -327,7 +333,7 @@ function processTacticalOrders() {
             unit.reactionDelay = 0; 
             unit.formationTimer = 0; 
             unit.target = nearestEnemy;
-            return; // Halts waypoint logic so they fight
+            return; // Halts waypoint logic so they fight immediately
         }
 
         // ====================================================================
@@ -370,9 +376,9 @@ function processTacticalOrders() {
                 // Ensure we catch the global breach flag too
                 let gateBreached = window.__SIEGE_GATE_BREACHED__ || (southGate && (southGate.gateHP <= 0 || southGate.isOpen));
                 
-                if (gateBreached && unit.siegeRole !== "assault_complete") {
-                    unit.siegeRole = "assault_complete"; 
-                    
+				// --- SURGERY: Ensure the background AI NEVER touches the Ladder Fanatics ---
+                if (gateBreached && unit.siegeRole !== "assault_complete" && unit.siegeRole !== "ladder_fanatic") {
+                    unit.siegeRole = "assault_complete";
                     // SURGERY: Force them to immediately charge into the city to bypass the broken gate
                     let plazaX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : 1200;
                     let plazaY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : 800;
@@ -446,16 +452,24 @@ function processTacticalOrders() {
                     case "trebuchet_crew":
                         if (unit.siegeTarget && unit.siegeTarget.hp > 0) {
                             destX = unit.siegeTarget.x + (Math.random() - 0.5) * 25;
-                            destY = unit.siegeTarget.y + 20 + (Math.random() * 10);
+                            destY = unit.siegeTarget.y + 20 + (Math.random() * 10)+80;
                         } else {
                             unit.siegeRole = "ranged_support";
                         }
                         break;
 
-                    case "ranged_support":
-                        destX = unit.x; 
-                        let frontLineY = siegeEquipment.rams[0] ? siegeEquipment.rams[0].y : wallBoundaryY + 300;
-                        destY = Math.max(frontLineY + 120, wallBoundaryY + 150);
+					case "ranged_support":
+                        let isShortRange = String((unit.stats?.role || "") + " " + (unit.unitType || "")).toLowerCase().match(/(firelance|bomb|hand cannon)/);
+                        
+                        // Let short-range support keep their pushed-up target from siegebattle.js
+                        if (isShortRange && unit.target && unit.target.isDummy && unit.target.y < wallBoundaryY + 150) {
+                            destX = unit.target.x;
+                            destY = unit.target.y;
+                        } else {
+                            destX = unit.x; 
+                            let frontLineY = siegeEquipment.rams[0] ? siegeEquipment.rams[0].y : wallBoundaryY + 300;
+                            destY = Math.max(frontLineY + 120, wallBoundaryY + 150);
+                        }
                         
                         if (nearestEnemy && nearestEnemy.onWall) {
                             let dist = Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y);
@@ -470,17 +484,32 @@ function processTacticalOrders() {
                         }
                         break;
 
-                    case "infantry_reserve":
-                        destX = unit.x;
-                        destY = wallBoundaryY + 200; 
+						case "infantry_reserve":
+                        // If siegebattle.js pushed them forward to funnel, respect it!
+                        if (unit.target && unit.target.isDummy && unit.target.y < wallBoundaryY + 200) {
+                            destX = unit.target.x;
+                            destY = unit.target.y;
+                        } else {
+                            destX = unit.x;
+                            destY = wallBoundaryY + 200; 
+                        }
                         break;
 
-                    case "cavalry_reserve":
-                        destX = unit.x;
-                        destY = wallBoundaryY + 350; 
-                        break;
-                }
+					case "cavalry_reserve":
+                        let destX2 = unit.x;
+                        // FIX: Ensure they are staging behind the camp, not just the wall boundary
+                        let safeCampY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.campPixelY : wallBoundaryY + 300;
+                        let destY2 = safeCampY + 500;
 
+                        // Check if already at destination
+                        if (Math.hypot(unit.x - destX2, unit.y - destY2) < 5) {
+                            unit.hasOrders = false;       
+                            unit.orderType = null;        
+                            unit.target = null;           
+                            unit.state = "idle";          
+                        }
+                        break;
+				}
                 unit.target = { 
                     x: destX, 
                     y: destY, 
@@ -508,10 +537,10 @@ function processTacticalOrders() {
             }
 
             let safeDest = getSafeMapCoordinates(rawDestX, rawDestY);
-            let destX = safeDest.x;
-            let destY = safeDest.y;
+            let destX3 = safeDest.x;
+            let destY3 = safeDest.y;
 
-            let distToDest = Math.hypot(unit.x - destX, unit.y - destY);
+            let distToDest = Math.hypot(unit.x - destX3, unit.y - destY3);
             let shouldFocusOnShooting = false;
             
             if (distToDest > 20) {
@@ -544,8 +573,8 @@ function processTacticalOrders() {
 
             if (!shouldFocusOnShooting) {
                 unit.target = { 
-                    x: destX, 
-                    y: destY, 
+                    x: destX3, 
+                    y: destY3, 
                     hp: 100, 
                     isDummy: true,
                     side: unit.side, 
@@ -563,76 +592,126 @@ function processTacticalOrders() {
     });
 }
 // ============================================================================
-// SIEGE ASSAULT COMMAND ENGINE
+// SIEGE ASSAULT COMMAND ENGINE (REVISED & FIXED)
 // ============================================================================
+
+function isSiegeGateBreached() {
+
+    // If not a siege, always allow
+    if (typeof inSiegeBattle === "undefined" || !inSiegeBattle) {
+        return true;
+    }
+
+    let southGate =
+        typeof overheadCityGates !== "undefined"
+            ? overheadCityGates.find(g => g.side === "south")
+            : null;
+
+    return (
+        window.__SIEGE_GATE_BREACHED__ === true ||
+        (southGate && (southGate.isOpen || southGate.gateHP <= 0))
+    );
+}
+
+function isMountedOrBeast(unit) {
+    if (!unit || !unit.stats) return false;
+    if (unit.isCommander) return false; // Commander is exempt from "mounted" restrictions
+    
+    const role = (unit.stats.role || "").toLowerCase();
+    const type = (unit.unitType || "").toLowerCase();
+    const combined = `${role} ${type}`;
+    
+    // Check for "Large" flag or specific unit keywords
+    return unit.stats.isLarge || 
+           combined.match(/(cav|horse|lancer|mount|camel|eleph|beast|keshig|cataphract|zamburak)/);
+}
+
+function canSelectUnitNow(unit) {
+    if (!unit || unit.hp <= 0) return false;
+    if (unit.isCommander) return true;
+
+    if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
+        // 🚫 Block all mounted/beast types until gate opens
+        if (isMountedOrBeast(unit) && !isSiegeGateBreached()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function executeSiegeAssaultAI(units) {
     if (!siegeEquipment) return;
     const gateBreached = window.__SIEGE_GATE_BREACHED__;
+
+    // --- FIX 1: Initialize ALL required arrays and variables ---
     let meleeInfantry = [];
     let gunpowder = [];
     let archers = [];
     let cavalry = [];
+    let artilleryCrews = []; 
+    
+    let trebCount = (siegeEquipment.trebuchets) ? siegeEquipment.trebuchets.length : 0;
 
-    // 1. Categorize Troops
+    // 1. Categorize Troops (REVISED)
     units.forEach(u => {
-        
-        const isCav = !canUseSiegeEngines(u);
-
-        // If it's cavalry and the gate is NOT broken
-        if (isCav && !gateBreached) {
-            // ONLY allow movement if the player explicitly gave an order (right-click)
-            if (!u.hasOrders) {
-                u.state = "idle";
-                u.target = null;
-                return; 
-            }
-        }
-        
         let role = getTacticalRole(u);
-        // STRICT FILTER: Catch any mention of mount, horse, camel, elephant, cav
         let textCheck = String((u.stats?.name || "") + " " + (u.unitType || "") + " " + (u.stats?.role || "")).toLowerCase();
         
-        if (role === "CAVALRY" || u.stats?.isLarge || textCheck.match(/(cav|horse|mount|camel|lancer|eleph)/)) {
+        // PRIORITY 1: Identify Artillery Crews first so they aren't drafted as infantry
+        if (u.siegeRole === "treb_crew" || u.siegeRole === "trebuchet_crew" || textCheck.includes("crew")) {
+            artilleryCrews.push(u);
+            return;
+        }
+
+        // PRIORITY 2: Is it a beast/horse? Sort them to Cavalry immediately.
+        if (role === "CAVALRY" || u.stats?.isLarge || textCheck.match(/(cav|horse|mount|camel|lancer|eleph|keshig)/)) {
             cavalry.push(u);
-        } else if (role === "GUNPOWDER") {
+            
+            // If gate isn't broken, make them stay put unless ordered
+            if (!gateBreached && !u.hasOrders) {
+                u.state = "idle";
+                u.target = null;
+            }
+            return; 
+        } 
+// PRIORITY 3: Sort remaining humans
+        let isSpecialist = textCheck.match(/(firelance|bomb|javelin|repeater)/);
+
+        if (role === "GUNPOWDER" && !isSpecialist) {
             gunpowder.push(u);
-        } else if (role === "RANGED") {
+        } else if (role === "RANGED" && !isSpecialist) {
             archers.push(u);
         } else {
-            meleeInfantry.push(u);
+            meleeInfantry.push(u); // Specialists go to the meatgrinder!
         }
     });
 
-    // 2. Identify Artillery Crews (Gunpowder first, then Archers if needed)
-    let artilleryCrews = [];
-    let trebCount = siegeEquipment.trebuchets.length;
-    let crewsNeeded = trebCount * 3; // 3 men per trebuchet visually
-
-    while (artilleryCrews.length < crewsNeeded && gunpowder.length > 0) {
-        artilleryCrews.push(gunpowder.shift());
-    }
-    while (artilleryCrews.length < crewsNeeded && archers.length > 0) {
-        artilleryCrews.push(archers.shift());
+    // 2. MEATGRINDER DRAFT: Only pull from ranged if melee is critical (< 20)
+    if (meleeInfantry.length < 20) {
+        let neededTroops = 60 - meleeInfantry.length;
+        // Splice from archers first, then gunpowder
+        let draftedArchers = archers.splice(0, neededTroops);
+        let draftedGunners = gunpowder.splice(0, Math.max(0, neededTroops - draftedArchers.length));
+        
+        meleeInfantry.push(...draftedArchers, ...draftedGunners);
     }
 
     // 3. Assign Orders
     let ramIndex = 0;
     let ladderIndex = 0;
 
-    // Distribute Melee Infantry
+    // Distribute Melee Infantry to Rams & Ladders
     meleeInfantry.forEach((u, index) => {
         u.hasOrders = true;
         u.orderType = "siege_assault";
         u.siegeRole = "infantry_reserve";
         
-        // Assign to Rams (Front of the queue)
         if (siegeEquipment.rams.length > 0 && index < 25) { 
             u.siegeRole = "ram_pusher";
             u.siegeTarget = siegeEquipment.rams[ramIndex % siegeEquipment.rams.length];
-            u.queuePos = index; // Used to line them up behind the ram
+            u.queuePos = index; 
             ramIndex++;
         } 
-        // Assign to Ladders
         else if (siegeEquipment.ladders.length > 0 && index >= 25 && index < 60) {
             u.siegeRole = "ladder_carrier";
             u.siegeTarget = siegeEquipment.ladders[ladderIndex % siegeEquipment.ladders.length];
@@ -641,38 +720,38 @@ function executeSiegeAssaultAI(units) {
         }
     });
 
-    // Distribute Artillery Crews
-    artilleryCrews.forEach((u, index) => {
-        u.hasOrders = true;
-        u.orderType = "siege_assault";
-        u.siegeRole = "trebuchet_crew";
-        u.siegeTarget = siegeEquipment.trebuchets[index % trebCount];
-    });
+    // --- FIX 2: Assign Artillery Crews (Safely uses trebCount) ---
+    if (trebCount > 0) {
+        artilleryCrews.forEach((u, index) => {
+            u.hasOrders = true;
+            u.orderType = "siege_assault";
+            u.siegeRole = "trebuchet_crew";
+            u.siegeTarget = siegeEquipment.trebuchets[index % trebCount];
+        });
+    }
 
-    // Distribute remaining Ranged (Support fire behind infantry)
+    // Distribute remaining Ranged as Support
     [...gunpowder, ...archers].forEach(u => {
         u.hasOrders = true;
         u.orderType = "siege_assault";
         u.siegeRole = "ranged_support";
     });
 
-    // --- SURGERY 2: CAVALRY STAGING & "HUNTING" THE GATE ---
+// Distribute Cavalry (Rear Guard)
     let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
-    
-    // Distribute Cavalry (Rear Guard)
+    let campY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.campPixelY : (BATTLE_WORLD_HEIGHT - 500); // <-- ADD THIS
     cavalry.forEach(u => {
         u.hasOrders = true;
         u.orderType = "siege_assault";
         u.siegeRole = "cavalry_reserve";
-        // Point them at the gate area so they are ready to flood in
         if (southGate) {
-            u.orderTargetPoint = { x: southGate.x * BATTLE_TILE_SIZE, y: (southGate.y * BATTLE_TILE_SIZE) + 100 };
+            // FIX: Point them 500px behind the camp, not the wall
+            u.orderTargetPoint = { x: southGate.x * BATTLE_TILE_SIZE, y: campY + 500 }; 
         }
     });
 
     if (typeof AudioManager !== 'undefined') AudioManager.playSound('charge');
 }
-
 // ============================================================================
 // RTS MOUSE CONTROLS (SELECTION & MOVEMENT) - FIXED VERSION
 // ============================================================================
@@ -759,7 +838,7 @@ document.addEventListener('mouseup', (e) => {
         const maxY = Math.max(selectionBoxStart.y, pos.y);
 
         playerUnits.forEach(u => {
-            u.selected = (u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY);
+u.selected = (u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY && canSelectUnitNow(u));
         });
         
         currentSelectionGroup = null; 
@@ -770,15 +849,16 @@ document.addEventListener('mouseup', (e) => {
         let clickedUnit = null;
         let closestDist = Infinity;
         
-        playerUnits.forEach(u => {
-            let hitbox = (u.stats.radius || 10) + 20; // Generous clicking area
-            let d = Math.hypot(u.x - pos.x, u.y - pos.y);
-            if (d < hitbox && d < closestDist) {
-                closestDist = d;
-                clickedUnit = u;
-            }
-        });
+playerUnits.forEach(u => {
+    if (!canSelectUnitNow(u)) return;
 
+    let hitbox = (u.stats.radius || 10) + 20;
+    let d = Math.hypot(u.x - pos.x, u.y - pos.y);
+    if (d < hitbox && d < closestDist) {
+        closestDist = d;
+        clickedUnit = u;
+    }
+});
         const now = Date.now();
         const isDoubleClick = (now - lastClickTime < 350) && clickedUnit && (lastClickedUnitType === clickedUnit.unitType);
 
@@ -1145,7 +1225,9 @@ function applyFormationAdjustment() {
 function isRangedType(unit) {
     if (!unit || !unit.stats) return false;
     const r = unit.stats.role;
-    return ["archer", "horse_archer", "crossbow", "gunner", "mounted_gunner", "Rocket", "bomb", "throwing", "firelance"].includes(r);
+   // SURGERY: Remove Firelances, Bombs, and Javelins from the "Ranged Stand-by" list
+// This prevents them from clumping in the back line.
+return ["archer", "horse_archer", "crossbow", "gunner", "mounted_gunner", "Rocket"].includes(r);
 }
 
 // ============================================================================
@@ -1155,4 +1237,14 @@ function canUseSiegeEngines(unit) {
     const role = getTacticalRole(unit);
     // Cavalry and Large Beasts cannot push rams or climb ladders
     return !(role === "CAVALRY" || (unit.stats && unit.stats.isLarge));
+}
+
+function isCavalryUnit(unit) {
+    if (!unit || !unit.stats) return false;
+    // Exception: Always allow selection of the General
+    if (unit.isCommander || unit.unitType === "General") return false;
+
+    const txt = String(unit.unitType + " " + (unit.stats.role || "")).toLowerCase();
+    const cavRegex = /(cav|cavalry|keshig|horse|lancer|mount|camel|eleph|knight)/;
+    return cavRegex.test(txt);
 }

@@ -955,10 +955,11 @@ else if (type === "horse_archer") {
         let weaponBob = b; 
         let ammo = (typeof unitAmmo !== 'undefined') ? unitAmmo : 1;
 
-        // --- FETCH ACTUAL COOLDOWN TIMERS ---
+      // --- FETCH ACTUAL COOLDOWN TIMERS ---
         let cd = (typeof cooldown !== 'undefined') ? cooldown : 0;
-        let maxCd = (typeof unit !== 'undefined' && unit.stats && unit.stats.cooldown) ? unit.stats.cooldown : 2000;
-
+        
+        // Hard-sync with getReloadTime() which returns 170 for ALL Horse Archers (Including Commander)
+        let maxCd = 170;
         // --- REVISED ARROW QUIVER ---
         ctx.save();
         ctx.translate(-3, 0 + b); // Pulled in closer to the hip

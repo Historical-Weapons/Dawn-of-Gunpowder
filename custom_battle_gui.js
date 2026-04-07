@@ -1,12 +1,58 @@
 // ============================================================================
 // EMPIRE OF THE 13TH CENTURY - CUSTOM BATTLE SYSTEM (ROME 2 STYLE UI)
 // ============================================================================
+function isValidSiegeUnit(unitName, unitData) {
+    if (!unitData) return false;
+    const name = String(unitName).toLowerCase();
+    const role = String(unitData.role || "").toLowerCase();
+    const combined = name + " " + role;
+
+    // EXCEPTION: Always allow Generals/Commanders
+    if (combined.match(/(general|commander)/) || unitData.isCommander) return true;
+
+    // BAN: Any unit matching these strings
+    const cavRegex = /(cav|cavalry|keshig|horse|lancer|mount|camel|eleph|knight)/;
+    if (cavRegex.test(combined)) return false;
+
+    return true;
+}
+// Apply this inside your Randomize/Auto-fill loop:
+function autoFillRoster(setup, budget) {
+    let currentCost = 0;
+    const availableUnits = Object.keys(UnitRoster.allUnits);
+    
+    // Safety counter to prevent infinite loops if roster is empty
+    let attempts = 0; 
+    
+    while (currentCost < budget && attempts < 500) {
+        attempts++;
+        let randomUnitName = availableUnits[Math.floor(Math.random() * availableUnits.length)];
+        let unitData = UnitRoster.allUnits[randomUnitName];
+
+        // --- THE FIX: Skip if it's a Siege and the unit is Cavalry ---
+        if (customBattleMode === "siege") {
+            if (!isValidSiegeUnit(randomUnitName, unitData)) {
+                continue; // Skip to next attempt without spending budget or slots
+            }
+        }
+
+        if (currentCost + unitData.cost <= budget) {
+            setup.roster.push(randomUnitName);
+            currentCost += unitData.cost;
+        }
+    }
+}
 
 (function () {
  let customBattleMode = "field"; // Can be "field" or "siege"
     // --- STATE MANAGEMENT ---
     let customBattleActive = false;
-    let customFunds = 500;
+// Give siege way bigger budget
+if (customBattleMode === "siege") {
+    customFunds = 3000;    
+} else {
+    customFunds = 1000;
+}
     
     let playerSetup = { faction: "Hong Dynasty", color: "#d32f2f", roster: [], cost: 0 };
     let enemySetup = { faction: "Great Khaganate", color: "#1976d2", roster: [], cost: 0 };
@@ -167,7 +213,7 @@ const FactionUnitRules = {
         
         const settingsBox = document.createElement("div");
         settingsBox.style.display = "flex";
-        settingsBox.style.gap = "20px";
+        settingsBox.style.gap = "5px";
         settingsBox.style.alignItems = "center";
         settingsBox.innerHTML = `
 <div>
@@ -188,13 +234,9 @@ const FactionUnitRules = {
 
             <div>
                 <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Funds</label><br>
-                <input id="cb-funds-input" type="number" value="${customFunds}" min="100" max="2000" step="100"style="background: #3e2723; color: #f5d76e; border: 1px solid #d4b886; padding: 5px; width: 100px; font-family: Georgia; text-align: right;">
+                <input id="cb-funds-input" type="number" value="${customFunds}" min="100" max="4000" step="100"style="background: #3e2723; color: #f5d76e; border: 1px solid #d4b886; padding: 5px; width: 100px; font-family: Georgia; text-align: right;">
             </div>
-            <div style="margin-left: 15px; text-align: center;">
-                <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Game Mode</label><br>
-                <div style="color: #ff9800; font-size: 14px; font-weight: bold; margin-top: 4px; text-shadow: 1px 1px 2px #000;">
-                   Field Battle
-                </div>
+ 
             </div>
         `;
 
@@ -234,10 +276,10 @@ const FactionUnitRules = {
 
         // --- REVISED EVENT LISTENERS ---
         document.getElementById("cb-funds-input").addEventListener("change", (e) => {
-            let val = parseInt(e.target.value) || 500;
+            let val = parseInt(e.target.value) || 1000;
             
-            // SURGERY: Force value between 100 and 2000
-            customFunds = Math.max(100, Math.min(2000, val));
+ 
+            customFunds = Math.max(100, Math.min(4000, val));
             
             // Sync the input box display so it doesn't show the illegal number
             e.target.value = customFunds; 
@@ -263,13 +305,16 @@ const FactionUnitRules = {
         }
     };
 
-    // --- PANEL CREATION ---
+ 
    // --- PANEL CREATION (Updated with Clear All Button) ---
    function createArmyPanel(title, setupObj, side) {
     const panel = document.createElement("div");
     panel.style.flex = "1";
     panel.style.display = "flex";
     panel.style.flexDirection = "column";
+	panel.style.minHeight = "0";
+	panel.style.overflow = "hidden";
+
     panel.style.background = "rgba(20, 20, 20, 0.8)";
     
     // Header setup
@@ -293,8 +338,11 @@ const FactionUnitRules = {
 
 // Catalog Grid (Available Units)
     const catalog = document.createElement("div");
-    catalog.style.flex = "2";
-    catalog.style.overflowY = "auto";
+catalog.style.flex = "1 1 0";
+ 
+catalog.style.minHeight = "0";
+catalog.style.overflowY = "auto";
+catalog.style.overflowX = "hidden";
     catalog.style.padding = "15px";
     catalog.style.display = "grid";
     catalog.style.gridTemplateColumns = "repeat(auto-fill, minmax(70px, 1fr))";
@@ -310,6 +358,9 @@ const FactionUnitRules = {
     trayContainer.style.flex = "1";
     trayContainer.style.background = "rgba(0,0,0,0.8)";
     trayContainer.style.padding = "10px";
+	trayContainer.style.flex = "1 1 0";
+trayContainer.style.minHeight = "0";
+trayContainer.style.overflow = "hidden";
     
     const trayHeader = document.createElement("div");
     trayHeader.style.display = "flex";
@@ -318,7 +369,17 @@ const FactionUnitRules = {
     trayHeader.style.marginBottom = "10px";
 
     const trayTitle = document.createElement("div");
-    trayTitle.innerText = "SELECTED ROSTER (Max 30)";
+trayTitle.style.color = "#a1887f";
+trayTitle.style.fontSize = "12px";
+
+// Create dynamic text
+const countSpan = document.createElement("span");
+countSpan.id = `cb-count-${side}`;
+countSpan.style.color = "#f5d76e";
+countSpan.style.marginLeft = "8px";
+
+trayTitle.innerHTML = `SELECTED ROSTER (Max 100) `;
+trayTitle.appendChild(countSpan);
     trayTitle.style.color = "#a1887f";
     trayTitle.style.fontSize = "12px";
 
@@ -342,7 +403,9 @@ const tray = document.createElement("div");
     tray.style.display = "flex";
     tray.style.flexWrap = "wrap";
     tray.style.gap = "5px";
-    tray.style.overflowY = "auto";
+tray.style.overflowY = "auto";
+tray.style.overflowX = "hidden";
+tray.style.minHeight = "0";
     tray.style.maxHeight = "calc(100% - 25px)";
     
     // --- NEW: Snap selected roster rows to the top-left ---
@@ -443,12 +506,16 @@ const tray = document.createElement("div");
 
         // Live Render Canvas
         const canvas = document.createElement("canvas");
-        canvas.width = 70; canvas.height = 70;
+		canvas.width = 70;
+		canvas.height = 70;
+
         canvas.style.position = "absolute";
-        canvas.style.top = "0"; canvas.style.left = "0";
-        
+        canvas.style.top = "0px"; canvas.style.left = "0px";
+       
+
+	   
         const ctx = canvas.getContext("2d");
-        ctx.translate(35, 55); // Center unit in card
+      ctx.translate(35, 55);
 
         // Map role to visual type
         let visType = "peasant";
@@ -499,7 +566,7 @@ const tray = document.createElement("div");
             let setup = side === "player" ? playerSetup : enemySetup;
             if (isCatalog) {
                 if (setup.cost + cost > customFunds) return; // Ignore if it exceeds funds
-                if (setup.roster.length >= 30) return; // Engine soft limit
+                if (setup.roster.length >= 100) return; // Engine soft limit
                 
                 setup.roster.push(unitKey);
                 setup.cost += cost;
@@ -532,6 +599,11 @@ const tray = document.createElement("div");
                 fundsEl.style.color = (customFunds - setup.cost) < 0 ? "#f44336" : "#f5d76e";
             }
 
+const countEl = document.getElementById(`cb-count-${side}`);
+if (countEl) {
+    countEl.innerText = `[${setup.roster.length} / 100]`;
+}
+	
             // Update faction dropdown
             const factionEl = document.getElementById(`cb-faction-${side}`);
             if (factionEl) {
@@ -558,7 +630,8 @@ const tray = document.createElement("div");
 // --- RANDOM BATTLE GENERATOR ---
     function launchRandomBattle() {
         // 1. HARD RESET: Clear all manual selections and influence
-        customFunds = 500;
+		// Set funds based on battle type
+		customFunds = (customBattleMode === "siege") ? 3000 : 1000;
         const fundsInput = document.getElementById("cb-funds-input");
         if (fundsInput) fundsInput.value = customFunds;
 
@@ -592,20 +665,22 @@ const tray = document.createElement("div");
                 Object.keys(UnitRoster.allUnits).filter(k => k !== "Commander");
 
             let attempts = 0;
-            // Target the 500 budget limit
-            while (setup.roster.length < 30 && attempts < 200) {
-                attempts++;
+						// Target the 500 budget limit
+			const maxUnits = (customBattleMode === "siege") ? 100 : 100;
 
-                let unitKey = allowedUnits[Math.floor(Math.random() * allowedUnits.length)];
-                let unitData = UnitRoster.allUnits[unitKey];
-                let cost = unitData ? (unitData.cost || 50) : 50;
+			while (setup.roster.length < maxUnits && attempts < 500) {
+				attempts++;
 
-                // Only add if it fits the remaining budget
-                if (setup.cost + cost <= customFunds) {
-                    setup.roster.push(unitKey);
-                    setup.cost += cost;
-                } 
-            }
+			let unitKey = allowedUnits[Math.floor(Math.random() * allowedUnits.length)];
+			let unitData = UnitRoster.allUnits[unitKey];
+			let cost = unitData ? (unitData.cost || 50) : 50;
+
+			// Only add if it fits the remaining budget
+		if (setup.cost + cost <= customFunds) {
+				setup.roster.push(unitKey);
+				setup.cost += cost;
+			}
+		}
             
             // Sort to keep the deployment looking organized
             setup.roster.sort();
@@ -949,7 +1024,19 @@ if (typeof window.player === "undefined" || !window.player) {
         
         // Create the unit stats based on the roster template
         let cmdrStats = Object.assign(new Troop(cmdrName, cmdrRole, true, faction), baseGeneral);
-        
+        // SURGERY: Fallback stats to prevent NaN Invincibility
+cmdrStats.health = cmdrStats.health || 140;
+cmdrStats.meleeAttack = cmdrStats.meleeAttack || 22;
+cmdrStats.meleeDefense = cmdrStats.meleeDefense || 5;
+cmdrStats.missileBaseDamage = cmdrStats.missileBaseDamage || 14;
+cmdrStats.missileAPDamage = cmdrStats.missileAPDamage || 8;
+cmdrStats.armor = cmdrStats.armor || 20; // Assuming ARMOR_TIERS.PARTIAL_LAMELLAR is ~20
+cmdrStats.accuracy = cmdrStats.accuracy || 72;
+cmdrStats.range = cmdrStats.range || 700;
+cmdrStats.ammo = cmdrStats.ammo || 24;
+cmdrStats.morale = cmdrStats.morale || 95;
+cmdrStats.speed = cmdrStats.speed || 1.2;
+cmdrStats.experienceLevel = cmdrStats.experienceLevel || 5;
         // Dynamically pull the health and ammo values from the template
         let finalMaxHp = cmdrStats.health || 200;
         let finalAmmo = cmdrStats.ammo || 24;
@@ -961,7 +1048,8 @@ if (typeof window.player === "undefined" || !window.player) {
             color: color,
             unitType: cmdrName, 
             isCommander: true,
-            disableAICombat: false, //counterintuitive but needed
+           // SURGERY: THIS MUST BE TRUE FOR THE PLAYER SIDE!
+            disableAICombat: (side === "player"),
             stats: cmdrStats,
             hp: finalMaxHp,       // Pulls 200 directly from your General stats
             maxHp: finalMaxHp,    
@@ -1164,3 +1252,5 @@ function handleCustomBattleExit() {
         return btn;
     }
 })();
+
+

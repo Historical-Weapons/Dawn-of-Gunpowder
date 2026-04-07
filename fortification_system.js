@@ -8,12 +8,14 @@ let overheadCityGates = [];   // Single source of truth for gate data
 
 function renderDynamicGates(ctx) {
     if (!battleEnvironment.cityGates) return;
+	battleEnvironment.cityGates.forEach(gate => {
+        if (!gate.pixelRect) return; 
 
-    battleEnvironment.cityGates.forEach(gate => {
-        if (!gate.pixelRect) return; // Safety check
-
-// --- NEW SURGERY: Make it vanish when destroyed ---
-        if (gate.gateHP <= 0 || gate.isOpen) return;
+        // --- SURGERY: If gate is broken or open, physically move its collision box off-map
+        if (gate.gateHP <= 0 || gate.isOpen) {
+            gate.pixelRect.x = -9999; // Yeet the physics box away so player can't hit it
+            return; 
+        }
 		
         const px = gate.pixelRect.x;
         const py = gate.pixelRect.y;
@@ -91,17 +93,29 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
     let towers = [];
     let baseColor = arch.walls[1] || arch.walls[0];
 
-    // 2. THE HOLLOW WALL & ENCLOSED GATES
+ // 2. THE HOLLOW WALL & ENCLOSED GATES (Expanded with massive inner wood structure)
+    let woodThick = 7; // The inward extension of the wooden platform
+    let combinedThick = wallThick + woodThick; // Almost doubles the structure thickness
+
     for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
-            let isEdge = (x >= startX && x < startX + wallThick) || (x <= endX && x > endX - wallThick) || 
-                         (y >= startY && y < startY + wallThick) || (y <= endY && y > endY - wallThick);
             
+// Calculate distance to the closest boundary
+            let distFromLeft = x - startX;
+            let distFromRight = endX - x;
+            let distFromTop = y - startY;
+            let distFromBottom = endY - y;
+            let minDistToEdge = Math.min(distFromLeft, distFromRight, distFromTop, distFromBottom);
+
+            let isEdge = (minDistToEdge >= 0 && minDistToEdge < combinedThick);
             if (!isEdge) continue;
 
             let isGateZone = Math.abs(x - midX) <= gateRadius;
             let isVerticalGate = (y >= startY && y < startY + wallThick) || (y <= endY && y > endY - wallThick);
             
+            // NEW SURGERY: Detect the wooden extension area sitting directly behind the gate
+            let isGateExtension = isGateZone && !isVerticalGate && ((y >= startY && y < startY + combinedThick) || (y <= endY && y > endY - combinedThick));
+
             if (isGateZone && isVerticalGate) {
                 const gate = (y < startY + wallThick)
                     ? overheadCityGates.find(g => g.side === "north")
@@ -113,72 +127,109 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
                 }
                 continue;
             }
-
-// --- INACCESSIBLE PARAPETS & WALKABLE FLOORS ---
+            else if (isGateExtension) {
+                // FORCE the area behind the gate to remain an open road (Tile 1)
+                grid[x][y] = 1; 
+                continue; 
+            }
             else {
-                // 1. Distance calculations (Concentric ring logic)
-                let distFromLeft = x - startX;
-                let distFromRight = endX - x;
-                let distFromTop = y - startY;
-                let distFromBottom = endY - y;
-                
-                let minDistToEdge = Math.min(distFromLeft, distFromRight, distFromTop, distFromBottom);
-
-                // Creates perfect concentric rings based on distance from the edge
-                // 0-1 tiles: Outer Parapet | 2-3 tiles: Walkable Floor | 4-5 tiles: Inner Parapet
-                let isOuterParapet = (minDistToEdge < 2);
-                let isInnerParapet = (minDistToEdge >= wallThick - 2); 
-
                 let px = x * CITY_TILE_SIZE;
+                // ... (Keep the rest of your Zone 1, 2, 3 logic exactly the same)
                 let py = y * CITY_TILE_SIZE;
+                let isHorizontalWall = (minDistToEdge === distFromTop || minDistToEdge === distFromBottom);
 
-                // --- CASE A: CONTINUOUS INNER EXIT (Stairs Surrounding the City) ---
-                if (isInnerParapet) {
-                    grid[x][y] = 12; // Passable stair/ladder tile 
-                    
-                    // Render the ladder asset
-                    ctx.fillStyle = "#2c2c2c"; // Dark backdrop
-                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                    ctx.fillStyle = "#5c4033"; // Wood Brown
-
-                    // Rotate the ladders visually based on which wall we are drawing
-                    if (minDistToEdge === distFromTop || minDistToEdge === distFromBottom) {
-                        // North & South Walls (Vertical ladders)
-                        ctx.fillRect(px + 2, py, 2, CITY_TILE_SIZE); // Left rail
-                        ctx.fillRect(px + CITY_TILE_SIZE - 4, py, 2, CITY_TILE_SIZE); // Right rail
-                        for (let step = 2; step < CITY_TILE_SIZE; step += 4) {
-                            ctx.fillRect(px + 2, py + step, CITY_TILE_SIZE - 6, 2); // Rungs
-                        }
-                    } else {
-                        // East & West Walls (Horizontal ladders)
-                        ctx.fillRect(px, py + 2, CITY_TILE_SIZE, 2); // Top rail
-                        ctx.fillRect(px, py + CITY_TILE_SIZE - 4, CITY_TILE_SIZE, 2); // Bottom rail
-                        for (let step = 2; step < CITY_TILE_SIZE; step += 4) {
-                            ctx.fillRect(px + step, py + 2, 2, CITY_TILE_SIZE - 6); // Rungs
-                        }
-                    }
-                }
-                // 2. SOLID OUTER WALL (The side facing the enemy)
-                else if (isOuterParapet) {
-                    grid[x][y] = 6; 
+                // --- ZONE 1: SOLID STONE WALL (Outer Bulk) ---
+                if (minDistToEdge <= wallThick - 3) {
+                    grid[x][y] = 6; // Impassable Solid Stone
                     ctx.fillStyle = baseColor;
                     ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                    ctx.fillStyle = "rgba(40, 40, 40, 0.45)";
-                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    
+                    // Shadow the outer parapet edge to give it depth
+                    if (minDistToEdge < 2) {
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+                        ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    }
                 }
-                // --- CASE C: WALKABLE BATTLE FLOOR ---
-                else {
-                    grid[x][y] = 8; // Battle floor
-                    ctx.fillStyle = "#b8b5ad"; 
+                
+                // --- ZONE 2: CONTINUOUS WOODEN STAIRS (Innermost Ring) ---
+                else if (minDistToEdge === combinedThick - 1) {
+                    grid[x][y] = 9; // Ladder/Climb tile! Triggers t.onWall = true in your logic
+                    
+                    // Black void underneath the stairs
+                    ctx.fillStyle = "#1a1a1a";
                     ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                    ctx.strokeStyle = "rgba(0,0,0,0.1)"; 
-                    ctx.strokeRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                    ctx.fillStyle = "rgba(255,255,255,0.3)"; 
-                    ctx.fillRect(px + 1, py + 1, CITY_TILE_SIZE - 2, CITY_TILE_SIZE - 2);
+
+                    ctx.fillStyle = "#4A3728"; // Dark Wood Base
+                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    
+                    // Draw continuous climbing steps oriented correctly
+                    for (let step = 1; step < CITY_TILE_SIZE; step += 4) {
+                        ctx.fillStyle = "rgba(0,0,0,0.6)"; 
+                        if (isHorizontalWall) ctx.fillRect(px, py + step + 1, CITY_TILE_SIZE, 1);
+                        else ctx.fillRect(px + step + 1, py, 1, CITY_TILE_SIZE);
+                        
+                        ctx.fillStyle = "#A67B5B"; // Lighter wood for the step lip
+                        if (isHorizontalWall) ctx.fillRect(px, py + step, CITY_TILE_SIZE, 2);
+                        else ctx.fillRect(px + step, py, 2, CITY_TILE_SIZE);
+                    }
+                }
+                
+                // --- ZONE 3: WIDE WOODEN WALKWAY (Overlap + Scaffold) ---
+                else {
+                    grid[x][y] = 8; // Fully Walkable Wall Platform
+
+                    // If it overlaps the inner stone edge, draw stone underneath for realism
+                    if (minDistToEdge < wallThick) {
+                        ctx.fillStyle = baseColor;
+                        ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                        ctx.fillStyle = "rgba(0,0,0,0.4)"; // Shadow to sink the stone under the wood
+                        ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    } else {
+                        // Pure scaffold overhang: dark void below
+                        ctx.fillStyle = "rgba(0,0,0,0.85)";
+                        ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    }
+
+                    // Wood Base Color
+                    ctx.fillStyle = "#C19A6B"; 
+                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+
+                    // Draw Planks
+                    ctx.fillStyle = "#6B4226"; 
+                    let plankWidth = 4;
+                    if (isHorizontalWall) {
+                        for (let p = 0; p <= CITY_TILE_SIZE; p += plankWidth) {
+                            ctx.fillRect(px + p, py, 1, CITY_TILE_SIZE);
+                        }
+                    } else {
+                        for (let p = 0; p <= CITY_TILE_SIZE; p += plankWidth) {
+                            ctx.fillRect(px, py + p, CITY_TILE_SIZE, 1);
+                        }
+                    }
+                    
+                    // Draw heavy support beams under the overhanging scaffold portion
+                    if (minDistToEdge >= wallThick && minDistToEdge % 2 === 0) {
+                        ctx.fillStyle = "#3e2723"; 
+                        if (isHorizontalWall) {
+                            ctx.fillRect(px, py + CITY_TILE_SIZE / 2 - 2, CITY_TILE_SIZE, 4);
+                        } else {
+                            ctx.fillRect(px + CITY_TILE_SIZE / 2 - 2, py, 4, CITY_TILE_SIZE);
+                        }
+                    }
+
+                    // Drop shadow overlapping from the solid stone wall onto the wood
+                    if (minDistToEdge === wallThick - 2) {
+                        ctx.fillStyle = "rgba(0,0,0,0.4)";
+                        if (distFromTop === minDistToEdge) ctx.fillRect(px, py, CITY_TILE_SIZE, 6);
+                        else if (distFromBottom === minDistToEdge) ctx.fillRect(px, py + CITY_TILE_SIZE - 6, CITY_TILE_SIZE, 6);
+                        else if (distFromLeft === minDistToEdge) ctx.fillRect(px, py, 6, CITY_TILE_SIZE);
+                        else if (distFromRight === minDistToEdge) ctx.fillRect(px + CITY_TILE_SIZE - 6, py, 6, CITY_TILE_SIZE);
+                    }
                 }
             }
 
             // --- GATHER INNER-FACING TOWER LOCATIONS ---
+            // Tied strictly to the original wallThick so towers align perfectly with the stone
             if (!isGateZone) {
                 let distToStartX = Math.abs(x - startX);
                 let distToEndX = Math.abs(x - endX);
@@ -197,7 +248,6 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
             }
         }
     }
-
  
 
     // 3. RENDER INNER TOWERS & BIG WALKABLE LADDER BRIDGES
@@ -217,32 +267,175 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
             rx = t.x - towerSize + overlap; ry = t.y - Math.floor(towerSize / 2);
         }
 
-        // Mark Entire Tower Collision on grid (Impossible to walk through)
+// Mark Tower Collision on grid (Hollow center, blocked outer & sides, open inner)
         for (let ix = rx; ix < rx + towerSize; ix++) {
             for (let iy = ry; iy < ry + towerSize; iy++) {
-                if (grid[ix] && grid[ix][iy] !== undefined) grid[ix][iy] = 7; 
+                if (!grid[ix] || grid[ix][iy] === undefined) continue;
+
+                let isOuterEdge = false;
+                let isSideEdge = false;
+                let thickness = 1; // 1 tile thick walls
+
+                // Calculate which sides are walls based on the tower's orientation
+                if (t.side === 'N') {
+                    isOuterEdge = (iy < ry + thickness); // Top
+                    isSideEdge = (ix < rx + thickness || ix >= rx + towerSize - thickness); // Left/Right
+                } else if (t.side === 'S') {
+                    isOuterEdge = (iy >= ry + towerSize - thickness); // Bottom
+                    isSideEdge = (ix < rx + thickness || ix >= rx + towerSize - thickness); // Left/Right
+                } else if (t.side === 'W') {
+                    isOuterEdge = (ix < rx + thickness); // Left
+                    isSideEdge = (iy < ry + thickness || iy >= ry + towerSize - thickness); // Top/Bottom
+                } else if (t.side === 'E') {
+                    isOuterEdge = (ix >= rx + towerSize - thickness); // Right
+                    isSideEdge = (iy < ry + thickness || iy >= ry + towerSize - thickness); // Top/Bottom
+                }
+
+                if (isOuterEdge || isSideEdge) {
+                    grid[ix][iy] = 7; // Solid tower wall
+                } else {
+                    grid[ix][iy] = 8; // Walkable tower floor (inner access open)
+                }
             }
         }
 
-        // Render Tower Base
-        ctx.fillStyle = "rgba(0,0,0,0.6)"; 
-        ctx.fillRect(rx * CITY_TILE_SIZE, ry * CITY_TILE_SIZE, towerSize * CITY_TILE_SIZE, towerSize * CITY_TILE_SIZE);
-        ctx.fillStyle = arch.walls[0];
-        ctx.fillRect((rx + 1) * CITY_TILE_SIZE, (ry + 1) * CITY_TILE_SIZE, (towerSize - 2) * CITY_TILE_SIZE, (towerSize - 2) * CITY_TILE_SIZE);
+// 1. Calculate 15% Larger Size & Centering Offset
+        let originalSize = towerSize * CITY_TILE_SIZE;
+        let newSize = originalSize * 1.15;
+        let offset = (newSize - originalSize) / 2;
 
-        // Draw the 3D 'X' Roof
-        ctx.strokeStyle = "rgba(0,0,0,0.4)";
-        ctx.lineWidth = 2;
+        let tX = (rx * CITY_TILE_SIZE) - offset;
+        let tY = (ry * CITY_TILE_SIZE) - offset;
+
+        // 2. Draw Outer Wall Shadow/Base
+        ctx.fillStyle = "rgba(0,0,0,0.8)"; 
+        ctx.fillRect(tX, tY, newSize, newSize);
+
+        // 3. Draw Main Wall Structure (Parapet Base)
+        ctx.fillStyle = arch.walls[0];
+        let wallThickness = 6; // How thick the defensive walls are
+        ctx.fillRect(tX + 1, tY + 1, newSize - 2, newSize - 2);
+
+        // 4. Draw Inner Wooden Floor (The Roofless Area)
+        let floorX = tX + wallThickness;
+        let floorY = tY + wallThickness;
+        let floorSize = newSize - (wallThickness * 2);
+
+        ctx.fillStyle = "#5c4033"; // Dark wood base color
+        ctx.fillRect(floorX, floorY, floorSize, floorSize);
+
+        // --- Draw Wood Slats ---
+        ctx.strokeStyle = "#3e2723"; // Darker brown for plank gaps
+        ctx.lineWidth = 1.5;
+        let slatWidth = 6; // Width of each floor plank
+
         ctx.beginPath();
-        ctx.moveTo(rx * CITY_TILE_SIZE, ry * CITY_TILE_SIZE);
-        ctx.lineTo((rx + towerSize) * CITY_TILE_SIZE, (ry + towerSize) * CITY_TILE_SIZE);
-        ctx.moveTo((rx + towerSize) * CITY_TILE_SIZE, ry * CITY_TILE_SIZE);
-        ctx.lineTo(rx * CITY_TILE_SIZE, (ry + towerSize) * CITY_TILE_SIZE);
+        for (let i = floorX + slatWidth; i < floorX + floorSize; i += slatWidth) {
+            ctx.moveTo(i, floorY);
+            ctx.lineTo(i, floorY + floorSize);
+        }
         ctx.stroke();
 
+        // 5. Inner Drop Shadow (Creates 3D depth, showing the floor is lower)
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        ctx.fillRect(floorX, floorY, floorSize, 5); // Top inner shadow
+        ctx.fillRect(floorX, floorY, 5, floorSize); // Left inner shadow
+
+        // 6. Draw Crenellations (Defensive 'Teeth' on the walls)
+        let crenSize = 6;
+        let crenGap = 8;
+        ctx.fillStyle = "rgba(0,0,0,0.3)"; // Shadow under the teeth
+        
+        // Loop around the perimeter to draw the blocks
+        for (let i = tX; i < tX + newSize - crenSize; i += crenGap + crenSize) {
+            // Top and Bottom edges
+            ctx.fillRect(i, tY, crenSize, wallThickness);
+            ctx.fillRect(i, tY + newSize - wallThickness, crenSize, wallThickness);
+        }
+        for (let j = tY; j < tY + newSize - crenSize; j += crenGap + crenSize) {
+            // Left and Right edges
+            ctx.fillRect(tX, j, wallThickness, crenSize);
+            ctx.fillRect(tX + newSize - wallThickness, j, wallThickness, crenSize);
+        }
+
+        // Highlight the crenellations to match the wall color and make them pop
+        ctx.fillStyle = arch.walls[0]; 
+        for (let i = tX; i < tX + newSize - crenSize; i += crenGap + crenSize) {
+            ctx.fillRect(i + 1, tY + 1, crenSize - 2, wallThickness - 2);
+            ctx.fillRect(i + 1, tY + newSize - wallThickness + 1, crenSize - 2, wallThickness - 2);
+        }
+        for (let j = tY; j < tY + newSize - crenSize; j += crenGap + crenSize) {
+            ctx.fillRect(tX + 1, j + 1, wallThickness - 2, crenSize - 2);
+            ctx.fillRect(tX + newSize - wallThickness + 1, j + 1, wallThickness - 2, crenSize - 2);
+        }
         
     
-}
+// ... (existing crenellations drawing code)
+
+        // ====================================================================
+        // 7. SURGERY: DRAW WRAP-AROUND WOODEN STAIRS (TILE 12)
+        // ====================================================================
+        const woodDark = "#4A3728";
+        const woodBase = "#A67B5B";
+        const woodLight = "#D2B48C";
+        const backdrop = "#1a1a1a";
+
+        // Create a 1-tile thick perimeter around the tower grid coordinates
+        let px_start = rx - 1;
+        let px_end = rx + towerSize;
+        let py_start = ry - 1;
+        let py_end = ry + towerSize;
+
+        for (let ix = px_start; ix <= px_end; ix++) {
+            for (let iy = py_start; iy <= py_end; iy++) {
+                // Skip the inside of the tower, we only want the outer ring
+                if (ix >= rx && ix < rx + towerSize && iy >= ry && iy < ry + towerSize) continue;
+                
+                // Safety bounds check
+                if (ix < 0 || ix >= CITY_COLS || iy < 0 || iy >= CITY_ROWS) continue;
+
+                let existingTile = grid[ix][iy];
+                
+                // Only place stairs over open terrain (0=Ground, 1=Road, 5=Plaza)
+                if (existingTile === 0 || existingTile === 1 || existingTile === 5 || existingTile === undefined) {
+                    grid[ix][iy] = 12; // 12 = Wooden Stairs Tile
+                    
+                    let px = ix * CITY_TILE_SIZE;
+                    let py = iy * CITY_TILE_SIZE;
+
+                    // Black backdrop cavity
+                    ctx.fillStyle = backdrop;
+                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+
+                    let isVertical = (ix === px_start || ix === px_end);
+
+                    if (isVertical) {
+                        // VERTICAL STAIRS (Left & Right sides)
+                        ctx.fillStyle = woodDark;
+                        ctx.fillRect(px + 1, py, 2, CITY_TILE_SIZE); 
+                        ctx.fillRect(px + CITY_TILE_SIZE - 3, py, 2, CITY_TILE_SIZE); 
+
+                        for (let step = 1; step < CITY_TILE_SIZE; step += 3) {
+                            ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(px + 2, py + step + 1, CITY_TILE_SIZE - 5, 1);
+                            ctx.fillStyle = woodBase; ctx.fillRect(px + 2, py + step, CITY_TILE_SIZE - 5, 1);
+                            ctx.fillStyle = woodLight; ctx.fillRect(px + 2, py + step, CITY_TILE_SIZE - 5, 0.5); 
+                        }
+                    } else {
+                        // HORIZONTAL STAIRS (Top & Bottom sides)
+                        ctx.fillStyle = woodDark;
+                        ctx.fillRect(px, py + 1, CITY_TILE_SIZE, 2); 
+                        ctx.fillRect(px, py + CITY_TILE_SIZE - 3, CITY_TILE_SIZE, 2); 
+
+                        for (let step = 1; step < CITY_TILE_SIZE; step += 3) {
+                            ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(px + step + 1, py + 2, 1, CITY_TILE_SIZE - 5);
+                            ctx.fillStyle = woodBase; ctx.fillRect(px + step, py + 2, 1, CITY_TILE_SIZE - 5);
+                            ctx.fillStyle = woodLight; ctx.fillRect(px + step, py + 2, 0.5, CITY_TILE_SIZE - 5);
+                        }
+                    }
+                }
+            }
+        }
+	}
 	
    // 4. SPAWN TROOPS 
     if (factionName) {
@@ -259,9 +452,9 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
                 let spawnChance = (tile === 8) ? 0.002 : (tile === 0 ? 0.0001 : 0);
 
                 if (spawnChance > 0 && Math.random() < spawnChance) {
-let px = (x * CITY_TILE_SIZE) + (CITY_TILE_SIZE / 2);
-let py = (y * CITY_TILE_SIZE) + (CITY_TILE_SIZE / 2);
-                    
+				let px = (x * CITY_TILE_SIZE) + (CITY_TILE_SIZE / 2);
+				let py = (y * CITY_TILE_SIZE) + (CITY_TILE_SIZE / 2);
+									
                     let tooClose = fortificationTroops[factionName].some(troop => Math.hypot(troop.x - px, troop.y - py) < 60);
 
                     if (!tooClose) {
@@ -549,10 +742,17 @@ function updateCityGates(grid) {
                     continue;
                 }
 
-                if (gate.isOpen) {
-                    grid[x][y] = 1; // passable
+// --- SURGERY: Deep Carve Logic ---
+                // If gate is dead or open, we carve a deep path (y-2 to y+2) 
+                // to make sure the "outer wall" collision is also deleted.
+                if (gate.isOpen || gate.gateHP <= 0) {
+                    for(let depth = -2; depth <= 2; depth++) {
+                        if(grid[x] && grid[x][y + depth] !== undefined) {
+                            grid[x][y + depth] = 1; 
+                        }
+                    }
                 } else {
-                    grid[x][y] = (gate.gateHP <= 0) ? 1 : 6;
+                    grid[x][y] = 6; // Still solid stone
                 }
             }
         }

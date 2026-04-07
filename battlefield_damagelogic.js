@@ -93,7 +93,7 @@ function updateBattleUnits() {
     if (typeof processSiegeEngines === 'function') processSiegeEngines();
     if (typeof processTacticalOrders === 'function') processTacticalOrders();
 
-// --- NEW SURGERY: Real-time Collision Grid Synchronization ---
+    // --- NEW SURGERY: Real-time Collision Grid Synchronization ---
     if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && battleEnvironment.grid) {
         
         // 1. Sync the Gate Collision (Flips 6 to 1 when destroyed)
@@ -101,7 +101,7 @@ function updateBattleUnits() {
             updateCityGates(battleEnvironment.grid);
         }
         
-        // 2. Sync Deployed Ladders (Paves 9s onto the grid so troops can approach)
+// 2. Sync Deployed Ladders (Carves through overlapping drawbridge barriers)
         if (typeof siegeEquipment !== 'undefined' && siegeEquipment.ladders) {
             siegeEquipment.ladders.forEach(l => {
                 if (l.isDeployed && l.hp > 0) {
@@ -109,14 +109,16 @@ function updateBattleUnits() {
                     let tx = Math.floor(l.x / bTile);
                     let ty = Math.floor(l.y / bTile);
                     
-                    // Stamp a small 3x5 walkable ladder footprint over the wall
-                    for (let x = tx - 1; x <= tx + 1; x++) {
-                        for (let y = ty - 2; y <= ty + 2; y++) {
+                    // SURGERY: Expand Y-loop to 'ty - 16' to carve completely through the thick parapet.
+                    for (let x = tx - 2; x <= tx + 2; x++) {
+                        for (let y = ty - 16; y <= ty + 2; y++) {
                             if (battleEnvironment.grid[x] && battleEnvironment.grid[x][y] !== undefined) {
                                 let cTile = battleEnvironment.grid[x][y];
-                                // Overwrite wall (6) or ground (0, 7) but preserve rampart tops
-                                if (cTile === 6 || cTile === 0 || cTile === 7) {
-                                    battleEnvironment.grid[x][y] = 9;
+                                
+                                // FORCE OVERWRITE solid wall parapets (6), ground (0), towers (7), or wooden platforms (8)
+                                if (cTile === 6 || cTile === 0 || cTile === 7 || cTile === 8) {
+                                    // If deep into the wall, assign walkable wall (10) to pop them up onto the ramparts.
+                                    battleEnvironment.grid[x][y] = (y < ty - 1) ? 10 : 9;
                                 }
                             }
                         }
@@ -125,6 +127,7 @@ function updateBattleUnits() {
             });
         }
     }
+
     // --- END SURGERY ---
 	
     const now = Date.now();
@@ -147,9 +150,12 @@ function updateBattleUnits() {
             return; 
         }
 
-        // Player Override (Stops AI, updates Animation State)
-        if (unit.disableAICombat) {
-            AICategories.handlePlayerOverride(unit, units, keys);
+// Player Override (Stops AI, updates Animation State)
+        if (unit.disableAICombat && unit.isCommander) {
+            // FIX: Decrement the commander's cooldown before the early return so they can shoot again!
+            if (unit.cooldown > 0) unit.cooldown--;
+            
+            AICategories.handlePlayerOverride(unit, units, typeof keys !== 'undefined' ? keys : {}, battleEnvironment, player);
             return; 
         }
 
@@ -158,10 +164,11 @@ function updateBattleUnits() {
             const isFleeingOrWavering = AICategories.processMoraleAndFleeing(unit, pCount, eCount, currentBattleData);
             if (isFleeingOrWavering) return; // Skip normal targeting/combat if they are running away
         }
-// --- NEW: A. THE STUCK EXTRACTOR ---
-if (typeof applyStuckExtractor === 'function') {
-    applyStuckExtractor(unit);
-}
+		
+		// --- NEW: A. THE STUCK EXTRACTOR ---
+		if (typeof applyStuckExtractor === 'function') {
+			applyStuckExtractor(unit);
+		}
 
         // --- NEW: B. MOUNT LADDER DROP CHECK ---
         if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
@@ -205,8 +212,8 @@ if (typeof applyStuckExtractor === 'function') {
             if (keys['a'] || keys['arrowleft']) playerCmdr.direction = -1;
             else if (keys['d'] || keys['arrowright']) playerCmdr.direction = 1;
         }
-        // Clear any AI-assigned targets so it doesn't try to auto-chase
-        playerCmdr.target = null;
+        // INTENTION = Clear any AI-assigned targets so it doesn't try to auto-chase
+      //  playerCmdr.target = null;
     }
 
     // Explicitly ensure this is an ENEMY before feeding it to the AI
@@ -280,10 +287,18 @@ function isBattleCollision(x, y, onWall = false, unit = null) {
 
     let tile = (battleEnvironment.grid && battleEnvironment.grid[tx]) ? battleEnvironment.grid[tx][ty] : null;
 
+let isLarge = false;
+    if (unit) {
+        let typeStr = String(unit.type || unit.unitType || unit.role || "").toLowerCase();
+        isLarge = unit.stats?.isLarge || unit.isMounted || typeStr.match(/(cav|horse|camel|eleph|general|player|commander)/);
+    }
+	
     if (inSiegeBattle) {
+// SURGERY: Hard block mounts and large beasts from touching ladders or wall floors
+        if (isLarge && (tile === 9 || tile === 12 || tile === 8 || tile === 10)) return true;
+
         // 1. UNIVERSAL PASSABLE TILES
-        // 9: Ladders, 12: Stairs/Exits, 13: Deactivated Inner Parapet
-        if (tile === 9 || tile === 12 || tile === 13) return false; 
+        if (tile === 9 || tile === 12 || tile === 13) return false;
 
         // 2. WALL LOGIC (Units currently on the elevated sections)
         if (onWall) {
