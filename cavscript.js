@@ -140,7 +140,8 @@ function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, ty
     
 // --- DYNAMIC ARMOR RETRIEVAL ---
     let armorVal = 2; 
-    
+    // >>> ADD THIS LINE: Filter for the Player / General <<<
+    let isCommander = (unit && unit.isCommander) || unitName === "PLAYER" || unitName === "Commander" || unitName === "General";
     // 1. BEST METHOD: Read directly from the physical unit on the battlefield
     if (unit && unit.stats && unit.stats.armor !== undefined) {
         armorVal = unit.stats.armor;
@@ -558,6 +559,120 @@ if (isCamel)    baseMountHeight = 7;
         ctx.fill(horseBody); 
         ctx.stroke(horseBody);
 
+// >>> BEGIN SURGERY: COMMANDER HORSE SIMPLE BLANKET <<<
+if (isCommander) {
+    // --- 1. SADDLE & STRAPS (13th Century Yuan/Song Style) ---
+    // Breastplate strap (keeps saddle from sliding back)
+    ctx.strokeStyle = "#212121"; 
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-2, hBob - 3); 
+    ctx.quadraticCurveTo(-6, hBob + 2, -9, hBob + 5); 
+    ctx.stroke();
+
+    // Crupper strap (keeps saddle from sliding forward)
+    ctx.beginPath();
+    ctx.moveTo(4, hBob - 4);
+    ctx.quadraticCurveTo(8, hBob - 2, 12, hBob + 1);
+    ctx.stroke();
+
+    // Saddle Pad (Aged felt/leather)
+    ctx.fillStyle = "#8d6e63"; 
+    ctx.beginPath();
+    ctx.ellipse(-1, hBob - 4, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#5d4037"; 
+    ctx.lineWidth = 1; 
+    ctx.stroke();
+
+    // Wooden/Hard Leather Saddle Frame (High pommel & cantle)
+    ctx.fillStyle = "#3e2723"; 
+    ctx.beginPath();
+    ctx.moveTo(-5, hBob - 5);
+    ctx.quadraticCurveTo(-1, hBob - 3, 4, hBob - 5); // Seat dip
+    ctx.lineTo(6, hBob - 9);  // Cantle (raised back)
+    ctx.lineTo(3, hBob - 4);  // Back skirt
+    ctx.lineTo(-4, hBob - 4); // Front skirt
+    ctx.lineTo(-7, hBob - 10); // Pommel (raised front)
+    ctx.closePath();
+    ctx.fill();
+    
+    // Commander Saddle Trim (Gold/Brass highlights)
+    ctx.strokeStyle = "#fbc02d"; 
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(-7, hBob - 10); ctx.lineTo(-4, hBob - 4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, hBob - 9); ctx.lineTo(3, hBob - 4); ctx.stroke();
+
+    // Girth strap (Under belly)
+    ctx.strokeStyle = "#212121"; 
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-2, hBob - 3); ctx.lineTo(-2, hBob + 8); ctx.stroke();
+
+
+    // --- 2. IRON CHAMFRON (Perfectly mapped to base head polygon) ---
+    let hn = headNod; // Shorthand for animation sync
+    
+    ctx.fillStyle = "#9e9e9e";   // Forged Iron Base
+    ctx.strokeStyle = "#424242"; // Dark iron edge definition
+    ctx.lineWidth = 1.5;
+    
+    ctx.beginPath();
+    // Start at top of head, just beneath where the natural ears will draw
+    ctx.moveTo(-14.5, hBob - 17 + hn); 
+    // Down the bridge of the nose
+    ctx.lineTo(-24.5, hBob - 11.5 + hn); 
+    // Hook around the snout
+    ctx.quadraticCurveTo(-26.5, hBob - 8 + hn, -24, hBob - 6 + hn); 
+    // Back along the jawline
+    ctx.lineTo(-18, hBob - 4 + hn); 
+    // Curve up the cheek to the back of the skull
+    ctx.quadraticCurveTo(-14, hBob - 5 + hn, -13, hBob - 14 + hn); 
+    ctx.closePath();
+    ctx.fill(); 
+    ctx.stroke();
+
+    // --- 3. HELMET DETAILING (Based on historical references) ---
+    ctx.strokeStyle = "#fbc02d"; // Brass/Gold ceremonial trim
+    ctx.lineWidth = 1;
+    
+    // Central reinforced ridge down the nose
+    ctx.beginPath(); 
+    ctx.moveTo(-17, hBob - 16 + hn); 
+    ctx.lineTo(-24, hBob - 10 + hn); 
+    ctx.stroke();
+
+    // Flared brow guard over the eye (Protective ridge)
+    ctx.fillStyle = "#757575"; 
+    ctx.beginPath();
+    ctx.arc(-19, hBob - 10 + hn, 2.5, Math.PI, 0); // Arch resting above the eye
+    ctx.fill(); 
+    
+    ctx.strokeStyle = "#fbc02d";
+    ctx.beginPath();
+    ctx.arc(-19, hBob - 10 + hn, 2.5, Math.PI, 0); 
+    ctx.stroke();
+
+    // Darkened cutout for the eye socket
+    // (The base script will draw the black pupil inside this at (-19, -10) right after)
+    ctx.fillStyle = "#212121";
+    ctx.beginPath();
+    ctx.arc(-19, hBob - 10 + hn, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Red Ceremonial Forehead Plume/Tassel
+    ctx.fillStyle = "#d32f2f";
+    ctx.beginPath();
+    ctx.moveTo(-16.5, hBob - 15 + hn); // Anchor on upper forehead
+    ctx.quadraticCurveTo(-18, hBob - 18 + hn, -14, hBob - 19 + hn); // Sweep up and back
+    ctx.quadraticCurveTo(-15, hBob - 16 + hn, -16.5, hBob - 15 + hn); // Return to anchor
+    ctx.fill();
+    ctx.strokeStyle = "#b71c1c";
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+}
+// >>> END SURGERY <<<
+		
+		
         // Mane & Eye
         ctx.strokeStyle = "#212121"; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(-8, hBob - 7 + (headNod*0.5)); 
@@ -599,8 +714,52 @@ if (!isElephant && !isCamelCannon) {
 
 ctx.restore();
 
-    // RIDER ARMOR LAYERS
-if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
+// RIDER ARMOR LAYERS
+    
+    // >>> BEGIN SURGERY: COMMANDER ARMOR OVERRIDE <<<
+    if (isCommander && !isCamelCannon) {
+        
+  // 1. Flowing Crimson Silk Cape (Animated in the wind)
+let capeFlap = isMoving ? Math.sin(animFrame * 1.5) * 3 : Math.sin(animFrame * 0.5) * 1;
+ctx.fillStyle = "#d32f2f"; 
+ctx.strokeStyle = "#b71c1c";
+ctx.beginPath();
+ctx.moveTo(3, -8);
+ctx.quadraticCurveTo(10 + capeFlap, -4, 14 + capeFlap, 2);
+ctx.lineTo(8 + capeFlap * 0.5, 4);
+ctx.lineTo(2, -2);
+ctx.fill();
+ctx.stroke();
+        
+        // 2. Gold Mountain-Pattern Lamellar Vest
+        ctx.fillStyle = "#ffca28"; 
+        ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(-3.5, -1); ctx.lineTo(3.5, -1); ctx.lineTo(2.5, -9); ctx.lineTo(-2.5, -9); ctx.closePath(); ctx.fill(); ctx.stroke();
+        
+        // Detailed pattern stitching
+        ctx.strokeStyle = "#d84315"; ctx.lineWidth = 0.5;
+        for(let i = -8; i <= -1; i+=1.5) { 
+            for(let j = -2; j <= 2; j+=1.5) { ctx.strokeRect(j, i, 1.5, 1.5); }
+        }
+
+        // 3. Golden Beast-Head Pauldrons
+        ctx.fillStyle = "#ffca28"; ctx.strokeStyle = "#4e342e"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(-5.5, -8, 2.5, 0, Math.PI*2); ctx.fill(); ctx.stroke(); 
+        ctx.beginPath(); ctx.arc(3.5, -8, 2.5, 0, Math.PI*2); ctx.fill(); ctx.stroke(); 
+        ctx.fillStyle = "#b71c1c"; // Ruby eyes in the pauldrons
+        ctx.fillRect(-6, -8, 1, 1); ctx.fillRect(3, -8, 1, 1);
+
+        // 4. Blue Silk Commander's Sash & Armored Skirt
+        ctx.fillStyle = "#1976d2"; 
+        ctx.fillRect(-4, -2, 8, 2.5);
+        ctx.fillStyle = "#d32f2f"; // Cloth underskirt
+        ctx.beginPath(); ctx.moveTo(-2.5, 0); ctx.lineTo(3.5, 0); ctx.lineTo(4, 6); ctx.lineTo(-1, 6); ctx.fill();
+        ctx.fillStyle = "#ffca28"; // Gold thigh plates
+        ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(3, 0); ctx.lineTo(3, 4); ctx.lineTo(-1, 4); ctx.fill();
+        ctx.strokeStyle = "#d84315"; for(let i = 0; i <= 4; i+=1.5) { ctx.beginPath(); ctx.moveTo(-1, i); ctx.lineTo(3, i); ctx.stroke(); }
+        
+    } else if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
+    // >>> END SURGERY <<< (Keep the rest of your Elite armor logic below this)
         // --- ELITE / SUPER HEAVY TIER ---
         // 1. Shield on Back
         ctx.fillStyle = factionColor; ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
@@ -679,8 +838,236 @@ if ((unitName.includes("Elite") || armorVal >= 40) && !isCamelCannon) {
     ctx.fillStyle = "#d4b886";
     ctx.beginPath(); ctx.arc(0, -11, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 	  }
-    // RIDER HEADGEAR
-    if (unitName.includes("Elite") || armorVal >= 40) {
+ 
+// RIDER HEADGEAR// >>> BEGIN SURGERY: REALISTIC COMMANDER HELMETS <<<
+if (isCommander) {
+    // Shared animation logic for plumes/tassels
+    let plumeBob = isMoving ? Math.sin(animFrame * 1.5) * 2.5 : Math.sin(animFrame * 0.5) * 0.5;
+
+    // Shared Base: Exposed Hero Face (No Mask)
+    ctx.fillStyle = "#e0aca0"; // Muted, realistic skin tone
+    ctx.beginPath(); ctx.moveTo(-2.5, -12); ctx.lineTo(2.5, -12); ctx.lineTo(2.5, -8); ctx.lineTo(-2.5, -8); ctx.fill();
+
+    let cmdColor = (factionColor || "").toLowerCase();
+
+    // Reusable subtle shadow for depth instead of cartoon outlines
+    ctx.strokeStyle = "rgba(0,0,0,0.35)"; 
+    ctx.lineWidth = 0.5;
+
+    switch(cmdColor) {
+        case "#ffffff": // Player's Kingdom
+            // Modest Clan Leader: Worn iron helmet, red feather
+            ctx.fillStyle = "#546e7a"; // Muted, oxidized steel
+            ctx.beginPath(); ctx.arc(0, -13, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
+
+            // Dull iron neck guard
+            ctx.fillStyle = "#37474f"; 
+            ctx.beginPath(); ctx.moveTo(-4, -13); ctx.lineTo(-5.5, -8); ctx.lineTo(5.5, -8); ctx.lineTo(4, -13); ctx.fill();
+            
+            // Single modest red feather
+            ctx.strokeStyle = "rgba(183, 28, 28, 0.9)"; // Deep natural red
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, -17); ctx.quadraticCurveTo(3, -22 + plumeBob, 5, -16 + plumeBob); ctx.stroke();
+            
+            // Iron finial
+            ctx.fillStyle = "#263238"; ctx.fillRect(-0.5, -18, 1, 5);
+            break;
+
+        case "#d32f2f": // Hong Dynasty
+            // Ming/Song style High Dome with Lingzi (Pheasant tail)
+            ctx.strokeStyle = "rgba(212, 175, 55, 0.8)"; // Muted, natural gold/yellow feather
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, -18); ctx.quadraticCurveTo(15, -25 + plumeBob, 22, -8 + plumeBob); ctx.stroke();
+            
+            ctx.strokeStyle = "rgba(183, 28, 28, 0.85)"; // Muted red feather
+            ctx.lineWidth = 0.8;
+            ctx.beginPath(); ctx.moveTo(0, -18); ctx.quadraticCurveTo(12, -22 + plumeBob, 18, -10 + plumeBob); ctx.stroke();
+
+            // Muted Brass/Gold Dome
+            ctx.fillStyle = "#bfa15f"; 
+            ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0);
+            ctx.lineTo(4, -12); ctx.quadraticCurveTo(0, -11, -4, -12);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            
+            // Elite Iron Neck Guard with subtle layering
+            ctx.fillStyle = "#607d8b"; 
+            ctx.beginPath(); ctx.moveTo(-3.5, -13); ctx.lineTo(-6, -7); ctx.quadraticCurveTo(0, -5, 6, -7); ctx.lineTo(3.5, -13); ctx.fill();
+            ctx.strokeStyle = "rgba(0,0,0,0.2)"; 
+            for (let i = -11; i < -6; i+=1.5) { ctx.beginPath(); ctx.moveTo(-5, i); ctx.lineTo(5, i); ctx.stroke(); }
+            break;
+
+        case "#1976d2": // Great Khaganate
+            // Steppe Iron Bowl with Yak/Wolf Fur Trim
+            ctx.fillStyle = "#455a64"; // Dark forged iron
+            ctx.beginPath(); ctx.arc(0, -13, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
+            
+            // Thick Natural Fur Brim
+            ctx.fillStyle = "#3e2723"; 
+            ctx.beginPath(); ctx.ellipse(0, -12, 4.5, 1.5, 0, 0, Math.PI*2); ctx.fill();
+            
+            // Trailing Black Horsetail
+            ctx.strokeStyle = "rgba(17, 17, 17, 0.9)"; 
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(0, -17); ctx.quadraticCurveTo(-6, -14 + plumeBob, -8, -6 + (plumeBob * 1.5)); ctx.stroke();
+            
+            // Worn Brass Spiked Finial
+            ctx.fillStyle = "#a88e52";
+            ctx.beginPath(); ctx.moveTo(-1, -17); ctx.lineTo(0, -21); ctx.lineTo(1, -17); ctx.fill();
+            break;
+
+        case "#c2185b": // Yamato Clans
+            // Heavy Kabuto with Dark Lacquer
+            ctx.fillStyle = "#1a1a1a"; // Deep black lacquer
+            ctx.beginPath(); ctx.arc(0, -12, 4.5, Math.PI, 0); ctx.fill();
+            
+            // Shikoro (Neck guard) with realistic natural madder-red silk lacing
+            ctx.fillStyle = "#8e0000"; 
+            ctx.fillRect(-5.5, -12, 11, 5);
+            ctx.fillStyle = "#111"; // Iron plates breaking up the lacing
+            ctx.fillRect(-6, -10.5, 12, 0.8); ctx.fillRect(-6.5, -8.5, 13, 0.8);
+            
+            // Worn Brass Maedate (Horns)
+            ctx.strokeStyle = "#c5a059"; 
+            ctx.lineWidth = 1.2; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(0, -14); ctx.quadraticCurveTo(-6, -20, -8, -22); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -14); ctx.quadraticCurveTo(6, -20, 8, -22); ctx.stroke();
+            break;
+
+        case "#fbc02d": // Xiaran Dominion
+            // Steel Cap with Ochre Silk Turban Wrap
+            ctx.fillStyle = "#78909c"; // Steel
+            ctx.beginPath(); ctx.arc(0, -14, 3.5, Math.PI, 0); ctx.fill();
+            
+            // Natural Yellow/Ochre Dyed Fabric Wrap
+            ctx.fillStyle = "#c59b27"; 
+            ctx.beginPath(); ctx.ellipse(0, -13, 4.5, 2.2, 0, 0, Math.PI*2); ctx.fill();
+            // Wrap texture lines
+            ctx.strokeStyle = "rgba(0,0,0,0.2)";
+            ctx.beginPath(); ctx.moveTo(-3, -12); ctx.lineTo(3, -14); ctx.stroke();
+            
+            // Steel Nasal Guard
+            ctx.fillStyle = "#78909c"; ctx.fillRect(-0.5, -12, 1, 4.5);
+            
+            // Trailing Silk (shadowed)
+            ctx.fillStyle = "#a37a1c";
+            ctx.beginPath(); ctx.moveTo(4, -13); ctx.quadraticCurveTo(8, -8 + plumeBob, 6, -4); ctx.lineTo(3, -12); ctx.fill();
+            break;
+
+        case "#455a64": // Jinlord Confederacy
+            // Jurchen Heavy Lamellar Steep Cone
+            ctx.fillStyle = "#37474f"; // Dark raw iron
+            ctx.beginPath(); ctx.moveTo(-3.5, -12); ctx.lineTo(0, -21); ctx.lineTo(3.5, -12); ctx.fill(); ctx.stroke();
+            
+            // Leather/Iron ear flaps
+            ctx.fillStyle = "#263238";
+            ctx.fillRect(-4.5, -12, 2.5, 5); ctx.fillRect(2, -12, 2.5, 5);
+            
+            // Natural red dyed yak hair tassel at top
+            ctx.fillStyle = "#8e1e1e";
+            ctx.beginPath(); ctx.arc(0, -21, 1.5, 0, Math.PI*2); ctx.fill();
+            break;
+
+        case "#388e3c": // Tran Realm
+            // Tarnished Bronze Flared Helmet
+            ctx.fillStyle = "#795548"; // Oxidized bronze
+            ctx.beginPath(); ctx.arc(0, -11, 4.5, Math.PI, 0); ctx.fill(); ctx.stroke();
+            
+            // Flared flat brim
+            ctx.fillStyle = "#5d4037";
+            ctx.beginPath(); ctx.ellipse(0, -11, 6.5, 1.2, 0, 0, Math.PI*2); ctx.fill();
+            
+            // Muted Green natural silk band
+            ctx.fillStyle = "#2e7031";
+            ctx.fillRect(-3.5, -13.5, 7, 1.5);
+            break;
+
+        case "#7b1fa2": // Goryun Kingdom (Korean Cheoljeong)
+            // Black Lacquered Iron Dome
+            ctx.fillStyle = "#1c1c1c"; 
+            ctx.beginPath(); ctx.arc(0, -13, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
+            
+            // Dark purple natural dye silk wrap/trim
+            ctx.fillStyle = "#5e187a"; ctx.fillRect(-4, -13, 8, 1.5);
+            
+            // Iron Tridents/Wings (Replaced brass/gold)
+            ctx.fillStyle = "#546e7a"; 
+            ctx.beginPath(); ctx.moveTo(-3.5, -13); ctx.lineTo(-7, -17); ctx.lineTo(-3.5, -11); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(3.5, -13); ctx.lineTo(7, -17); ctx.lineTo(3.5, -11); ctx.fill();
+            
+            // Thin peacock feather
+            ctx.strokeStyle = "rgba(46, 125, 50, 0.9)"; 
+            ctx.lineWidth = 0.8;
+            ctx.beginPath(); ctx.moveTo(0, -17); ctx.quadraticCurveTo(4, -20 + plumeBob, 5, -23 + plumeBob); ctx.stroke();
+            break;
+
+        case "#00838f": // Dab Tribes (Dali Kingdom Style)
+            // Hardened Rattan and Red Lacquer Helmet
+            ctx.fillStyle = "#5c2a21"; // Dark red/brown lacquer
+            ctx.beginPath(); ctx.moveTo(-7, -10); ctx.lineTo(0, -16); ctx.lineTo(7, -10); ctx.fill(); ctx.stroke();
+            
+            // Jade/Teal ornamental bindings
+            ctx.strokeStyle = "rgba(0, 105, 114, 0.8)"; 
+            ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.moveTo(-4, -12); ctx.lineTo(4, -12); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-2, -14); ctx.lineTo(2, -14); ctx.stroke();
+            
+            // Subtle pheasant feather rim
+            ctx.fillStyle = "#8e291c";
+            ctx.beginPath(); ctx.ellipse(0, -10, 7, 0.8, 0, 0, Math.PI*2); ctx.fill();
+            break;
+
+        case "#8d6e63": // High Plateau Kingdoms (Tibetan Dbu-rmog)
+            // Overlapping Iron Lamellar Bowl
+            ctx.fillStyle = "#424242"; // Forged Iron
+            ctx.beginPath(); ctx.arc(0, -13, 4, Math.PI, 0); ctx.fill();
+            
+            // Lamellar vertical striping lines (Subtle highlight/shadow)
+            ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.moveTo(-1.5, -13); ctx.lineTo(-1.5, -17); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(1.5, -13); ctx.lineTo(1.5, -17); ctx.stroke();
+
+            // Heavy Yak Wool / Felt Ear Flaps
+            ctx.fillStyle = "#8d6e63"; // Natural undyed wool brown
+            ctx.fillRect(-5, -13, 2, 6); ctx.fillRect(3, -13, 2, 6);
+            
+            // Central Turquoise Stone
+            ctx.fillStyle = "#0097a7";
+            ctx.beginPath(); ctx.arc(0, -14, 1, 0, Math.PI*2); ctx.fill();
+            
+            // Faded Red crowning fringe
+            ctx.fillStyle = "#9e2a2b";
+            ctx.beginPath(); ctx.arc(0, -17, 2.5, Math.PI, 0); ctx.fill();
+            break;
+
+        case "#222222": // Bandits
+            // Scavenged, Rusty Iron Cap
+            ctx.fillStyle = "#3e3a38"; // Rusty, dirty iron
+            ctx.beginPath(); ctx.arc(0, -13, 3.5, Math.PI, 0); ctx.fill();
+            
+            // Dented Spikes
+            ctx.fillStyle = "#545454";
+            ctx.beginPath(); ctx.moveTo(-2, -15); ctx.lineTo(-1, -17); ctx.lineTo(0, -15); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(2, -15); ctx.lineTo(1, -17); ctx.lineTo(0, -15); ctx.fill();
+            
+            // Faded Madder-Red Bandana
+            ctx.fillStyle = "#7a2020";
+            ctx.fillRect(-3.5, -12, 7, 1.5);
+            ctx.beginPath(); ctx.moveTo(-3, -11); ctx.quadraticCurveTo(-6, -8 + plumeBob, -7, -4); ctx.lineTo(-2, -10); ctx.fill();
+            break;
+
+        default:
+            // Fallback (Worn Iron Helm)
+            ctx.fillStyle = "#455a64"; 
+            ctx.beginPath(); ctx.arc(0, -12, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = "#263238"; ctx.fillRect(-0.5, -16, 1, 4);
+            break;
+    }
+}
+// >>> END SURGERY <<<
+	
+	
+	else if (unitName.includes("Elite") || armorVal >= 40) {
+    // >>> END SURGERY <<< (Keep the rest of your Elite helmet logic below this)
         // --- ELITE CUMAN HELMET WITH STEEL FACE MASK ---
         // Mail Aventail (Neck Guard)
         ctx.fillStyle = "#757575"; ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 0.5;

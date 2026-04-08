@@ -490,7 +490,7 @@ return;
 let lastFortificationTick = 0;
 let lastFortifyRenderTime = 0; 
 
-function fortification_system_renderDynamic(ctx, factionName, playerObj, allNPCs) {
+function policeTroops(ctx, factionName, playerObj, allNPCs) {
     let troops = fortificationTroops[factionName];
     if (!troops) return;
 
@@ -540,8 +540,21 @@ function fortification_system_renderDynamic(ctx, factionName, playerObj, allNPCs
             let ty = Math.floor(t.y / CITY_TILE_SIZE);
             if (typeof cityDimensions !== 'undefined' && cityDimensions[factionName]) {
                 let currentTile = cityDimensions[factionName].grid[tx] ? cityDimensions[factionName].grid[tx][ty] : 0;
-                if (currentTile === 9) t.onWall = true; // Stepped on ladder, climb up!
-                else if (currentTile === 0 || currentTile === 1 || currentTile === 5) t.onWall = false; // Back to ground!
+                if (currentTile === 9) t.onWall = true; 
+                else if (currentTile === 0 || currentTile === 1 || currentTile === 5) t.onWall = false; 
+            }
+
+            // --- THE LAZY UPDATE ---
+            // 5% chance to just stop moving completely (idle)
+            if (Math.random() < 0.05) {
+                t.vx = 0;
+                t.vy = 0;
+            } 
+            // 1% chance to pick a new, very slow direction
+            else if (Math.random() < 0.01) {
+                t.vx = (Math.random() - 0.5) * 0.3;
+                t.vy = (Math.random() - 0.5) * 0.3;
+                t.dir = t.vx > 0 ? 1 : -1;
             }
 
             let nx = t.x + t.vx;
@@ -556,22 +569,20 @@ function fortification_system_renderDynamic(ctx, factionName, playerObj, allNPCs
                 }
             }
 
-            // FIX: Pass 't.onWall' to the collision engine!
             if (typeof isCityCollision === 'function' && isCityCollision(nx, ny, factionName, t.onWall) || hitEntity) {
-                let bounceSpeed = t.isCavalry ? 0.4 : 0.2; 
-                t.vx = (Math.random() - 0.5) * bounceSpeed;
-                t.vy = (Math.random() - 0.5) * bounceSpeed; 
-                t.dir = t.vx > 0 ? 1 : -1;
-				
-				// ---> NEW SURGERY: Physical push-back to break the collision loop <---
-                t.x -= Math.sign(t.vx) * 1.5;
-                t.y -= Math.sign(t.vy) * 1.5;
+                // --- THE DANCING FIX ---
+                // Instead of bouncing, they lose all velocity when hitting a wall.
+                t.vx = 0;
+                t.vy = 0; 
+                
+                // Keep the physical push-back to prevent getting stuck in geometry
+                t.x -= Math.sign(nx - t.x) * 1.5;
+                t.y -= Math.sign(ny - t.y) * 1.5;
 				
             } else {
                 t.x = nx; t.y = ny;
             }
         }
-
         // --- DRAWING PASS (Runs every frame to stop flickering) ---
         let frame = (now / 60) + t.animOffset;
         let weaponBob = Math.sin(frame * 0.5) * 2;

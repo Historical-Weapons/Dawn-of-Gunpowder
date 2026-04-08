@@ -366,32 +366,71 @@ function processTacticalOrders() {
                 return; 
             }
             
-          // ==========================
+			// ==========================
             // SMART SIEGE ASSAULT LOGIC
             // ==========================
             if (unit.orderType === "siege_assault") {
                 let wallBoundaryY = (typeof CITY_LOGICAL_HEIGHT !== 'undefined' ? CITY_LOGICAL_HEIGHT : 3200) - 40;
                 let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
-                
+
                 // Ensure we catch the global breach flag too
                 let gateBreached = window.__SIEGE_GATE_BREACHED__ || (southGate && (southGate.gateHP <= 0 || southGate.isOpen));
-                
-				// --- SURGERY: Ensure the background AI NEVER touches the Ladder Fanatics ---
-                if (gateBreached && unit.siegeRole !== "assault_complete" && unit.siegeRole !== "ladder_fanatic") {
+				
+				// ---> SURGERY: MANDATORY PLAZA RUSH OVERRIDE (2-STAGE FUNNEL) <---
+                if (gateBreached && unit.siegeRole !== "ladder_fanatic") {
                     unit.siegeRole = "assault_complete";
-                    // SURGERY: Force them to immediately charge into the city to bypass the broken gate
-                    let plazaX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : 1200;
+
+                    let gateX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : 1200;
+                    let gateY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelY : 2000;
+                    let plazaX = gateX;
                     let plazaY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : 800;
-                    unit.target = { 
-                        x: plazaX + (Math.random() - 0.5) * 200, 
-                        y: plazaY + (Math.random() - 0.5) * 200, 
-                        isDummy: true, 
-                        priority: "plaza" 
-                    };
-                    unit.orderTargetPoint = null; 
+
+                    // Check if unit has crossed the gate threshold into the city
+                    let isInsideCity = unit.y < gateY + 20;
+
+                    if (!isInsideCity) {
+                        // STAGE 1: FUNNEL TO THE EXACT GATE
+                        unit.target = { 
+                            x: gateX + (Math.random() - 0.5) * 60, // Tight squeeze through the doors
+                            y: gateY - 20, // Aim slightly inside so they actually cross the threshold
+                            hp: 9999,
+                            isDummy: true,
+                            priority: "gate_funnel" 
+                        };
+                        unit.orderTargetPoint = null; 
+                        unit.disableAICombat = false; // Ignore defenders outside, sprint to the gate
+                        return; // Halts the rest of the targeting logic
+                    } else {
+                        // STAGE 2: SPREAD OUT AND RUSH THE PLAZA
+                        let distToPlaza = Math.hypot(unit.x - plazaX, unit.y - plazaY);
+
+                        // If they are far from the plaza, force them to ignore everything and run
+                        if (distToPlaza > 250) {
+                            unit.target = { 
+                                x: plazaX + (Math.random() - 0.5) * 350, 
+                                y: plazaY + (Math.random() - 0.5) * 300, 
+                                hp: 9999,
+                                isDummy: true,
+                                priority: "plaza" 
+                            };
+                            unit.orderTargetPoint = null; 
+                            unit.disableAICombat = true; // Pacifist mode ensures they sprint past defenders
+                            return; 
+                        } else {
+                            // They have arrived at the plaza! Release the hounds!
+                            unit.disableAICombat = false;
+                            if (nearestEnemy) {
+                                unit.target = nearestEnemy;
+                            } else {
+                                unit.target = null;
+                            }
+                            return;
+                        }
+                    }
                 }
 
-                if (gateBreached || unit.y < wallBoundaryY || unit.onWall) {
+              // --- Pre-Breach Backup Logic ---
+                if (unit.y < wallBoundaryY || unit.onWall) {
                     const unitRole = unit.stats.role;
                     const isRangedAssault = (
                         unitRole === "archer" || 
@@ -399,17 +438,12 @@ function processTacticalOrders() {
                         unitRole === "crossbow" || 
                         unitRole === "gunner" || 
                         unitRole === "mounted_gunner" || 
-                        unitRole === "Rocket" || 
-                        unitRole === "bomb" || 
-                        unitRole === "throwing" || 
-                        unitRole === "firelance"
+                        unitRole === "Rocket" 
                     );
 
-                    if (isRangedAssault) {
-                        unit.stats.range = 10; 
-                        unit.stats.currentStance = "statusmelee"; 
-                        unit.forceMelee = true; 
-                    }
+                    // ---> SURGERY: REMOVED THE RANGE 10 NERF! <---
+                    // We deleted the block that forced them into melee. 
+                    // Let them keep their bows out!
 
                     if (nearestEnemy) {
                         unit.target = nearestEnemy;
@@ -457,7 +491,7 @@ function processTacticalOrders() {
                             unit.siegeRole = "ranged_support";
                         }
                         break;
-
+						
 					case "ranged_support":
                         let isShortRange = String((unit.stats?.role || "") + " " + (unit.unitType || "")).toLowerCase().match(/(firelance|bomb|hand cannon)/);
                         
@@ -467,8 +501,8 @@ function processTacticalOrders() {
                             destY = unit.target.y;
                         } else {
                             destX = unit.x; 
-                            let frontLineY = siegeEquipment.rams[0] ? siegeEquipment.rams[0].y : wallBoundaryY + 300;
-                            destY = Math.max(frontLineY + 120, wallBoundaryY + 150);
+                            // ---> SURGERY: PUSH ARCHERS TO THE FRONT LINE <---
+                            destY = wallBoundaryY + 90; // Moved from +150/+300 down to +90 to guarantee they have range on defenders
                         }
                         
                         if (nearestEnemy && nearestEnemy.onWall) {
@@ -564,7 +598,7 @@ function processTacticalOrders() {
                     }
                     unit.stats.range = 10; 
                 }
-            } else {
+          } else {
                 if (unit.originalRange) {
                     unit.stats.range = unit.originalRange;
                     unit.originalRange = null; 
@@ -580,7 +614,8 @@ function processTacticalOrders() {
                     side: unit.side, 
                     stats: { meleeDefense: 0, armor: 0, health: 100, experienceLevel: 0, currentStance: "statusmelee" } 
                 };
-                unit.stats.currentStance = "statusmelee"; 
+                // Do NOT force statusmelee here if they are archers!
+                if (!isRanged) unit.stats.currentStance = "statusmelee"; 
             }
             
         } else {

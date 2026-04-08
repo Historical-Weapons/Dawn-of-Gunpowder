@@ -3,7 +3,7 @@
  let uiSyncTick = 0;
  
  
- function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
+function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     // --- 1. STATUS LOCKS ---
     if ((player.isSieging && !inBattleMode) || player.stunTimer > 0) {
         if (player.stunTimer > 0) player.stunTimer--;
@@ -11,49 +11,56 @@
         return;
     }
     
-let dx = 0, dy = 0;
+    let dx = 0, dy = 0;
     player.isMoving = false;
 
-    // --- 2. TERRAIN SPEED & INPUT ---
+    // --- 2. TERRAIN SPEED & MOUNTS ---
     let currentSpeed = speed;
     let isClimbing = false;
     let isMounted = false;
 
-    // PREDICTIVE CHECK: Map the active unit to the commander if in battle
     let activeUnit = player;
     if (inBattleMode && typeof battleEnvironment !== 'undefined') {
         let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
         if (pCmdr) activeUnit = pCmdr;
     }
     
-    // Check for heavy mounts or large units
     isMounted = activeUnit.stats?.isLarge || activeUnit.isMounted || String(activeUnit.unitType || "").toLowerCase().match(/(cav|horse|camel|eleph)/);
 
+// ---> SURGERY 1: Isolate Climbing Logic. 
     if (inCityMode && !inBattleMode) {
-        // CIVILIAN MODE: Check city grid
         const tx = Math.floor(player.x / CITY_TILE_SIZE);
         const ty = Math.floor(player.y / CITY_TILE_SIZE);
-        const tile = cityDimensions[currentActiveCityFaction]?.grid[tx]?.[ty];
+        const currentTile = cityDimensions[currentActiveCityFaction]?.grid?.[tx]?.[ty];
         
-        // Only trigger climb physics if NOT mounted
-        if (!isMounted && (tile === 9 || tile === 12)) isClimbing = true;
-    } 
+        if (!isMounted && (currentTile === 9 || currentTile === 12)) {
+            isClimbing = true;
+            // REMOVED: player.onWall = true; (We will calculate this dynamically below)
+        }
+    }
     else if (inBattleMode) {
-        // SIEGE BATTLE MODE: Check battle environment grid
         const tx = Math.floor(player.x / BATTLE_TILE_SIZE);
         const ty = Math.floor(player.y / BATTLE_TILE_SIZE);
         const tile = battleEnvironment.grid[tx]?.[ty];
-        
         if (!isMounted && (tile === 9 || tile === 12)) isClimbing = true;
     }
 
     currentSpeed *= 0.5;
-
     if (isClimbing) {
         currentSpeed *= 0.20; 
     }
+
+    // ---> SURGERY 2: Add 'P' to return to Overworld.
+    if (inCityMode && !inBattleMode && keys['p']) {
+        keys['p'] = false;
+        inCityMode = false;
+        if (typeof enterOverworldMode === 'function') enterOverworldMode();
+        return;
+    }
+
+    // ---> SURGERY 3: Pull the Keyboard Input BEFORE City Collisions! 
+    // This allows dx and dy to actually populate before the city uses them!
     if (player.hp > 0) {
-        // ... (Keep keyboard input logic the same)
         if (keys['w'] || keys['arrowup']) { dy -= currentSpeed; player.isMoving = true; }
         if (keys['s'] || keys['arrowdown']) { dy += currentSpeed; player.isMoving = true; }
         if (keys['a'] || keys['arrowleft']) { dx -= currentSpeed; player.isMoving = true; }
@@ -64,64 +71,112 @@ let dx = 0, dy = 0;
     const nextX = player.x + dx, nextY = player.y + dy;
   
 // --- 3. ENVIRONMENT & COLLISION LOGIC ---
-if (inBattleMode) {
-    const bW = (typeof BATTLE_WORLD_WIDTH !== 'undefined') ? BATTLE_WORLD_WIDTH : 2000;
-    const bH = (typeof BATTLE_WORLD_HEIGHT !== 'undefined') ? BATTLE_WORLD_HEIGHT : 2000;
+    if (inCityMode && !inBattleMode) {
+        const outOfBounds = (nextX < 0 || nextX >= CITY_WORLD_WIDTH || 
+                             nextY < 0 || nextY >= CITY_WORLD_HEIGHT);
 
-    let tileX = battleEnvironment.grid[Math.floor(nextX / BATTLE_TILE_SIZE)]?.[Math.floor(player.y / BATTLE_TILE_SIZE)];
-    let tileY = battleEnvironment.grid[Math.floor(player.x / BATTLE_TILE_SIZE)]?.[Math.floor(nextY / BATTLE_TILE_SIZE)];
-// ---> SURGERY 2: Massively expand the Gate Bypass so the General's horse ignores the 96-pixel thick stone wall tunnel!
-    let bypassGateCollision = false;
-    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && typeof SiegeTopography !== 'undefined') {
-        let isBreached = window.__SIEGE_GATE_BREACHED__;
-        if (isBreached) {
-            let distToGateX = Math.abs(nextX - SiegeTopography.gatePixelX);
-            let distToGateY = Math.abs(nextY - SiegeTopography.gatePixelY);
-            
-            // SURGERY: Shrunk X from 120 to 45. 
-            // This perfectly fits the 104-pixel gap, keeping the pillars completely solid!
-            if (distToGateX < 45 && distToGateY < 250) bypassGateCollision = true;
+        if (nextY >= CITY_WORLD_HEIGHT - 5) {
+            inCityMode = false;
+            if (typeof enterOverworldMode === 'function') enterOverworldMode();
+            return;
+        }
+
+        // ---> SURGERY 3: DYNAMIC LADDER DOWN-CLIMBING FIX <---
+        const curTx = Math.floor(player.x / CITY_TILE_SIZE);
+        const curTy = Math.floor(player.y / CITY_TILE_SIZE);
+        const currentTile = cityDimensions[currentActiveCityFaction]?.grid?.[curTx]?.[curTy];
+        
+        const nextTx = Math.floor(nextX / CITY_TILE_SIZE);
+        const nextTy = Math.floor(nextY / CITY_TILE_SIZE);
+        const destTile = cityDimensions[currentActiveCityFaction]?.grid?.[nextTx]?.[nextTy];
+
+        // Intelligently transition onWall state based on where the player is trying to step
+        if (!isMounted) {
+            if (currentTile === 9 || currentTile === 12) {
+                if (destTile === 8 || destTile === 10) player.onWall = true; // Stepping UP onto wall floor
+                else if (destTile === 0 || destTile === 1 || destTile === 5) player.onWall = false; // Stepping DOWN to ground
+            } else if (currentTile === 8 || currentTile === 10) {
+                player.onWall = true; // Safely on the wall
+            } else {
+                player.onWall = false; // Safely on the ground
+            }
+        }
+
+        const isColliding = isCityCollision(nextX, nextY, currentActiveCityFaction, player.onWall);
+
+        if (!outOfBounds && !isColliding) {
+            player.x = nextX;
+            player.y = nextY;
+            player.isMoving = true;
+        } else {
+            player.isMoving = false;
+        }
+        return; 
+    }
+    else if (inBattleMode) {
+        const bW = (typeof BATTLE_WORLD_WIDTH !== 'undefined') ? BATTLE_WORLD_WIDTH : 2000;
+        const bH = (typeof BATTLE_WORLD_HEIGHT !== 'undefined') ? BATTLE_WORLD_HEIGHT : 2000;
+
+        let tileX = battleEnvironment.grid[Math.floor(nextX / BATTLE_TILE_SIZE)]?.[Math.floor(player.y / BATTLE_TILE_SIZE)];
+        let tileY = battleEnvironment.grid[Math.floor(player.x / BATTLE_TILE_SIZE)]?.[Math.floor(nextY / BATTLE_TILE_SIZE)];
+        
+        let bypassGateCollision = false;
+        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && typeof SiegeTopography !== 'undefined') {
+            let isBreached = window.__SIEGE_GATE_BREACHED__;
+            if (isBreached) {
+                let distToGateX = Math.abs(nextX - SiegeTopography.gatePixelX);
+                let distToGateY = Math.abs(nextY - SiegeTopography.gatePixelY);
+                if (distToGateX < 45 && distToGateY < 250) bypassGateCollision = true;
+            }
+        }
+
+        const canMoveX = bypassGateCollision || (!isBattleCollision(nextX, player.y, player.onWall, activeUnit) && tileX !== 8);
+        const canMoveY = bypassGateCollision || (!isBattleCollision(player.x, nextY, player.onWall, activeUnit) && tileY !== 8);
+        
+        if (canMoveX) player.x = Math.max(0, Math.min(nextX, bW));
+        if (canMoveY) player.y = Math.max(0, Math.min(nextY, bH));
+
+        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && battleEnvironment?.grid) {
+            const pTx = Math.floor(player.x / BATTLE_TILE_SIZE);
+            const pTy = Math.floor(player.y / BATTLE_TILE_SIZE);
+            const tile = battleEnvironment.grid[pTx]?.[pTy];
+
+            if (tile === 1 || tile === 5) {
+                player.onWall = false; 
+            } else {
+                player.onWall = false; 
+            }
         }
     }
-
-    // Bind the bypass strictly around the wall floor check too!
-    const canMoveX = bypassGateCollision || (!isBattleCollision(nextX, player.y, player.onWall, activeUnit) && tileX !== 8);
-    const canMoveY = bypassGateCollision || (!isBattleCollision(player.x, nextY, player.onWall, activeUnit) && tileY !== 8);
-    
-    if (canMoveX) player.x = Math.max(0, Math.min(nextX, bW));
-    if (canMoveY) player.y = Math.max(0, Math.min(nextY, bH));
-
-// Ladder/Wall Transition Logic
-if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && battleEnvironment?.grid) {
-    const pTx = Math.floor(player.x / BATTLE_TILE_SIZE);
-    const pTy = Math.floor(player.y / BATTLE_TILE_SIZE);
-    const tile = battleEnvironment.grid[pTx]?.[pTy];
-
-    // BLOCK TILE 9: do not allow climbing
-    if (tile === 1 || tile === 5) {
-        player.onWall = false; // normal wall/floor behavior
-    } else {
-        player.onWall = false; // ensures ladder tile does NOT trigger climbing
-    }
-}}
-
-
-else if (isCity) {
+    else if (isCity) {
         const cityW = (typeof CITY_WORLD_WIDTH !== 'undefined') ? CITY_WORLD_WIDTH : 2000;
         if (nextX > 25 && nextX < cityW - 25 && nextY > 25) {
             const txx = Math.floor(nextX / CITY_TILE_SIZE);
             const tyy = Math.floor(nextY / CITY_TILE_SIZE);
             const nextTile = cityDimensions[currentActiveCityFaction]?.grid?.[txx]?.[tyy];
-
+            
+            const isWallFloor = (nextTile === 8); 
+            const isStoneWall = (nextTile === 6); 
+            const isAccessTile = (nextTile === 10 || nextTile === 12); 
             const isStairs = (nextTile === 9); 
-            const isWallFloor = (nextTile === 8); // SURGERY: Detect Wall Floors
 
             const curTx = Math.floor(player.x / CITY_TILE_SIZE);
             const curTy = Math.floor(player.y / CITY_TILE_SIZE);
-            const currentlyOnStairs = cityDimensions[currentActiveCityFaction]?.grid?.[curTx]?.[curTy] === 9;
+            const currentTile = cityDimensions[currentActiveCityFaction]?.grid?.[curTx]?.[curTy];
+            const currentlyOnStairs = (currentTile === 9);
+            const currentlyInAccess = (currentTile === 10 || currentTile === 12);
+            
+            let canMove = false;
 
-            // SURGERY: Hard block movement onto Tile 8
-            if (!isWallFloor && (isStairs || currentlyOnStairs || typeof isCityCollision !== 'function' || !isCityCollision(nextX, nextY, currentActiveCityFaction, player.onWall))) {
+            if (isAccessTile) {
+                canMove = true; 
+            } else if (currentlyInAccess || currentlyOnStairs) {
+                canMove = !isCityCollision(nextX, nextY, currentActiveCityFaction, player.onWall);
+            } else if (!isWallFloor && !isStoneWall) {
+                canMove = !isCityCollision(nextX, nextY, currentActiveCityFaction, player.onWall);
+            }
+
+            if (canMove) {
                 player.x = nextX;
                 player.y = nextY;
             }
@@ -135,13 +190,10 @@ else if (isCity) {
     }
 }
 
-	// Ensure defaults if constants are missing during startup
 const SAFE_WIDTH = typeof WORLD_WIDTH !== 'undefined' ? WORLD_WIDTH : 2000;
 const SAFE_HEIGHT = typeof WORLD_HEIGHT !== 'undefined' ? WORLD_HEIGHT : 2000;
 
 
-	
-// --- REVISION: Added Animation State ---
 let player = {
     // --- POSITION & PHYSICS ---
     x: SAFE_WIDTH * 0.5,
@@ -161,7 +213,7 @@ let player = {
     gold: 500,
     food: 100,
     maxFood: 2000,
-    troops: 100,
+    troops: 20, //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>dpnt forget
 
     // --- PROGRESSION ---
     experience: 0,
@@ -177,34 +229,8 @@ let player = {
     // --- DIPLOMACY ---
     faction: "Player's Kingdom",
     enemies: ["Bandits"],
-roster: [
-    "Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", 
-    "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", 
-    "General", "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", 
-    "Lancer", "Heavy Lancer", "Elite Lancer", "Rocket", "Keshig", 
-    "Hand Cannoneer", "Camel Cannon", "Poison Crossbowman", "War Elephant", 
-    "Repeater Crossbowman", "Slinger", "Glaiveman", "Javelinier",
-    "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", 
-    "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia",
-    "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", 
-    "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", 
-    "Spearman", "Spearman", "Spearman", "Spearman",
-    "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", 
-    "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", 
-    "Shielded Infantry", "Shielded Infantry",
-    "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", 
-    "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", 
-    "Crossbowman", "Crossbowman",
-    "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", 
-    "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman",
-    "Archer", "Archer", "Archer", "Archer", "Archer", "Archer",
-    "Firelance", "Firelance", "Firelance", "Firelance",
-    "Heavy Firelance", "Heavy Firelance",
-    "Bomb",
-    "Repeater Crossbowman", "Repeater Crossbowman", "Repeater Crossbowman",
-    "Poison Crossbowman",
-    "Slinger"
-].map(unitName => ({ type: unitName, exp: 1 })),
+// roster: ["Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", "General", "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", "Heavy Lancer", "Elite Lancer", "Rocket", "Keshig", "Hand Cannoneer", "Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", "Slinger", "Glaiveman", "Javelinier", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Archer", "Archer", "Archer", "Archer", "Archer", "Archer", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Bomb", "Repeater Crossbowman", "Repeater Crossbowman", "Repeater Crossbowman", "Poison Crossbowman", "Slinger"].map(unitName => ({ type: unitName, exp: 1 })),
+roster: ["Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance"].map(unitName => ({ type: unitName, exp: 1 })),
     // --- SYSTEM ---
     isInitialized: false
 };
@@ -288,27 +314,38 @@ window.onwheel = (e) => {
 
     if (typeof inParleMode !== 'undefined' && inParleMode) return;
     
-    if (inBattleMode) {
+    if (inBattleMode) 
+	{
         if (!battleEnvironment?.grid || typeof pCmdr === 'undefined' || !pCmdr) return;
         
         player.size = 24;
-        calculateMovement(player.baseSpeed / 4, null, typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8, null, null, true);
+// SURGERY: Battle speed reduced to 70%
+calculateMovement((player.baseSpeed / 4) * 0.70, null, typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8, null, null, true);
         if (typeof updateBattleUnits === 'function') updateBattleUnits();
         
         pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
         if (pCmdr && player) {
             player.hp = pCmdr.hp;
             disableAICombatDefeated = (pCmdr.hp <= 0); 
-if (!disableAICombatDefeated) {
-    pCmdr.x = player.x; pCmdr.y = player.y;
-    pCmdr.isMoving = player.isMoving;
-    if (player.isMoving) pCmdr.state = "moving";
-    if (keys['a'] || keys['arrowleft']) pCmdr.direction = player.direction = -1;
-    if (keys['d'] || keys['arrowright']) pCmdr.direction = player.direction = 1;
-    pCmdr.vx = pCmdr.vy = 0; 
-    // SURGERY: Removed 'pCmdr.target = null' so the Commander can hold an attack lock!
+			
+		if (!disableAICombatDefeated) {
+			pCmdr.x = player.x; pCmdr.y = player.y;
+			pCmdr.isMoving = player.isMoving;
+			if (player.isMoving) pCmdr.state = "moving";
+			if (keys['a'] || keys['arrowleft']) pCmdr.direction = player.direction = -1;
+			if (keys['d'] || keys['arrowright']) pCmdr.direction = player.direction = 1;
+			pCmdr.vx = pCmdr.vy = 0; 
+			
+// SURGERY REVISION: Hold the attack lock, BUT drop it if the enemy dies, flees, or runs out of range!
+if (pCmdr.target) {
+    let distToTarget = Math.hypot(pCmdr.target.x - pCmdr.x, pCmdr.target.y - pCmdr.y);
+    let maxRange = pCmdr.stats.range || 700;
+    
+    if (pCmdr.target.hp <= 0 || pCmdr.target.state === "FLEEING" || distToTarget > maxRange) {
+        pCmdr.target = null;
+    }
 }
-
+		}
 
 			else {
                 player.x = pCmdr.x; player.y = pCmdr.y; player.isMoving = false;
@@ -337,49 +374,30 @@ if (!disableAICombatDefeated) {
             ctx.restore();
         }
     } 
-else if (typeof inCityMode !== 'undefined' && inCityMode) {
-        player.size = 8;
-        
-        // ---> SURGERY 2: PERSISTENT WALL STATE <---
-        if (cityDimensions[currentActiveCityFaction]) {
-            const tx = Math.floor(player.x / CITY_TILE_SIZE);
-            const ty = Math.floor(player.y / CITY_TILE_SIZE);
-            const currentTile = cityDimensions[currentActiveCityFaction].grid[tx]?.[ty];
-            
-            // Tile 8 = Parapet, 9 = Ladder, 10 = Tower
-            if (currentTile === 9 || currentTile === 8 || currentTile === 10) {
-                player.onWall = true;
-            } 
-            // Drop back to ground physics ONLY if stepping onto pure terrain
-            else if (currentTile === 0 || currentTile === 1 || currentTile === 5) {
-                player.onWall = false;
-            }
-        }
-
-        // Removed the invalid 7th argument passed to calculateMovement
-        calculateMovement(player.baseSpeed / 9, null, CITY_TILE_SIZE, null, null, true);
-
-        if (cityDimensions[currentActiveCityFaction]) handleEntityGateTeleport(player, cityDimensions[currentActiveCityFaction].grid);
-        if (typeof updateCityCosmeticNPCs === 'function') updateCityCosmeticNPCs(currentActiveCityFaction);
-        
-        // ... (rest of the block remains the same)
-        
-        if (player.y > CITY_WORLD_HEIGHT - 20 || keys['p']) {
-            player.onWall = false;
-            leaveCity(player);
-            keys['p'] = false; 
-        }
-    } 
-    else { 
+	
+else 
+	{ 
         player.size = 24;
         
         if (++economyTick > 300) { updateCityEconomies(cities); economyTick = 0; }
         if (typeof updateDiplomacy === 'function') updateDiplomacy();
         if (typeof updateSieges === 'function') updateSieges();
  
+        // ---> SURGERY 1: FETCH TILE & CALCULATE SPEED BEFORE MOVING <---
+        const tx = Math.max(0, Math.min(COLS - 1, Math.floor(player.x / TILE_SIZE)));
+        const ty = Math.max(0, Math.min(ROWS - 1, Math.floor(player.y / TILE_SIZE)));
+        const currentTile = worldMap?.[tx]?.[ty] || {name: "Plains", speed: 1};
+
         const oldX = player.x, oldY = player.y;
-        player.speed = player.food > 0 ? player.baseSpeed : player.baseSpeed * 0.6; 
+        
+        // Apply starvation penalty AND terrain speed multiplier
+        let starvPenalty = player.food > 0 ? 1.0 : 0.6;
+// SURGERY: Overworld speed reduced by 50%
+player.speed = player.baseSpeed * starvPenalty * currentTile.speed * 0.60;
+        
+        // Now pass the heavily modified speed into the engine
         calculateMovement(player.speed / 4, worldMap, TILE_SIZE, COLS, ROWS, false);
+        // ---------------------------------------------------------------
         
         const step = Math.hypot(player.x - oldX, player.y - oldY);
         if (step > 0 && (player.distTrack += step) >= 1000) { 
@@ -394,81 +412,52 @@ else if (typeof inCityMode !== 'undefined' && inCityMode) {
 
         updateNPCs(cities);
         
-        if (typeof globalNPCs !== 'undefined' && player) {
-            let closestDist = 1000, closestEnemy = null;
-            for (let npc of globalNPCs) {
-                if (npc.faction !== player.faction) {
-                    let d = Math.hypot(npc.x - player.x, npc.y - player.y);
-                    if (d < closestDist) { closestDist = d; closestEnemy = npc; }
-                }
-            }
 
-            if (closestDist < 0) {
-                if (AudioManager.currentTrack !== "WorldMap_Tension") {
-                    AudioManager.playMusic("WorldMap_Tension");
-                    AudioManager.playSound('ui_click'); 
-                }
-                if (player.lastEncounteredFaction !== closestEnemy.faction) {
-                    player.lastEncounteredFaction = closestEnemy.faction;
-                    if (closestEnemy.faction === "Great Khaganate") AudioManager.playSound('charge');
-                    else if (closestEnemy.faction === "Hong Dynasty") AudioManager.playSound('firelance');
-                    else if (closestEnemy.faction === "Shahdom of Iransar") AudioManager.playSound('sword_clash');
-                }
-            } else if (closestDist < 1) {
-                if (AudioManager.currentTrack !== "Bandits") AudioManager.playMusic("Bandits");
-                player.lastEncounteredFaction = null; 
-            } else {
-                if (AudioManager.currentTrack !== 'music/gameloop.mp3') {
-                    AudioManager.playRandomMP3List(['music/gameloop1.mp3', 'music/gameloop2.mp3', 'music/gameloop3.mp3']);
-                }
-                player.lastEncounteredFaction = null;
-            }
-        }
-      
-        const tx = Math.max(0, Math.min(COLS - 1, Math.floor(player.x / TILE_SIZE)));
-        const ty = Math.max(0, Math.min(ROWS - 1, Math.floor(player.y / TILE_SIZE)));
-        const currentTile = worldMap?.[tx]?.[ty] || {name: "Plains", speed: 1};
 
         document.getElementById('loc-text').innerText = `${Math.round(player.x)}, ${Math.round(player.y)}`;
-        document.getElementById('terrain-text').innerText = currentTile.name;
+        document.getElementById('terrain-text').innerText = inCityMode ? "City" : currentTile.name;
         document.getElementById('speed-text').innerText = currentTile.speed + "x";
         document.getElementById('zoom-text').innerText = zoom.toFixed(2) + "x";
-
-        let touchingCity = cities.find(c => Math.hypot(player.x - c.x, player.y - c.y) < c.radius + player.size) || null;
-        
-        if (touchingCity) {
-            if (activeCity !== touchingCity) {
-                activeCity = touchingCity;
-                document.getElementById('city-name').innerText = activeCity.name;
-                document.getElementById('city-name').style.color = activeCity.color;
-                document.getElementById('city-faction').innerText = activeCity.faction;
-                cityPanel.style.display = 'block';
-                
-                const isEnemy = player.enemies?.includes(activeCity.faction);
-                const recruitBox = document.getElementById('recruit-box');
-                const hostileBox = document.getElementById('hostile-box');
-
-                recruitBox.style.opacity = isEnemy ? '0.3' : '1';
-                recruitBox.style.pointerEvents = isEnemy ? 'none' : 'auto';
-                hostileBox.style.display = isEnemy ? 'flex' : 'none';
+		
+      // ---> SURGERY: Prevent overworld collision checks while exploring city interiors <---
+        if (!inCityMode) {
+            let touchingCity = cities.find(c => Math.hypot(player.x - c.x, player.y - c.y) < c.radius + player.size) || null;
+            
+            if (touchingCity) {
+                if (activeCity !== touchingCity) {
+                    activeCity = touchingCity;
+                    document.getElementById('city-name').innerText = activeCity.name;
+                    document.getElementById('city-name').style.color = activeCity.color;
+                    document.getElementById('city-faction').innerText = activeCity.faction;
+                    cityPanel.style.display = 'block';
                     
-                if (isEnemy) {
-                    player.stunTimer = 60; 
-                    keys['w'] = keys['a'] = keys['s'] = keys['d'] = keys['arrowup'] = keys['arrowleft'] = keys['arrowdown'] = keys['arrowright'] = false;
+                    const isEnemy = player.enemies?.includes(activeCity.faction);
+                    const recruitBox = document.getElementById('recruit-box');
+                    const hostileBox = document.getElementById('hostile-box');
+
+                    recruitBox.style.opacity = isEnemy ? '0.3' : '1';
+                    recruitBox.style.pointerEvents = isEnemy ? 'none' : 'auto';
+                    hostileBox.style.display = isEnemy ? 'flex' : 'none';
+                        
+                    if (isEnemy) {
+                        player.stunTimer = 60; 
+                        keys['w'] = keys['a'] = keys['s'] = keys['d'] = keys['arrowup'] = keys['arrowleft'] = keys['arrowdown'] = keys['arrowright'] = false;
+                    }
                 }
+                document.getElementById('city-pop').innerText = Math.floor(activeCity.pop).toLocaleString();
+                document.getElementById('city-garrison').innerText = Math.floor(activeCity.troops).toLocaleString();
+                document.getElementById('city-gold').innerText = Math.floor(activeCity.gold).toLocaleString();
+                document.getElementById('city-food').innerText = Math.floor(activeCity.food).toLocaleString();
+            } else if (activeCity !== null) {
+                activeCity = null;
+                cityPanel.style.display = 'none';
             }
-            document.getElementById('city-pop').innerText = Math.floor(activeCity.pop).toLocaleString();
-            document.getElementById('city-garrison').innerText = Math.floor(activeCity.troops).toLocaleString();
-            document.getElementById('city-gold').innerText = Math.floor(activeCity.gold).toLocaleString();
-            document.getElementById('city-food').innerText = Math.floor(activeCity.food).toLocaleString();
-        } else if (activeCity !== null) {
-            activeCity = null;
-            cityPanel.style.display = 'none';
         }
     }
     
     if (++uiSyncTick % 30 === 0) syncSiegeUIVisibility();
 }
+
 function draw() {
     if (!player || isNaN(player.x) || isNaN(player.y)) {
         console.warn("NaN caught in draw! Healing coordinates to prevent black screen.");
@@ -555,6 +544,10 @@ function draw() {
         if (typeof drawHuman === 'function') {
             drawHuman(ctx, player.x, player.y, player.isMoving, player.anim, pColor);
         }
+		
+		if (typeof cityDialogueRender === 'function') {
+    cityDialogueRender(ctx);
+}
 
         ctx.save();
         ctx.font = "bold 16px Georgia";
@@ -646,7 +639,10 @@ function draw() {
         ctx.fillText(`YOU (${player.troops})`, player.x, player.y - 26);
         ctx.font = "10px Arial";
     }
+ 
 
+    if (uiSyncTick % 30 === 0) syncSiegeUIVisibility();
+	
     ctx.restore();
 
     if (typeof drawPlayerOverlay === 'function') {
@@ -659,11 +655,31 @@ function draw() {
     });
 
     updateAndDrawPlayerSystems(ctx, player, zoom, WORLD_WIDTH, WORLD_HEIGHT, typeof globalNPCs !== 'undefined' ? globalNPCs : []);
+	
+	
+
+	updateCitySystems();
+	
 }
+
 
 //initGame();
 showMainMenu();
  
+ function updateCitySystems() {
+    if (!inCityMode || inBattleMode || !currentActiveCityFaction) return;
+
+    // 1. Process Dialogue Timers
+    if (typeof cityDialogueUpdate === 'function') {
+        cityDialogueUpdate();
+    }
+
+    // 2. Check for Proximity Triggers (Frame-by-Frame)
+    if (typeof cityDialogueSystem !== 'undefined') {
+        cityDialogueSystem.tryAutoCityContact(player, currentActiveCityFaction, { radius: 25 }); // Slightly increased radius for better feel
+    }
+}
+
 function refreshCityUI() {
     // 1. Update the Player's Global UI (Top left/Overlay)
     const globalGold = document.getElementById('gold-text');

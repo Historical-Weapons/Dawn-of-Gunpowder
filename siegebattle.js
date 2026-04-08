@@ -779,12 +779,19 @@ if (ladder.y > targetPixelY) {
             let dist = Math.hypot(dx, dy);
             let speed = 6;
 
-            battleEnvironment.projectiles.push({
+battleEnvironment.projectiles.push({
                 x: treb.x, y: treb.y,
                 vx: (dx / dist) * speed, vy: (dy / dist) * speed,
                 startX: treb.x, startY: treb.y,
                 maxRange: 3500,
-                attackerStats: { role: "bomb", missileAPDamage: 150, missileBaseDamage: 50, name: "Trebuchet Boulder" },
+                attackerStats: { 
+                    role: "bomb", 
+                    missileAPDamage: 150, 
+                    missileBaseDamage: 50, 
+                    name: "Trebuchet Boulder",
+                    currentStance: "statusrange", // <--- THE CRITICAL FIX
+                    isRanged: true                // <--- Safety fallback
+                },
                 side: treb.side,
                 projectileType: "bomb", 
                 isFire: false
@@ -1926,7 +1933,7 @@ function triggerGateBreach(gate) {
     if (battleEnvironment.units) {
         battleEnvironment.units.forEach(u => {
             
-            // --- SURGERY: ALL PLAYER UNITS RUSH THE PLAZA ---
+           // --- SURGERY: ALL PLAYER UNITS RUSH THE PLAZA (STAGE 1 FUNNEL) ---
             if (u.side === "player" && !u.isCommander) {
                 // MANDATORY EXCEPTION: Ladder fanatics keep swarming the walls!
                 if (u.siegeRole !== "ladder_fanatic") {
@@ -1935,12 +1942,13 @@ function triggerGateBreach(gate) {
                     u.siegeRole = "assault_complete"; // Forces them to drop rams
                     u.target = null; // Clears current distractions
                     
-                    let plazaX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : 1200;
-                    let plazaY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : 800;
+                    let gateX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : 1200;
+                    let gateY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelY : 2000;
                     
+                    // Immediately point them strictly at the gate centroid
                     u.orderTargetPoint = { 
-                        x: plazaX + (Math.random() - 0.5) * 400, 
-                        y: plazaY + (Math.random() - 0.5) * 300 
+                        x: gateX + (Math.random() - 0.5) * 80, // Tight spread to force the funnel
+                        y: gateY - 20 // Pulls them across the threshold
                     };
                 }
             }
@@ -2026,7 +2034,7 @@ console.log(`[SIEGE SYSTEM] Battle Mode Detected: ${isCustom ? "CUSTOM" : "CAMPA
             SiegeTopography[key] = 0;
         }
 
-    }, 20000);
+    }, 5000);
 }
 
 }

@@ -33,62 +33,109 @@ function isFlanked(attacker, defender) {
     return angleDeg >= 120;
 }
 
-
 function calculateDamageReceived(attacker, defender, stateString) {
     const states = stateString.split(" ");
-
     let totalDamage = 0;
 
     // Check if the attacker is FORCED into melee by their current stance
     const isActuallyRangedAttacking = states.includes("ranged_attack") && attacker.currentStance === "statusrange";
 
-    let attackValue = attacker.meleeAttack;
-    let defenseValue = defender.meleeDefense;
+    let attackValue = attacker.meleeAttack || 10;
+    let defenseValue = defender.meleeDefense || 10;
 
-    // SURGERY: Add fallback to 0 to prevent NaN damage if a unit has no experience value
+    // Add fallback to 0 to prevent NaN damage if a unit has no experience value
     attackValue += ((attacker.experienceLevel || 0) * 2);
     defenseValue += ((defender.experienceLevel || 0) * 2);
 
     if (states.includes("flanked")) defenseValue *= 0.5;
     if (states.includes("charging")) attackValue += 15;
 
+    // ========================================================================
+    // 1. FIRELANCE AMMO DRAIN & BURST FIX
+    // ========================================================================
+
+let safeName = attacker.unitType || (attacker.stats && attacker.stats.name) || "";
+let safeRole = (attacker.stats && attacker.stats.role) || attacker.role || "";
+let isFirelance = safeName.includes("Firelance") || (attacker.name && attacker.name.includes("Firelance"));
+
+if (isFirelance && attacker.ammo > 0) {
+    if (attacker.lastAmmoDrainTick !== Date.now()) {
+        attacker.ammo -= 1;
+        attacker.lastAmmoDrainTick = Date.now();
+    }
+    attackValue += 40; 
+}
     if (isActuallyRangedAttacking) {
         // Ranged Damage Calculation
         if (states.includes("shielded_front") && Math.random() * 100 < defender.shieldBlockChance) return 0;
 
-        let effectiveArmor = Math.max(0, defender.armor - attacker.missileAPDamage);
-        let baseDamageDealt = Math.max(0, attacker.missileBaseDamage - (effectiveArmor * 0.5));
-        totalDamage = baseDamageDealt + attacker.missileAPDamage;
+        let effectiveArmor = Math.max(0, defender.armor - (attacker.missileAPDamage || 0));
+        let baseDamageDealt = Math.max(0, (attacker.missileBaseDamage || 0) - (effectiveArmor * 0.5));
+        totalDamage = baseDamageDealt + (attacker.missileAPDamage || 0);
 
-        // Add this:
-        if (attacker.name === "Bomb") {
-            totalDamage *= 3.5; // Bombs should be devastating on direct hit
+        // ========================================================================
+        // 2. EXPONENTIAL AREA OF EFFECT (AoE) FOR BOMBS & TREBUCHETS
+        // ========================================================================
+
+// This covers both the new 'safe' lookups and your old direct property checks
+let isBomb = (safeName === "Bomb" || safeRole === "bomb") || (attacker.name === "Bomb" || attacker.role === "bomb");
+
+let isTrebuchet = safeName.includes("Trebuchet") || (attacker.name && attacker.name.includes("Trebuchet"));
+
+
+        if (isBomb || isTrebuchet) {
+            // Massive direct hit damage
+            totalDamage *= 3.5; 
+
+            // Set the blast scale
+            let blastRadius = isTrebuchet ? 150 : 80; 
+            let maxAoEDamage = isTrebuchet ? 200 : 100;
+
+            // Apply exponential AoE to all surrounding units
+            if (typeof battleEnvironment !== 'undefined' && battleEnvironment.units) {
+                battleEnvironment.units.forEach(u => {
+                    // Skip dead units or the direct target (who already takes totalDamage)
+                    if (u.hp <= 0 || u === defender) return; 
+
+                    let dx = u.x - defender.x;
+                    let dy = u.y - defender.y;
+                    let dist = Math.hypot(dx, dy);
+
+                    if (dist <= blastRadius) {
+                        // Exponential drop-off formula: y = e^(-k * dist)
+                        // k = 4 ensures damage drops off steeply toward the edge of the blast
+                        let dropoff = Math.pow(Math.E, -4 * (dist / blastRadius));
+                        
+                        let splashDamage = Math.floor(maxAoEDamage * dropoff);
+                        
+                        if (splashDamage > 0) {
+                            u.hp -= splashDamage;
+                        }
+                    }
+                });
+            }
         }
 
-        if (defender.isLarge && attacker.name.toLowerCase().includes("rocket")) totalDamage += 30;
+        // Rocket bonus vs Large
+        if (defender.isLarge && attacker.name && attacker.name.toLowerCase().includes("rocket")) {
+            totalDamage += 30;
+        }
 
-        // Optional: consume ammo when firing
-        // attacker.ammo -= 1;
     } else {
         // Melee Damage Calculation
         let hitChance = Math.max(10, Math.min(90, 40 + (attackValue - defenseValue)));
 
         if (Math.random() * 100 < hitChance) {
-            // FIX: Replace hardcoded 20 with the attacker's actual melee stat
-            let weaponDamage = attacker.meleeAttack + (defender.isLarge ? attacker.bonusVsLarge : 0);
-
-            totalDamage = Math.max(15, weaponDamage - (defender.armor * 0.3)); // reasonable 15 for blunt
+            let weaponDamage = attackValue + (defender.isLarge ? (attacker.bonusVsLarge || 0) : 0);
+            totalDamage = Math.max(15, weaponDamage - (defender.armor * 0.3)); 
         }
     }
 
     if (attacker.stamina < 30) totalDamage *= 0.7;
 
-    let finalDamage = Math.floor(totalDamage);
-    // If formatNumbersWithCommas is true, we still return a Number for calculations,
-    // but you can format it later in the UI.
-    return finalDamage;
-} // Always return a pure number for math operations
- 
+    return Math.floor(totalDamage);
+}
+
 function updateBattleUnits() {
     if (typeof processSiegeEngines === 'function') processSiegeEngines();
     if (typeof processTacticalOrders === 'function') processTacticalOrders();
@@ -234,9 +281,6 @@ function applyUnitCollisions(units) {
             let u2 = units[j];
             if (u2.hp <= 0 || u2.state === "FLEEING") continue;
 
-// REVISION: Multiply the combined radius by 0.6 to shrink the collision bubble.
-            // If both units have radius 10, minDistance becomes 12 instead of 20.
-            // 12 is less than the 16-pixel attack threshold. Perfect.
             let minDistance = (u1.stats.radius + u2.stats.radius) * 0.6;
             let dx = u2.x - u1.x;
             let dy = u2.y - u1.y;
@@ -704,14 +748,17 @@ function drawBloodPool(ctx, unit) {
     ctx.fillStyle = `rgba(100, 0, 0, ${stats.opacity})`; 
     ctx.beginPath();
     
-    // Draw the randomized ellipse
-    ctx.ellipse(
-        0, 0, 
-        stats.radiusX, 
-        stats.radiusY, 
-        stats.rotation, 
-        0, Math.PI * 2
-    );
+// Draw the randomized ellipse with 20% randomness
+const randomFactorX = 1.4 + Math.random() * 0.04;  
+const randomFactorY = 1.4 + Math.random() * 0.04;  
+
+ctx.ellipse(
+    0, 0, 
+    stats.radiusX * randomFactorX, 
+    stats.radiusY * randomFactorY, 
+    stats.rotation, 
+    0, Math.PI * 2
+);
     
     ctx.fill();
     ctx.restore();

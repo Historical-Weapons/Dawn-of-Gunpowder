@@ -171,10 +171,22 @@ function drawPlayerOverlay(ctx, player, zoom) {
     let cursorY = rosterStartY + 30;
     const colGap = 30; 
     const rowGap = 45; 
-
-    // SURGICAL FIX: Filter out 0-count troops so dead units don't show
-    const units = Object.values(troopGroups).filter(u => u.count > 0);
-
+// REPLACE IT WITH THIS BLOCK:
+    // ---> SURGERY: DYNAMIC TROOP GROUPING <---
+    // We build this fresh from the freshly-synced true roster so dead units never render.
+    let dynamicTroopGroups = {};
+    if (player.roster) {
+        player.roster.forEach(t => {
+            if (t.count > 0) {
+                let key = t.type + "_" + t.lvl;
+                if (!dynamicTroopGroups[key]) {
+                    dynamicTroopGroups[key] = { type: t.type, count: 0, lvl: t.lvl, exp: t.exp };
+                }
+                dynamicTroopGroups[key].count += t.count;
+            }
+        });
+    }
+    const units = Object.values(dynamicTroopGroups);
     units.forEach((unit) => {
         ctx.font = "bold 11px monospace"; 
         const name = unit.type.toUpperCase();

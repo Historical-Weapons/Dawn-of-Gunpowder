@@ -129,14 +129,13 @@ const FactionUnitRules = {
         }
     };
 
-    // --- NEW FUNCTION: Filters and Sorts units based on the rules above ---
+// --- NEW FUNCTION: Filters and Sorts units based on the rules above ---
     function getAvailableUnitsForFaction(factionName) {
         let available = [];
         const rules = FactionUnitRules[factionName] || { bannedRoles: [], bannedUnits: [] };
         const bannedRoles = rules.bannedRoles || [];
         const bannedUnits = rules.bannedUnits || [];
 
-        // Check if ROLES is defined, otherwise use standard string fallbacks
         const roleCav = typeof ROLES !== 'undefined' ? ROLES.CAVALRY : "Cavalry";
         const roleHorseArch = typeof ROLES !== 'undefined' ? ROLES.HORSE_ARCHER : "Horse Archer";
         const roleMountedGun = typeof ROLES !== 'undefined' ? ROLES.MOUNTED_GUNNER : "Mounted Gunner";
@@ -148,11 +147,16 @@ const FactionUnitRules = {
             let template = UnitRoster.allUnits[unitKey];
             let role = template.role;
 
+            // ---> NEW HOOK: STRICT SIEGE BAN <---
+            // Completely strips cavalry/mounted units from the pool if in Siege Mode
+            if (typeof customBattleMode !== 'undefined' && customBattleMode === "siege") {
+                if (!isValidSiegeUnit(unitKey, template)) continue;
+            }
+
             // 1. Check if unit is specifically banned
             if (bannedUnits.includes(unitKey)) continue;
 
             // 2. Check if the unit's role is banned
-            // Note: Ensuring robust string matching just in case the engine uses constant objects
             if (bannedRoles.includes(role)) continue; 
 
             // (Optional) Catch-all for hardcoded string bans vs constant bans
@@ -163,10 +167,8 @@ const FactionUnitRules = {
             available.push(unitKey);
         }
 
-        // Return the list sorted alphabetically so it looks neat
         return available.sort();
     }
-	
 
     // Dummy unit object to prevent render crashes in infscript/cavscript
     const dummyUnit = { id: 1, stats: { ammo: 10 }, ammo: 10, state: "idle" };
@@ -626,12 +628,10 @@ if (countEl) {
             }
         });
     }
-
 // --- RANDOM BATTLE GENERATOR ---
     function launchRandomBattle() {
         // 1. HARD RESET: Clear all manual selections and influence
-		// Set funds based on battle type
-		customFunds = (customBattleMode === "siege") ? 3000 : 1000;
+        customFunds = (customBattleMode === "siege") ? 3000 : 1000;
         const fundsInput = document.getElementById("cb-funds-input");
         if (fundsInput) fundsInput.value = customFunds;
 
@@ -648,49 +648,52 @@ if (countEl) {
             Object.keys(FACTIONS).filter(f => f !== "Bandits" && f !== "Player's Kingdom") : 
             ["Generic"];
 
-        // 4. Procedural Army Population (No nested functions)
+        // 4. Procedural Army Population
         const setups = [playerSetup, enemySetup];
         
         for (let i = 0; i < setups.length; i++) {
             let setup = setups[i];
 
-            // Pick a random faction
             setup.faction = factionNames[Math.floor(Math.random() * factionNames.length)];
             setup.color = (typeof FACTIONS !== 'undefined' && FACTIONS[setup.faction]) ? 
                 FACTIONS[setup.faction].color : "#ffffff";
             
-            // Respect Faction-Specific Unit Rules
             let allowedUnits = (typeof getAvailableUnitsForFaction === 'function') ? 
                 getAvailableUnitsForFaction(setup.faction) : 
                 Object.keys(UnitRoster.allUnits).filter(k => k !== "Commander");
 
             let attempts = 0;
-						// Target the 500 budget limit
-			const maxUnits = (customBattleMode === "siege") ? 100 : 100;
+            const maxUnits = (customBattleMode === "siege") ? 100 : 100;
 
-			while (setup.roster.length < maxUnits && attempts < 500) {
-				attempts++;
+            while (setup.roster.length < maxUnits && attempts < 500) {
+                attempts++;
 
-			let unitKey = allowedUnits[Math.floor(Math.random() * allowedUnits.length)];
-			let unitData = UnitRoster.allUnits[unitKey];
-			let cost = unitData ? (unitData.cost || 50) : 50;
+                let unitKey = allowedUnits[Math.floor(Math.random() * allowedUnits.length)];
+                let unitData = UnitRoster.allUnits[unitKey];
 
-			// Only add if it fits the remaining budget
-		if (setup.cost + cost <= customFunds) {
-				setup.roster.push(unitKey);
-				setup.cost += cost;
-			}
-		}
+                // ---> NEW HOOK: EXPLICIT RANDOMIZER SAFETY NET <---
+                // If it accidentally picks a horse/elephant/camel in siege mode, skip it.
+                // We keep trying (up to 500 attempts) without counting this against the roster!
+                if (customBattleMode === "siege" && !isValidSiegeUnit(unitKey, unitData)) {
+                    continue; 
+                }
+
+                let cost = unitData ? (unitData.cost || 50) : 50;
+
+                // Only add if it fits the remaining budget
+                if (setup.cost + cost <= customFunds) {
+                    setup.roster.push(unitKey);
+                    setup.cost += cost;
+                }
+            }
             
-            // Sort to keep the deployment looking organized
             setup.roster.sort();
         }
 
         // 5. Sync UI and Launch
-        updateUI(); // Refreshes the menu to show the new random units
+        updateUI(); 
         launchCustomBattle();
     }
-
     // --- REGICIDE WIN/LOSS MONITOR (SEPARATE FUNCTION) ---
     function startRegicideMonitor() {
         // Ensure any previous monitors are cleared before starting a new one

@@ -20,6 +20,55 @@ let cachedCommander = null;
 
 const originalDeployArmy = deployArmy;
 
+// ============================================================================
+// ---> SURGERY: GLOBAL ROSTER HARD-SYNC <---
+// Rebuilds the player's persistent roster based on literal survivors on the map.
+// ============================================================================
+window.hardSyncPlayerRoster = function() {
+    // Safety check: if no battle is active, do not overwrite anything
+    if (typeof battleEnvironment === 'undefined' || !battleEnvironment || !battleEnvironment.units) {
+        return player.troops || 0; 
+    }
+
+    let updatedFlatRoster = [];
+    let trueSurvivorCount = 0;
+
+    battleEnvironment.units.forEach(u => {
+        // 1. Must be Player side. 2. Must be ALIVE (hp > 0).
+        if (u.side === "player" && u.hp > 0) {
+            
+            // EXCLUSIONS: Do not add the Commander, Battering Rams, or dummy waypoints into the permanent troop roster!
+            let isEquipment = u.unitType === "Battering Ram" || u.unitType === "Siege Tower" || u.isEquipment === true;
+            
+            if (!u.isCommander && !u.isDummy && !isEquipment) {
+                
+                // Safely grab the unit's name, level, and XP
+                let unitKey = u.unitType || (u.stats ? u.stats.name : "Militia");
+                let unitLvl = u.level || u.lvl || 1;
+                let unitExp = u.exp || u.stats?.experienceLevel || 1;
+                
+                // THE FIX: Keep them as individuals so the battlefield deploys exactly 19 men, 
+                // but attach 'count: 1' so the UI grouping loop doesn't ignore them!
+                updatedFlatRoster.push({
+                    type: unitKey,
+                    count: 1, 
+                    lvl: unitLvl,
+                    exp: unitExp,
+                    stats: u.stats || null // Retain original combat stats
+                });
+                trueSurvivorCount++;
+            }
+        }
+    });
+
+    // The Surgical Strike: Overwrite the overworld roster with the grim reality
+    player.roster = updatedFlatRoster;
+    player.troops = trueSurvivorCount;
+    
+    console.log(`[Roster Sync] Ghost troops purged. Actual true survivors: ${trueSurvivorCount}`);
+    return trueSurvivorCount;
+};
+
 // --- 1. OVERRIDE DEPLOY ARMY (Persistent Rosters, 150 Cap & Player Avatar) ---
 deployArmy = function(faction, totalTroops, side) {
     let entity = side === "player" ? player : currentBattleData.enemyRef;
@@ -395,8 +444,12 @@ createBattleSummaryUI = function(...args) {
         let pSurvivorsVisual = battleEnvironment.units.filter(u => u.side === "player" && u.faction === player.faction && !u.isCommander && u.hp > 0).length;
         let pSurvivorsTotal = pSurvivorsVisual + pReserves;
         let pInitial = currentBattleData.trueInitialCounts ? currentBattleData.trueInitialCounts.player : pSurvivorsTotal;
+// REPLACE IT WITH THIS:
+        // ---> SURGERY: FORCE ROSTER REBUILD BEFORE CALCULATING LOSSES <---
+        if (typeof window.hardSyncPlayerRoster === 'function') {
+            pSurvivorsTotal = window.hardSyncPlayerRoster(); 
+        }
         let pLost = Math.max(0, pInitial - pSurvivorsTotal);
-
         let enemyRef = currentBattleData.enemyRef;
         let eReserves = (enemyRef && enemyRef.reserveRoster) ? enemyRef.reserveRoster.length : 0;
         let eSurvivorsVisual = battleEnvironment.units.filter(u => u.side === "enemy" && u.hp > 0).length;

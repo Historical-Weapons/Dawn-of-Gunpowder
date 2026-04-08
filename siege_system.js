@@ -451,11 +451,17 @@ function triggerSiegeAssault() {
 }
 
 function restoreSiegeAfterBattle(didPlayerWin) {
+    // ---> SURGERY: GUARANTEE ROSTER SYNC UPON EXITING SIEGE SCREEN <---
+    // This catches edge-case siege victories that bypass the standard leave battle logic.
+    if (typeof window.hardSyncPlayerRoster === 'function') {
+        window.hardSyncPlayerRoster();
+    }
  
     const siege = activeSieges.find(s => s.attacker === player || s.attacker.disableAICombat);
     if (!siege) return;
 
     siege.isPaused = true; 
+    // ... [rest of your existing UI visibility code]
 
     // Now that the map is visible in the background, show the UI
     const siegeGui = document.getElementById('siege-gui');

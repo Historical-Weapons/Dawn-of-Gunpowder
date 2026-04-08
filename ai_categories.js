@@ -14,12 +14,8 @@ function canUseSiegeEngines(unit) {
     const isCavalry = /(cav|horse|mounted|camel|eleph|lancer|keshig)/.test(txt);
     if (unit.stats.isLarge || unit.isMounted || isCavalry) return false;
    
- 
-// --- SURGERY: PROMOTE SPECIALISTS TO SIEGE ROLES ---
-// Ensure txt is lowercase once at the start
-const unitLabel = txt.toLowerCase();
 
-// Use \b (word boundaries) so 'bombardier' doesn't trigger 'bomb'
+const unitLabel = txt.toLowerCase();
 const isRanged = unit.stats.isRanged || /\b(archer|bow|crossbow|slinger|rocket)\b/.test(unitLabel);
 
 const isSpecialist = /\b(firelance|bomb|javelinier|repeater)\b/.test(unitLabel);
@@ -131,7 +127,7 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
  
         let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
         
-        // ==========================================
+// ==========================================
         // SIEGE MACRO-TARGETING OVERHAUL
         // ==========================================
         if (inSiege) {
@@ -139,25 +135,45 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
                 ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
             let isGateBreached = !southGate || southGate.isOpen;
             
+            let gateX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : BATTLE_WORLD_WIDTH / 2;
+            let gateY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelY : BATTLE_WORLD_HEIGHT / 2;
+
+            let gateTarget = {
+                x: gateX,
+                y: gateY - 20, // Pull them slightly inside
+                hp: 9999, isDummy: true, priority: "gate_funnel"
+            };
+
             let plazaTarget = {
-                x: typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : BATTLE_WORLD_WIDTH / 2,
+                x: gateX,
                 y: typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : BATTLE_WORLD_HEIGHT / 2,
                 hp: 9999, isDummy: true, priority: "plaza"
             };
 
-            // ATTACKER COMMON GOAL
+            // ATTACKER COMMON GOAL (2-STAGE FUNNEL)
             if (unit.side === "player") {
                 if (isGateBreached && !unit.onWall) {
-                    // Flood the gates if breached
-                    if (!unit.target || unit.target.priority !== "plaza") {
-                        unit.target = plazaTarget;
+                    
+                    let isInsideCity = unit.y < gateY + 20;
+
+                    if (!isInsideCity) {
+                        // Stage 1: Funnel
+                        if (!unit.target || unit.target.priority !== "gate_funnel") {
+                            unit.target = gateTarget;
+                        }
+                    } else {
+                        // Stage 2: Flood the plaza
+                        if (!unit.target || unit.target.priority !== "plaza") {
+                            unit.target = plazaTarget;
+                        }
                     }
                     return; // Lock in the macro-target
-		} else if (!canUseSiegeEngines(unit) && !isGateBreached) {
-                    // Cavalry/Large sit back if walls are up to avoid clustering and dying to towers
-                    let campY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.campPixelY + 40 : BATTLE_WORLD_HEIGHT - 50;
-                    // FIX: Pushed back to +500 so they stay safely behind the trebuchets (which spawn at +350)
-                    unit.target = { x: unit.x, y: campY, hp: 9999, isDummy: true };
+                    
+                } else if (!canUseSiegeEngines(unit) && !isGateBreached) {
+                    // SURGERY: Pushed archers forward to the wall line so they are in range to shoot
+                    let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000;
+                    // Position them 120px from the wall (well within 300+ range)
+                    unit.target = { x: unit.x, y: wallY + 120, hp: 9999, isDummy: true };
                     return;
                 }
             }
@@ -208,13 +224,16 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
             ? Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y) 
             : Infinity;
 
-        // ---> SURGERY 1: Drop the target if they become inaccessible (e.g., climbing a ladder) <---
-        if (!unit.target || unit.target.hp <= 0 || unit.target.disableAICombat || (currentTargetDist > 80 && Math.random() < 0.02) || (unit.target.isDummy && Math.random() < 0.05)) {
+// ---> SURGERY 1: Drop the target if they become inaccessible (e.g., climbing a ladder) <---
+        // FIX: Removed 'disableAICombat' checks so the player commander can be targeted.
+        // FIX: Replaced distance check with a flat 1% chance per frame to re-evaluate targets.
+        if (!unit.target || unit.target.hp <= 0 || Math.random() < 0.01 || (unit.target.isDummy && Math.random() < 0.05)) {
             let nearestDist = Infinity;
             let nearestEnemy = null;
             units.forEach(other => {
                 // ---> SURGERY 1: Ensure new targets are not also inaccessible <---
-                if (other.side !== unit.side && other.hp > 0 && !other.isDummy && !other.disableAICombat) {
+                // FIX: Removed '!other.disableAICombat' so enemies can "see" the player
+                if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
                     let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
                     if (dist < nearestDist) {
                         nearestDist = dist;
@@ -539,35 +558,39 @@ _handleMovement: function(unit, dx, dy, dist, battleEnv) {
             if (currentTile === 7) speedMod = 0.6; 
         }
 
-        if (unit.side === "player" && !unit.hasOrders) {
-            if (unit.stats.isRanged) shouldHold = true;
+		if (unit.side === "player" && !unit.hasOrders) {
+            // SURGERY: Allow archers to move to their auto-assigned positions near the wall
+            if (unit.stats.isRanged) {
+                // Only hold if they are already close to their waypoint
+                if (dist < 20) shouldHold = true; 
+            }
             else if (dist > 50) shouldHold = true; 
         }
-// =========================================================
-        // SIEGE MOVEMENT & ANTI-STUCK OVERHAUL
-        // =========================================================
-if (inSiege) {
-            // ---> SURGERY: DETECT CLIMBING TILE <---
-            let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-            let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-            let currentTile = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty]) ? battleEnvironment.grid[tx][ty] : 0;
-            isOnLadderTile = (currentTile === 9 || currentTile === 12);
-            
-            // Determine if unit is cavalry/large
-          
-          // If they are on the wall, their target is on the ground, and they are out of range, STOP moving.
-if (unit.onWall && unit.target && !unit.target.onWall && !unit.target.isDummy) {
-    let effRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
-    if (dist > effRange * 0.8) {
-        
-        // SURGERY: Only DEFENDERS should hold the wall. Attackers must push inward!
-        if (unit.side === "enemy") { 
-            shouldHold = true;
-            unit.vx = 0; 
-            unit.vy = 0;
-        }
-    }
-}
+			// =========================================================
+			// SIEGE MOVEMENT & ANTI-STUCK OVERHAUL
+			// =========================================================
+			if (inSiege) {
+						// ---> SURGERY: DETECT CLIMBING TILE <---
+						let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+						let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
+						let currentTile = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty]) ? battleEnvironment.grid[tx][ty] : 0;
+						isOnLadderTile = (currentTile === 9 || currentTile === 12);
+						
+						// Determine if unit is cavalry/large
+					  
+					  // If they are on the wall, their target is on the ground, and they are out of range, STOP moving.
+			if (unit.onWall && unit.target && !unit.target.onWall && !unit.target.isDummy) {
+				let effRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
+				if (dist > effRange * 0.8) {
+					
+					// SURGERY: Only DEFENDERS should hold the wall. Attackers must push inward!
+					if (unit.side === "enemy") { 
+						shouldHold = true;
+						unit.vx = 0; 
+						unit.vy = 0;
+					}
+				}
+			}
             // Anti-Stuck Tracking: Monitors physical coordinate changes over time
             if (!unit.stuckLog) unit.stuckLog = { x: unit.x, y: unit.y, ticks: 0 };
             
@@ -1010,7 +1033,7 @@ function applyPinballEscape(unit) {
         let dx = unit.x - oldPos.x;
         let dy = unit.y - oldPos.y;
         let distanceMovedSq = (dx * dx) + (dy * dy);
-if (distanceMovedSq < 9) { // 5 pixels squared
+	if (distanceMovedSq < 9) { // 5 pixels squared
             
             // ---> SURGERY 4B: DO NOT BOUNCE UNITS MOVING TO DUMMY WAYPOINTS! ---
             if (unit.target && unit.target.isDummy) {

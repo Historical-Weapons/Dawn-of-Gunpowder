@@ -66,6 +66,7 @@ else if (currentTile === 0 || currentTile === 1 || currentTile === 5) t.onWall =
 
  
 
+
         ctx.save();
         ctx.translate(t.x, t.y - bob);
         ctx.scale(t.dir, 1);
@@ -80,6 +81,9 @@ else if (currentTile === 0 || currentTile === 1 || currentTile === 5) t.onWall =
         } // ... (rest of weapon types)
         ctx.restore();
     }
+	
+ 
+ 
 }
 
 function city_system_renderGateOverlays(ctx) {
@@ -503,6 +507,17 @@ function isCityCollision(x, y, factionName = currentActiveCityFaction, isOnWall 
         return !(tile === 8 || tile === 10);
     } 
 
+// --- SURGERY: CIVILIAN SETTLEMENT VISIT MODE ---
+    // This blocks stone walls (6) but allows "entering" towers (10) and scaffolds (12)
+    // Only triggers when NOT in a siege (inBattleMode is false).
+    if (!inBattleMode) {
+        // Explicitly allow entry to Tower and Scaffold tiles
+        if (tile === 10 || tile === 12) return false; 
+        
+        // Explicitly block Stone Walls (6) and Parapets (8) to prevent clipping
+        if (tile === 6 || tile === 8) return true;
+    }
+	
     // LAYER: GROUND
     return tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7 || tile === 8 || tile === 10;
 }
@@ -517,6 +532,11 @@ function enterCity(factionName, playerObj) {
     
     // 🔴 CRITICAL: kill parle first
     closeParleUI();
+// Add this inside your enterCity or initialization function
+const cityPanel = document.getElementById('city-panel');
+if (cityPanel) {
+    cityPanel.style.display = 'none';
+}
 
     inCityMode = true;
 
@@ -591,6 +611,17 @@ function leaveCity(playerObj) {
 	
 	// ---> PASTE HERE <---
     AudioManager.playMusic("WorldMap_Calm");
+	
+	if (typeof cityDialogueSystem !== 'undefined') {
+    cityDialogueSystem.state.active = false;
+    cityDialogueSystem.state.text = "";
+}
+
+// --- ADD THIS TO SHUT THEM UP ON EXIT ---
+    if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+	
 }
 
 
@@ -738,16 +769,14 @@ function drawHuman(ctx, x, y, moving, frame, baseColor, hatType = "conical", clo
     ctx.restore();
 }
 
-// --- Local NPC Systems ---
-
 function generateCityCosmeticNPCs(factionName, grid) {
     cityCosmeticNPCs[factionName] = [];
     let midX = CITY_COLS / 2;
-let midY = Math.floor(CITY_LOGICAL_ROWS / 2);
+    let midY = Math.floor(CITY_LOGICAL_ROWS / 2);
     let spawned = 0;
     let attempts = 0;
     
-    const targetPopulation = Math.floor(Math.random() * 55) + 5;
+    const targetPopulation = Math.floor(Math.random() * 55) + 25;
     
     // Grab styles based on faction or use default
     let fStyles = CIVILIAN_STYLES[factionName] || CIVILIAN_STYLES["Default"];
@@ -776,21 +805,37 @@ let midY = Math.floor(CITY_LOGICAL_ROWS / 2);
                 let randomHat = fStyles.hats[Math.floor(Math.random() * fStyles.hats.length)];
                 let randomCloth = fStyles.clothes[Math.floor(Math.random() * fStyles.clothes.length)];
 
+                // --- NEW: ASSIGN ROLES & STATES ---
+                let roleRoll = Math.random();
+                let role = "wanderer"; // Default: Walk a bit, pause a bit
+                let baseSpeed = 0.8;
+                
+                if (roleRoll < 0.25) {
+                    role = "idler"; // Stands around mostly
+                    baseSpeed = 0.5;
+                } else if (roleRoll < 0.5) {
+                    role = "commuter"; // Walks fast in long, straight lines
+                    baseSpeed = 1.3;
+                }
+
                 cityCosmeticNPCs[factionName].push({
                     x: newX,
                     y: newY,
-                    vx: (Math.random() - 0.5) * 1.2,
-                    vy: (Math.random() - 0.5) * 1.2,
+                    vx: 0,
+                    vy: 0,
                     animOffset: Math.random() * 100,
                     hat: randomHat,
-                    clothing: randomCloth
+                    clothing: randomCloth,
+                    role: role,
+                    state: "pausing",
+                    stateTimer: Math.random() * 60, // How many frames until they rethink their action
+                    baseSpeed: baseSpeed
                 });
                 spawned++;
             }
         }
     }
 }
-
 function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
     let npcs = cityCosmeticNPCs[factionName];
     if (!npcs) return;
@@ -798,7 +843,7 @@ function drawCityCosmeticNPCs(ctx, factionName, _ignored, zoom) {
     let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[factionName]) 
                        ? FACTIONS[factionName].color : "#ffffff";
 
-for (let npc of npcs) {
+    for (let npc of npcs) {
         // Auto-transition Civilians
         let tx = Math.floor(npc.x / CITY_TILE_SIZE);
         let ty = Math.floor(npc.y / CITY_TILE_SIZE);
@@ -808,15 +853,64 @@ for (let npc of npcs) {
             else if (currentTile === 0 || currentTile === 1 || currentTile === 5) npc.onWall = false;
         }
 
-        // FIX: Pass 'npc.onWall' HERE
+        // Failsafe: Push them inward if they glitch out of bounds
         if (isCityCollision(npc.x, npc.y, factionName, npc.onWall)) {
             let dirX = (CITY_WORLD_WIDTH / 2) - npc.x;
             let dirY = (CITY_WORLD_HEIGHT / 2) - npc.y;
             let angle = Math.atan2(dirY, dirX);
             npc.x += Math.cos(angle) * 5; 
             npc.y += Math.sin(angle) * 5;
-            npc.vx = (Math.random() - 0.5) * 1.5;
-            npc.vy = (Math.random() - 0.5) * 1.5;
+            npc.stateTimer = 0; // Force them to pick a new path
+        }
+
+        // ==========================================
+        // NEW: AI STATE MACHINE (Commute, Wander, Idle)
+        // ==========================================
+        npc.stateTimer--;
+
+        if (npc.stateTimer <= 0) {
+            if (npc.role === "idler") {
+                // 80% chance to stand still, 20% to shuffle slightly
+                if (Math.random() < 0.8) {
+                    npc.state = "pausing";
+                    npc.vx = 0; npc.vy = 0;
+                    npc.stateTimer = 150 + Math.random() * 300; // Stand for a long time
+                } else {
+                    npc.state = "walking";
+                    let angle = Math.random() * Math.PI * 2;
+                    npc.vx = Math.cos(angle) * npc.baseSpeed;
+                    npc.vy = Math.sin(angle) * npc.baseSpeed;
+                    npc.stateTimer = 30 + Math.random() * 50; // Walk very briefly
+                }
+            } 
+            else if (npc.role === "wanderer") {
+                // Walks unpredictably, stops to look around often
+                if (npc.state === "walking" && Math.random() < 0.5) {
+                    npc.state = "pausing";
+                    npc.vx = 0; npc.vy = 0;
+                    npc.stateTimer = 40 + Math.random() * 100; // Look around
+                } else {
+                    npc.state = "walking";
+                    let angle = Math.random() * Math.PI * 2;
+                    npc.vx = Math.cos(angle) * npc.baseSpeed;
+                    npc.vy = Math.sin(angle) * npc.baseSpeed;
+                    npc.stateTimer = 60 + Math.random() * 120; // Walk unpredictably
+                }
+            } 
+            else if (npc.role === "commuter") {
+                // Walks purposefully in long straight lines, rarely stops
+                if (Math.random() < 0.15) {
+                    npc.state = "pausing";
+                    npc.vx = 0; npc.vy = 0;
+                    npc.stateTimer = 15 + Math.random() * 30; // Quick pause
+                } else {
+                    npc.state = "walking";
+                    let angle = Math.random() * Math.PI * 2;
+                    npc.vx = Math.cos(angle) * npc.baseSpeed;
+                    npc.vy = Math.sin(angle) * npc.baseSpeed;
+                    npc.stateTimer = 200 + Math.random() * 300; // Long journey
+                }
+            }
         }
 
         let nx = npc.x + npc.vx;
@@ -826,27 +920,36 @@ for (let npc of npcs) {
             other !== npc && Math.hypot(other.x - nx, other.y - ny) < 12
         );
 
-        // FIX: Pass 'npc.onWall' HERE TOO
+        // Path blocked? Stop immediately and reconsider path next frame
         if (isCityCollision(nx, ny, factionName, npc.onWall) || hitHuman) {
-            npc.vx *= -1; 
-            npc.vy *= -1;
-            npc.vx += (Math.random() - 0.5) * 0.4;
-            npc.vy += (Math.random() - 0.5) * 0.4;
+            npc.vx = 0; 
+            npc.vy = 0;
+            npc.state = "pausing";
+            npc.stateTimer = 0; // Triggers new state logic immediately
         } else {
             npc.x = nx;
             npc.y = ny;
         }
-
-        // Draw the walking civilian with their assigned unique hat and clothing
-        drawHuman(ctx, npc.x, npc.y, true, (Date.now() / 50) + npc.animOffset, factionColor, npc.hat, npc.clothing);
         
-        if (typeof fortification_system_renderDynamic === 'function') {
-            fortification_system_renderDynamic(ctx, currentActiveCityFaction, player);
-        }   
-	
+        // --- NEW: Calculate Moving Boolean for Legs ---
+        let isMoving = (npc.state === "walking" && (Math.abs(npc.vx) > 0.1 || Math.abs(npc.vy) > 0.1));
+
+        // Pass 'isMoving' instead of 'true' so legs stop swinging when paused
+        drawHuman(ctx, npc.x, npc.y, isMoving, (Date.now() / 50) + npc.animOffset, factionColor, npc.hat, npc.clothing);
+        
+    } // End NPC loop
+
+    if (typeof policeTroops === 'function') {
+        policeTroops(ctx, currentActiveCityFaction, player);
+    }
+
+    // City Dialogue Hooks
+    if (inCityMode && !inBattleMode && currentActiveCityFaction && typeof cityDialogueSystem !== 'undefined') {
+        cityDialogueSystem.tryAutoCityContact(player, currentActiveCityFaction, { radius: 22 });
+        if (typeof cityDialogueUpdate === 'function') cityDialogueUpdate();
+        if (typeof cityDialogueRender === 'function') cityDialogueRender(ctx);
     }
 }
-
 function isNearWall(x, y, grid) {
     for (let dx = -3; dx <= 3; dx++) {
         for (let dy = -3; dy <= 3; dy++) {

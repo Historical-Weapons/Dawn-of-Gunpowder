@@ -75,7 +75,7 @@ function processEnemyCommanderAI(cmdr) {
         // SPEED FIX: Scale charge speed dynamically instead of a flat 4.5
         const baseSpeed = (cmdr.stats && cmdr.stats.speed) ? cmdr.stats.speed : 1.0;
         const chargeSpeed = baseSpeed * 1.0; // Gives a 0% charge bonus
-        const meleeRange = 40;   // Get right in their face
+        const meleeRange = 20;   //decision distance
 
         if (closestDist > meleeRange) {
             // CHARGE!

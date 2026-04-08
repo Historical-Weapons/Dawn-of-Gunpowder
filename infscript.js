@@ -1534,12 +1534,31 @@ ctx.stroke();
         ctx.restore();  
 	}
 }
+
 else if (unitName && unitName.includes("Firelance")) {
-    const isHeavy = unitName.includes("Heavy");
+	
+const isHeavy = unitName.includes("Heavy");
     const hasAmmo = (typeof unit !== 'undefined' && unit.ammo > 0);
     
-    // 1. Calculate the Attack/Ignition Cycle (DECOUPLED FROM COOLDOWN)
-    // We use a punchy 300ms duration to match the "extremely short" ranged burst.
+    // --- NEW: THE PER-BATTLE FUSE LOGIC ---
+    const burnLimit = isHeavy ? 3000 : 1000; // 3 seconds for Heavy, 1 for Normal
+    
+    // Initialize a permanent timestamp on the unit the very first time they attack
+    if (isAttacking && hasAmmo && !unit.firstFireTime) {
+        unit.firstFireTime = Date.now();
+    }
+
+    // Check if the fuse has blown: 
+    // If they haven't fired yet, or if they started firing less than [burnLimit] ago.
+    let fuseIsActive = false;
+    if (unit.firstFireTime) {
+        let elapsed = Date.now() - unit.firstFireTime;
+        if (elapsed < burnLimit) {
+            fuseIsActive = true;
+        }
+    }
+    // ------
+    
     let animDuration = 300; 
     let cycle = 1.0; // Default to idle state
     
@@ -1639,7 +1658,10 @@ else if (unitName && unitName.includes("Firelance")) {
     ctx.fill();
 
     // 5. ENHANCED FIRE & EFFECTS (HUGE FLAMES)
-    if (isAttacking && hasAmmo && cycle < 1.0) {
+// --- CHANGE THIS LINE ---
+if (isAttacking && hasAmmo && fuseIsActive && cycle < 1.0) { 
+    // Your flame drawing code...
+
         let firePos = isHeavy ? tubeTopY + 1.5 : tubeTopY + 2; 
         let showFire = true;
         let isIgniting = false;

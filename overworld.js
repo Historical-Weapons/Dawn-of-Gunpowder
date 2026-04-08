@@ -222,21 +222,7 @@ const PALETTE = {
 function populateCities() {
     console.log("Settling the Empire...");
     let attempts = 0;
-// --- 2. TERRAIN SPEED CALCULATION ---
-    // Strictly prevent NaN from bleeding into the movement math
-    let currentSpeed = (typeof speed === 'number' && !isNaN(speed)) ? speed : 0;
-    if (!inBattleMode && typeof worldMap !== 'undefined' && worldMap.length > 0) {
-        let tx = Math.floor(player.x / TILE_SIZE);
-        let ty = Math.floor(player.y / TILE_SIZE);
-
-        if (worldMap[tx] && worldMap[tx][ty]) {
-            let playerTile = worldMap[tx][ty];
-            let tileSpeed = playerTile.speed || 1.0;
-            currentSpeed = player.speed * tileSpeed;
-        }
-    } else {
-        currentSpeed = player.speed;
-    }
+	 
 
     // --- 2. CITY GENERATION LOOP ---
     while(cities.length < TARGET_CITIES && attempts < 10000) {
