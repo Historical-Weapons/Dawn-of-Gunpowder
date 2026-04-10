@@ -32,6 +32,33 @@ if (isRanged && !isSpecialist) {
 // Firelances, Bombs, and Javelins now count as "Infantry" for siege purposes!
 return true;
 }
+
+function siegeDefenseRoll(unit) {
+    const seed = String(
+        unit.id ?? unit.uid ?? unit.name ?? unit.unitType ?? unit.stats?.name ?? ""
+    );
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) {
+        h = ((h << 5) - h) + seed.charCodeAt(i);
+        h |= 0;
+    }
+    return Math.abs(h) % 100;
+}
+
+function isSiegeRangedDefender(unit) {
+    const txt = String(
+        (unit.unitType || "") + " " +
+        (unit.stats?.role || "") + " " +
+        (unit.stats?.name || "")
+    ).toLowerCase();
+
+    return Boolean(
+        unit.stats?.isRanged ||
+        /\b(archer|bow|crossbow|slinger|gunpowder|gunner|musket|hand cannon|rocket)\b/.test(txt)
+    );
+}
+
+
 const AICategories = {
 
     cleanupDeadUnits: function(units, now) {
@@ -84,50 +111,88 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
         }
     },
 
-    processMoraleAndFleeing: function(unit, pCount, eCount, currentBattleData) {
-        let hpPct = unit.hp / unit.stats.health;
-        let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
-        let baseTick = (hpPct <= 0.1) ? 0.12 : (hpPct <= 0.8 ? 0.04 : 0);
+processMoraleAndFleeing: function(unit, pCount, eCount, currentBattleData) {
+    let hpPct = unit.hp / unit.stats.health;
+    let armorEffect = Math.min(unit.stats.armor / 50, 1.0);
+    let baseTick = (hpPct <= 0.1) ? 0.12 : (hpPct <= 0.8 ? 0.04 : 0);
 
-        const weOutnumberEnemy = (unit.side === 'player' && pCount > eCount) || (unit.side === 'enemy' && eCount > pCount);
+    const weOutnumberEnemy = (unit.side === 'player' && pCount > eCount) || (unit.side === 'enemy' && eCount > pCount);
 
-        if (weOutnumberEnemy) {
-            baseTick = 0;
-        } else if ((unit.side === 'player' && eCount >= pCount * 5) || (unit.side === 'enemy' && pCount >= eCount * 5)) {
-            baseTick = 0.2; 
-        }
+    if (weOutnumberEnemy) {
+        baseTick = 0;
+    } else if ((unit.side === 'player' && eCount >= pCount * 5) || (unit.side === 'enemy' && pCount >= eCount * 5)) {
+        baseTick = 0.2; 
+    }
 
-        if (unit.stats.armor >= 30 && currentBattleData.frames < 18000) baseTick *= 0.01;
-        if (unit.stats.armor < 5 && unit.target && hpPct < 0.9 && !weOutnumberEnemy) baseTick += 0.02; 
+    if (unit.stats.armor >= 30 && currentBattleData.frames < 18000) baseTick *= 0.01;
+    if (unit.stats.armor < 5 && unit.target && hpPct < 0.9 && !weOutnumberEnemy) baseTick += 0.02;
 
-        if (baseTick > 0) {
-            unit.stats.morale -= baseTick * Math.max(0.1, (1.1 - armorEffect));
-        } else if (unit.stats.morale < 20) {
-            unit.stats.morale += 0.005;
-        }
+    // --- CASUALTY MORALITY DEBUFF ---
+    const casualtyPct = unit.casualtyMoralePct || 0;
+    const casualtyMult = unit.casualtyMoraleMultiplier || 1;
 
-        if (unit.stats.morale <= 0) {
-            this._handleBrokenFleeing(unit, currentBattleData);
-            return true; 
-        } 
-        else if (unit.stats.morale <= 3) {
-            this._handleWavering(unit);
-            return true;
-        }
-        
-        unit.escapePoint = null;
-        unit.escapeType = null;
-        return false; 
-    },
+    if (casualtyPct >= 0.60) {
+        baseTick *= casualtyMult;
+    }
+
+    if (baseTick > 0) {
+        unit.stats.morale -= baseTick * Math.max(0.1, (1.1 - armorEffect));
+    } else if (unit.stats.morale < 20) {
+        unit.stats.morale += 0.005;
+    }
+
+    // Hard panic from casualties
+    if (unit.forcePanicFromCasualties === true && unit.stats.morale <= 0) {
+        this._handleBrokenFleeing(unit, currentBattleData);
+        return true;
+    }
+
+    if (unit.stats.morale <= 0) {
+        this._handleBrokenFleeing(unit, currentBattleData);
+        return true; 
+    } 
+    else if (unit.stats.morale <= 3) {
+        this._handleWavering(unit);
+        return true;
+    }
+    
+    unit.escapePoint = null;
+    unit.escapeType = null;
+    return false; 
+},
 
     processTargeting: function(unit, units) {
         if (unit.disableAICombat || unit.orderType === "ladder_crew" || unit.orderType === "siege_assault") {
             return; 
         }
- 
+ // --- NEW ANCHOR PROTECTION ---
+        // Prevents the 5% random dummy reassignment from hijacking settled units
+        if (unit.target && unit.target.isAnchor) {
+            return;
+        }
         let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
-        
-// ==========================================
+		
+        //clear the gate gathering dummy
+		const now = Date.now();
+
+		if (inSiege && unit.side === "enemy" && battleEnvironment) {
+			if (!battleEnvironment.defenderGateDummyDisabled) {
+				const startedAt = battleEnvironment.defenderGateDummyStartedAt || now;
+				if (now - startedAt > 3000) {
+					battleEnvironment.defenderGateDummyDisabled = true;
+				}
+			}
+
+			if (battleEnvironment.defenderGateDummyDisabled && unit.target && unit.target.isDummy) {
+				const p = unit.target.priority || "";
+				if (p === "gate_plug" || p === "gate_patrol" || p === "ranged_line" || p === "plaza") {
+					unit.target = null;
+					unit.hasOrders = false;
+				}
+			}
+		}
+
+		// ==========================================
         // SIEGE MACRO-TARGETING OVERHAUL
         // ==========================================
         if (inSiege) {
@@ -150,47 +215,150 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
                 hp: 9999, isDummy: true, priority: "plaza"
             };
 
-            // ATTACKER COMMON GOAL (2-STAGE FUNNEL)
-            if (unit.side === "player") {
-                if (isGateBreached && !unit.onWall) {
-                    
-                    let isInsideCity = unit.y < gateY + 20;
+			// ATTACKER COMMON GOAL (2-STAGE FUNNEL + HARD BREACH OVERRIDE)
+			if (unit.side === "player") {
+				const gateCentroid = southGate && southGate.pixelRect
+					? {
+						x: southGate.pixelRect.x + (southGate.pixelRect.w / 2),
+						y: southGate.pixelRect.y + (southGate.pixelRect.h / 2)
+					}
+					: {
+						x: gateX,
+						y: gateY
+					};
 
-                    if (!isInsideCity) {
-                        // Stage 1: Funnel
-                        if (!unit.target || unit.target.priority !== "gate_funnel") {
-                            unit.target = gateTarget;
-                        }
-                    } else {
-                        // Stage 2: Flood the plaza
-                        if (!unit.target || unit.target.priority !== "plaza") {
-                            unit.target = plazaTarget;
-                        }
-                    }
-                    return; // Lock in the macro-target
-                    
-                } else if (!canUseSiegeEngines(unit) && !isGateBreached) {
-                    // SURGERY: Pushed archers forward to the wall line so they are in range to shoot
-                    let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000;
-                    // Position them 120px from the wall (well within 300+ range)
-                    unit.target = { x: unit.x, y: wallY + 120, hp: 9999, isDummy: true };
-                    return;
-                }
-            }
-            
-            // DEFENDER COMMON GOAL
-            if (unit.side === "enemy") {
-                if (isGateBreached && !unit.onWall) {
-                    // Organized fallback to Plaza if breached
-                    if (!unit.target || unit.target.priority !== "plaza") {
-                        unit.target = plazaTarget;
-                    }
-                    return;
-                }
-            }
+if (isGateBreached) {
+    unit.onWall = false;               // clear wall state
+    unit.hasOrders = true;
+    unit.orderType = "move_to_point";  // stop ladder-assault style retargeting
+    unit.breachRush = true;            // hard lock for movement
+
+    unit.target = {
+        x: gateCentroid.x,
+        y: gateCentroid.y,
+        hp: 9999,
+        isDummy: true,
+        priority: "gate_breach_rush"
+    };
+    return;
+}
+
+				// Pre-breach behavior stays below only if the gate is still intact
+				if (!canUseSiegeEngines(unit)) {
+					let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000;
+					unit.target = {
+						x: unit.x,
+						y: wallY + 120,
+						hp: 9999,
+						isDummy: true,
+						priority: "wall_shoot_line"
+					};
+					return;
+				}
+			}
+						
+			// DEFENDER COMMON GOAL
+			
+			if (unit.side === "enemy") {
+				
+				if (inSiege && unit.side === "enemy" && battleEnvironment) {
+				if (!battleEnvironment.defenderGateDummyStartedAt) {
+					battleEnvironment.defenderGateDummyStartedAt = now;
+				}
+
+				if (!battleEnvironment.defenderGateDummyDisabled) {
+					const startedAt = battleEnvironment.defenderGateDummyStartedAt;
+					if (now - startedAt > 3000) {
+						battleEnvironment.defenderGateDummyDisabled = true;
+					}
+				}
+
+				if (battleEnvironment.defenderGateDummyDisabled && unit.target && unit.target.isDummy) {
+					const p = unit.target.priority || "";
+					if (p === "gate_plug" || p === "gate_patrol" || p === "ranged_line" || p === "plaza") {
+						unit.target = null;
+						unit.hasOrders = false;
+						unit.state = "idle";
+						unit.vx = 0;
+						unit.vy = 0;
+					}
+				}
+			}
+
+				
+				
+				if (isGateBreached && !unit.onWall) {
+					if (!unit.target || unit.target.priority !== "plaza") {
+						unit.target = plazaTarget;
+					}
+					return;
+				}
+
+				// PRE-BREACH DEFENSE SPLIT:
+				// ranged shoot, only a minority of melee hold the gate, others patrol/reserve
+				if (!isGateBreached && !battleEnvironment.defenderGateDummyDisabled) {
+					const duty = siegeDefenseRoll(unit);
+					const ranged = isSiegeRangedDefender(unit);
+					const siegeCrew = canUseSiegeEngines(unit);
+
+					let nearestEnemy = null;
+					let nearestDist = Infinity;
+
+					units.forEach(other => {
+						if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
+							const d = Math.hypot(unit.x - other.x, unit.y - other.y);
+							if (d < nearestDist) {
+								nearestDist = d;
+								nearestEnemy = other;
+							}
+						}
+					});
+
+					// 1) ALL ranged units prioritize real enemy targets
+					if (ranged) {
+						if (nearestEnemy) {
+							unit.target = nearestEnemy;
+						} else {
+							unit.target = {
+								x: gateX,
+								y: gateY - 140,
+								hp: 9999,
+								isDummy: true,
+								priority: "ranged_line",
+								    createdAt: now
+							};
+						}
+						return;
+					}
+
+					// 2) Only some melee get strict gate duty (Reduced to 10%)
+					if (siegeCrew || duty < 10) { 
+						unit.target = {
+							x: gateX + ((duty % 2 === 0 ? -1 : 1) * 80),
+							y: gateY - 150,
+							hp: 9999, isDummy: true, priority: "gate_plug",
+							    createdAt: now
+						};
+						return;
+					}
+
+					// 3) Some melee patrol near the breach instead of stacking on it (Reduced to 30% total)
+					if (duty < 30) { 
+						unit.target = {
+							x: gateX + (((duty * 9) % 400) - 200), // Widened from 220 to 400
+							y: gateY - 210 + ((duty % 3) * 60),    // Increased depth spacing
+							hp: 9999, isDummy: true, priority: "gate_patrol",
+							    createdAt: now
+						};
+						return;
+					}
+
+					 
+				}
+			}
         }
  
-// ==========================================
+		// ==========================================
         // COUNTER-BATTERY TARGET OVERRIDE
         // ==========================================
         if (unit.siegeRole === "counter_battery" && !unit.disableAICombat) {
@@ -201,9 +369,7 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
                 if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
                     let isEnemyRanged = other.stats?.isRanged || String(other.stats?.role || "").toLowerCase().includes("archer");
                     let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
-                    
-                    // Artificially reduce the distance score of enemy archers by 5000 
-                    // This guarantees they will ignore closer melee targets to shoot archers first
+
                     let score = isEnemyRanged ? (dist - 5000) : dist;
                     
                     if (score < bestSnipeScore) {
@@ -215,24 +381,19 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
 
             if (bestSnipeTarget) {
                 unit.target = bestSnipeTarget;
-                return; // Lock target and abort standard targeting
+                return;
             }
         }
  
-// SURGERY: Treat dummy targets as infinitely far so AI instantly snaps to real enemies!
         let currentTargetDist = (unit.target && unit.target.hp > 0 && !unit.target.isDummy) 
             ? Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y) 
             : Infinity;
 
-// ---> SURGERY 1: Drop the target if they become inaccessible (e.g., climbing a ladder) <---
-        // FIX: Removed 'disableAICombat' checks so the player commander can be targeted.
-        // FIX: Replaced distance check with a flat 1% chance per frame to re-evaluate targets.
         if (!unit.target || unit.target.hp <= 0 || Math.random() < 0.01 || (unit.target.isDummy && Math.random() < 0.05)) {
             let nearestDist = Infinity;
             let nearestEnemy = null;
             units.forEach(other => {
-                // ---> SURGERY 1: Ensure new targets are not also inaccessible <---
-                // FIX: Removed '!other.disableAICombat' so enemies can "see" the player
+
                 if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
                     let dist = Math.hypot(unit.x - other.x, unit.y - other.y);
                     if (dist < nearestDist) {
@@ -249,11 +410,9 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
     },
 
     processAction: function(unit, battleEnv, currentBattleData, player) {
-        
-      // --- STAIR/LADDER OVERRIDE SURGERY ---
+
 if (unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall && canUseSiegeEngines(unit)) {
-    
-    // SURGERY: Only seek outer siege ladders if you are on the ground trying to get UP.
+
     if (!unit.onWall) { 
         const activeLadders = typeof siegeEquipment !== 'undefined' ? 
             siegeEquipment.ladders.filter(l => l.isDeployed && l.hp > 0) : [];
@@ -520,14 +679,63 @@ if (inSiege && unit.side === "enemy" && typeof battleEnvironment !== 'undefined'
     
 _handleMovement: function(unit, dx, dy, dist, battleEnv) {
         if (unit.isCommander) return;
-
+        // If distance is microscopically small, halt movement to prevent NaN math corruption
+        if (dist < 0.1) {
+            unit.vx = 0;
+            unit.vy = 0;
+            return;
+        }
+		
+		
         let shouldHold = false;
         let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
         let speedMod = 1.0;
-
-        // ADD IT RIGHT HERE: Define it once so the whole function can use it
         let isLargeUnit = unit.stats?.isLarge || unit.isMounted || (unit.unitType && unit.unitType.toLowerCase().includes("cav"));
 
+// AFTER — catches ALL climbing units regardless of siege role:
+if (unit.isClimbing) {
+	
+	// ============================================================================
+// 1. LADDER SUPER-GLUE (Prevent Sideways Pushing)
+// ============================================================================
+if (unit.isClimbing && unit.targetLadder) {
+    // 1. Force the unit's X coordinate to perfectly match the ladder's center X
+    unit.x = unit.targetLadder.x; 
+    
+    // 2. Kill any horizontal velocity so physics don't fight the lock
+    if (unit.vx !== undefined) {
+        unit.vx = 0; 
+    }
+    
+    // 3. Temporarily make them ignore being pushed by other units
+    // (Depending on your engine, you might need to set a flag here)
+    unit.ignoreSeparation = true; 
+} else {
+    // Turn normal bumping back on when they finish climbing
+    unit.ignoreSeparation = false; 
+}
+        
+        // 1. Calculate the Centroid of the current ladder tile
+        // This ensures they are perfectly aligned with the gap in the wall
+        if (typeof BATTLE_TILE_SIZE !== 'undefined') {
+            let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+            let ladderCenterX = (tx * BATTLE_TILE_SIZE) + (BATTLE_TILE_SIZE / 2);
+            
+            // Physical Snap: Force X to the center of the rail
+            unit.x = ladderCenterX;
+        }
+
+        // 2. Kill all horizontal velocity
+        unit.vx = 0; 
+        
+        // 3. Force strictly upward momentum (Negative Y)
+        // We use Math.abs to ensure no "falling" logic can override this
+        let baseSpeed = unit.stats?.speed || 1;
+        unit.vy = -Math.abs(baseSpeed * 1.4); 
+
+        // 4. Hard Block: Prevent any other movement logic from running
+        return;
+	}
         // --- 1. LADDER TRANSITION STATE CHECK ---
         let isOnLadderTile = false;
         if (inSiege && unit.side === "player" && canUseSiegeEngines(unit) && battleEnv.grid && typeof BATTLE_TILE_SIZE !== 'undefined') {
@@ -559,7 +767,39 @@ _handleMovement: function(unit, dx, dy, dist, battleEnv) {
         }
 
 		if (unit.side === "player" && !unit.hasOrders) {
-            // SURGERY: Allow archers to move to their auto-assigned positions near the wall
+			
+			
+	    // =========================================================
+        // NAVAL AI OVERRIDE (Hold Ship Position / Avoid Water)
+        // =========================================================
+        if (typeof inNavalBattle !== 'undefined' && inNavalBattle) {
+            let isRanged = unit.stats.isRanged;
+            // Cavalry & Commanders are completely paralyzed so they don't drown
+            let isCavalry = isLargeUnit || unit.isCommander || String(unit.unitType).toLowerCase().includes("cav");
+            
+            if (isCavalry) {
+                shouldHold = true;
+                unit.vx = 0; unit.vy = 0;
+            } else if (isRanged) {
+                // Ranged units hold firm unless explicitly commanded, avoiding the plank gap
+                if (dist > 30 && !unit.hasOrders) {
+                    shouldHold = true;
+                    unit.vx = 0; unit.vy = 0;
+                }
+            } else {
+                // Melee units hold the choke point near the planks. 
+                // They will only pursue if an enemy gets extremely close (150px)
+                if (dist > 150 && !unit.hasOrders) {
+                    shouldHold = true;
+                    unit.vx = 0; unit.vy = 0;
+                }
+            }
+        }
+        // =========================================================
+		// Land battles  (unit.side === "player" && !unit.hasOrders) 
+		// =========================================================
+				
+            // Allow archers to move to their auto-assigned positions near the wall
             if (unit.stats.isRanged) {
                 // Only hold if they are already close to their waypoint
                 if (dist < 20) shouldHold = true; 
@@ -570,6 +810,7 @@ _handleMovement: function(unit, dx, dy, dist, battleEnv) {
 			// SIEGE MOVEMENT & ANTI-STUCK OVERHAUL
 			// =========================================================
 			if (inSiege) {
+
 						// ---> SURGERY: DETECT CLIMBING TILE <---
 						let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
 						let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
@@ -616,8 +857,9 @@ _handleMovement: function(unit, dx, dy, dist, battleEnv) {
                         
                         // Funnel into a horizontal line behind the gate
                         unit.target.x = gateX + ((Math.random() - 0.5) * 150);
-                        unit.target.y = wallY - 150; // Stand firmly 150px behind the breach point
-                        
+
+unit.target.x = gateX + ((Math.random() - 0.5) * 300);
+
                         dx = unit.target.x - unit.x;
                         dy = unit.target.y - unit.y;
                         dist = Math.hypot(dx, dy);
@@ -1035,33 +1277,44 @@ function applyPinballEscape(unit) {
         let distanceMovedSq = (dx * dx) + (dy * dy);
 	if (distanceMovedSq < 9) { // 5 pixels squared
             
-            // ---> SURGERY 4B: DO NOT BOUNCE UNITS MOVING TO DUMMY WAYPOINTS! ---
-            if (unit.target && unit.target.isDummy) {
-                unit.positionHistory = []; 
-                return false; 
-            }
+// Replace the old isDummy block with this:
+
+if (unit.target && unit.target.isDummy) {
+    // Only abort the bounce if they are physically at their dummy destination
+    let distToDummy = Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y);
+    if (distToDummy < 16) { 
+        unit.positionHistory = []; 
+        return false; 
+    }
+}
+
+// ---> ADD THIS CRITICAL SAFEGUARD HERE <---
+// Never pinball a unit that is actively climbing a ladder
+if (unit.isClimbing) {
+    unit.positionHistory = [];
+    return false;
+}
 
             // --- NEW GUARD: DO NOT BOUNCE INTENTIONALLY IDLE UNITS OR LADDER SWARMERS! ---
-            if (unit.siegeRole === "ladder_fanatic" || unit.state === "idle" || unit.siegeRole === "cavalry_reserve" || unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew") {
+            if ( unit.state === "idle" || unit.siegeRole === "cavalry_reserve" || unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew") {
                 unit.positionHistory = []; // Clear history to prevent memory bloat
                 return; // Abort the pinball logic entirely for this unit
             }
             // UNIT IS STUCK! INITIATE PINBALL BOUNCE!
-            
-            // Generate a random aggressive bounce vector to knock them loose
-            let bounceAngle = Math.random() * Math.PI * 2;
-            let bounceForce = 1.3; // Speed of the bounce
-            
-            unit.pinballVector = {
-                x: Math.cos(bounceAngle) * bounceForce,
-                y: Math.sin(bounceAngle) * bounceForce
-            };
-            
-            unit.pinballTimer = 15; // Bounce continuously for 15 frames
-            unit.positionHistory = []; // Clear history so they don't instantly bounce again
-            
-            // Optional: Give them a tiny bit of damage or stamina drain if you want to penalize clumping
-            return true;
+// Creates an angle between 45 degrees (PI/4) and 135 degrees (3*PI/4).
+// This forces a Southward arc.
+let bounceAngle = (Math.PI / 4) + (Math.random() * (Math.PI / 2));
+let bounceForce = 2.3; 
+
+unit.pinballVector = {
+    x: Math.cos(bounceAngle) * bounceForce,
+    y: Math.sin(bounceAngle) * bounceForce
+};
+
+unit.pinballTimer = 15; 
+unit.positionHistory = []; 
+
+return true; // Use a semicolon here, NOT a comma.
         }
     }
     

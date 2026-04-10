@@ -981,40 +981,209 @@ if (isCommander) {
             ctx.fillRect(-3.5, -13.5, 7, 1.5);
             break;
 
-        case "#7b1fa2": // Goryun Kingdom (Korean Cheoljeong)
-            // Black Lacquered Iron Dome
-            ctx.fillStyle = "#1c1c1c"; 
-            ctx.beginPath(); ctx.arc(0, -13, 4, Math.PI, 0); ctx.fill(); ctx.stroke();
-            
-            // Dark purple natural dye silk wrap/trim
-            ctx.fillStyle = "#5e187a"; ctx.fillRect(-4, -13, 8, 1.5);
-            
-            // Iron Tridents/Wings (Replaced brass/gold)
-            ctx.fillStyle = "#546e7a"; 
-            ctx.beginPath(); ctx.moveTo(-3.5, -13); ctx.lineTo(-7, -17); ctx.lineTo(-3.5, -11); ctx.fill();
-            ctx.beginPath(); ctx.moveTo(3.5, -13); ctx.lineTo(7, -17); ctx.lineTo(3.5, -11); ctx.fill();
-            
-            // Thin peacock feather
-            ctx.strokeStyle = "rgba(46, 125, 50, 0.9)"; 
-            ctx.lineWidth = 0.8;
-            ctx.beginPath(); ctx.moveTo(0, -17); ctx.quadraticCurveTo(4, -20 + plumeBob, 5, -23 + plumeBob); ctx.stroke();
-            break;
+case "#7b1fa2": // Goryun Kingdom (Korean Cheoljeong)
+    // Joseon Dynasty General's Helmet (Dujeonggap-tu) - Scaled 80% & Repositioned
+    
+    // 1. The Padded Neck Guards (Shwi-wi - Moved to sides)
+    ctx.fillStyle = "#b71c1c"; 
+    // Left Flap
+    ctx.beginPath();
+    ctx.moveTo(-5, -13); // Shifted out from center
+    ctx.quadraticCurveTo(-6.5, -9, -5.5, -5); 
+    ctx.lineTo(-2.5, -5);
+    ctx.lineTo(-2, -13);
+    ctx.fill();
 
-        case "#00838f": // Dab Tribes (Dali Kingdom Style)
-            // Hardened Rattan and Red Lacquer Helmet
-            ctx.fillStyle = "#5c2a21"; // Dark red/brown lacquer
-            ctx.beginPath(); ctx.moveTo(-7, -10); ctx.lineTo(0, -16); ctx.lineTo(7, -10); ctx.fill(); ctx.stroke();
-            
-            // Jade/Teal ornamental bindings
-            ctx.strokeStyle = "rgba(0, 105, 114, 0.8)"; 
-            ctx.lineWidth = 0.5;
-            ctx.beginPath(); ctx.moveTo(-4, -12); ctx.lineTo(4, -12); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-2, -14); ctx.lineTo(2, -14); ctx.stroke();
-            
-            // Subtle pheasant feather rim
-            ctx.fillStyle = "#8e291c";
-            ctx.beginPath(); ctx.ellipse(0, -10, 7, 0.8, 0, 0, Math.PI*2); ctx.fill();
-            break;
+    // Right Flap
+    ctx.beginPath();
+    ctx.moveTo(2, -13);
+    ctx.lineTo(2.5, -5);
+    ctx.lineTo(5.5, -5); 
+    ctx.quadraticCurveTo(7, -9, 5, -13); // Shifted out to clear face
+    ctx.fill();
+
+    // Gold Studs (Dujeong) - Re-aligned to new flap positions
+    ctx.fillStyle = "#d4af37";
+    const studs = [
+        [-5, -11], [-5.3, -9], [-5, -7],  // Left flap studs
+        [2.5, -11], [3, -9], [3.5, -7],   // Right flap inner
+        [4.5, -11], [5, -9], [5.5, -7]    // Right flap outer
+    ];
+    studs.forEach(s => {
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // 2. The Main Helmet Bowl (Scaled & Shifted Up)
+    ctx.fillStyle = "#1a1a1a"; 
+    ctx.beginPath();
+    ctx.moveTo(-3.2, -13.8);
+    ctx.bezierCurveTo(-3.2, -19.4, -0.8, -21.8, 0, -22.2); 
+    ctx.bezierCurveTo(0.8, -21.8, 3.2, -19.4, 3.6, -14.2);
+    ctx.lineTo(-3.2, -13.8);
+    ctx.fill();
+
+    // 3. The Gold Visor (Mubis)
+    ctx.fillStyle = "#d4af37";
+    ctx.beginPath();
+    ctx.moveTo(1.2, -14.2);
+    ctx.lineTo(4, -14.6); 
+    ctx.lineTo(3.6, -16.2);
+    ctx.quadraticCurveTo(2.4, -15.8, 1.2, -16.2);
+    ctx.fill();
+
+    // 4. Gold Dragon/Cloud Ornamentation (Drim)
+    ctx.strokeStyle = "#ffcc00";
+    ctx.lineWidth = 0.3;
+    ctx.beginPath();
+    // Central vertical reinforcing band
+    ctx.moveTo(0, -14.2);
+    ctx.lineTo(0, -22.2);
+    ctx.stroke();
+    // Side decorative swirls
+    ctx.beginPath();
+    ctx.arc(1.6, -17, 0.6, 0, Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-1.6, -17.8, 0.5, Math.PI, 0);
+    ctx.stroke();
+
+    // 5. The Top Ornamentation (Sangmo & Samjichang)
+    // Red Tassel (Sangmo)
+    ctx.fillStyle = "#d32f2f";
+    ctx.beginPath();
+    ctx.moveTo(-1, -22.6);
+    ctx.quadraticCurveTo(0, -25, 1, -22.6);
+    ctx.fill();
+
+    // Gold Finial Base
+    ctx.fillStyle = "#d4af37";
+    ctx.fillRect(-0.5, -23, 1, 0.8);
+
+    // The Trident/Spear Tip (Samjichang)
+    ctx.strokeStyle = "#e0e0e0";
+    ctx.lineWidth = 0.25;
+    ctx.beginPath();
+    ctx.moveTo(0, -23);
+    ctx.lineTo(0, -25.5); // Center spike
+    ctx.moveTo(-0.3, -23.8);
+    ctx.lineTo(-0.5, -24.6); // Left spike
+    ctx.moveTo(0.3, -23.8);
+    ctx.lineTo(0.5, -24.6); // Right spike
+    ctx.stroke();
+
+    // 6. Inner Lining
+    ctx.fillStyle = "#2e7d32"; 
+    ctx.beginPath();
+    ctx.moveTo(-2.8, -13);
+    ctx.lineTo(3.2, -13.4);
+    ctx.lineTo(3.2, -13.8);
+    ctx.lineTo(-2.8, -13.8);
+    ctx.fill();
+    break;
+  
+		case "#00838f": // Dali Kingdom - Lamellar General Helmet (UPDATED)
+
+// --- GLOBAL OFFSET (SHIFT UP ~5%) ---
+const yOff = -0.75;
+
+// 1. Lamellar Side Flaps (Hanging, segmented — NOT tight nubs anymore)
+ctx.fillStyle = "#8d6e63";
+ctx.strokeStyle = "rgba(0,0,0,0.25)";
+ctx.lineWidth = 0.15;
+
+// Left flap
+for (let i = 0; i < 3; i++) {
+    let y = -12.8 + i * 1.4 + yOff;
+    ctx.beginPath();
+    ctx.moveTo(-3.2, y);
+    ctx.lineTo(-4.4, y + 0.3);
+    ctx.lineTo(-4.0, y + 1.2);
+    ctx.lineTo(-2.8, y + 0.9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+}
+
+// Right flap
+for (let i = 0; i < 3; i++) {
+    let y = -12.8 + i * 1.4 + yOff;
+    ctx.beginPath();
+    ctx.moveTo(3.2, y);
+    ctx.lineTo(4.4, y + 0.3);
+    ctx.lineTo(4.0, y + 1.2);
+    ctx.lineTo(2.8, y + 0.9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+}
+
+
+// 2. Main Helmet Bowl (30% shorter + shifted up)
+ctx.fillStyle = "#d4af37";
+ctx.beginPath();
+ctx.arc(0, -14.3 + yOff, 2.45, Math.PI, 0); // radius reduced from 3.5 → ~2.45
+ctx.lineTo(2.45, -13.2 + yOff);
+ctx.lineTo(-2.45, -13.2 + yOff);
+ctx.closePath();
+ctx.fill();
+
+
+// 3. Lamellar Segmentation (scaled to new height)
+ctx.strokeStyle = "rgba(0,0,0,0.3)";
+ctx.lineWidth = 0.18;
+for(let i = -1.8; i <= 1.8; i += 1.1) {
+    ctx.beginPath();
+    ctx.moveTo(i, -17 + yOff);
+    ctx.lineTo(i, -13.2 + yOff);
+    ctx.stroke();
+}
+
+
+// 4. Red Forehead Band (adjusted width + position)
+ctx.fillStyle = "#c62828";
+ctx.fillRect(-2.6, -14.0 + yOff, 5.2, 1.0);
+
+
+// 5. Top Finial & Plume (compressed vertically)
+ctx.fillStyle = "#1a1a1a";
+ctx.beginPath();
+ctx.moveTo(-0.4, -17 + yOff);
+ctx.lineTo(-0.9, -18.0 + yOff);
+ctx.lineTo(0.2, -17.8 + yOff);
+ctx.lineTo(0.6, -18.3 + yOff);
+ctx.lineTo(0.4, -17 + yOff);
+ctx.fill();
+
+ctx.fillStyle = "#fbc02d";
+ctx.beginPath();
+ctx.moveTo(-0.6, -17 + yOff);
+ctx.quadraticCurveTo(0, -17.8 + yOff, 0.6, -17 + yOff);
+ctx.lineTo(0.4, -16.2 + yOff);
+ctx.lineTo(-0.4, -16.2 + yOff);
+ctx.closePath();
+ctx.fill();
+
+
+// 6. Chin Tie (UNCHANGED as requested)
+ctx.strokeStyle = "#ffffff";
+ctx.fillStyle = "#ffffff";
+ctx.lineWidth = 0.4;
+
+ctx.beginPath();
+ctx.arc(-0.5, -3.5, 0.4, 0, Math.PI * 2); 
+ctx.arc(0.5, -3.5, 0.4, 0, Math.PI * 2);  
+ctx.fill();
+
+ctx.beginPath();
+ctx.moveTo(0, -3.5);
+ctx.lineTo(-0.8, -2.5);
+ctx.moveTo(0, -3.5);
+ctx.lineTo(0.8, -2.5);
+ctx.stroke();
+
+break;
 
         case "#8d6e63": // High Plateau Kingdoms (Tibetan Dbu-rmog)
             // Overlapping Iron Lamellar Bowl

@@ -81,8 +81,18 @@ function processEnemyCommanderAI(cmdr) {
             // CHARGE!
             cmdr.state = "moving";
             cmdr.isMoving = true;
-            cmdr.targetVx = Math.cos(angle) * chargeSpeed;
-            cmdr.targetVy = Math.sin(angle) * chargeSpeed;
+const worldH = (typeof BATTLE_WORLD_HEIGHT !== "undefined") ? BATTLE_WORLD_HEIGHT : 2600;
+const siegeYCap = worldH * 0.45;
+
+cmdr.targetVx = Math.cos(angle) * chargeSpeed;
+cmdr.targetVy = Math.sin(angle) * chargeSpeed;
+
+// 🔴 Prevent downward charge in siege
+if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
+    if (cmdr.y >= siegeYCap && cmdr.targetVy > 0) {
+        cmdr.targetVy = 0;
+    }
+}
         } else {
             // STRIKE!
             cmdr.state = "attacking"; 
@@ -132,7 +142,7 @@ function processEnemyCommanderAI(cmdr) {
 }
 
 function applySkirmishPhysics(cmdr) {
-    const lerp = 0.15; 
+    const lerp = 0.15;
     cmdr.vx = (cmdr.vx || 0) * (1 - lerp) + (cmdr.targetVx || 0) * lerp;
     cmdr.vy = (cmdr.vy || 0) * (1 - lerp) + (cmdr.targetVy || 0) * lerp;
 
@@ -140,10 +150,22 @@ function applySkirmishPhysics(cmdr) {
     cmdr.y += cmdr.vy;
 
     let margin = 60;
-    cmdr.x = Math.max(margin, Math.min(BATTLE_WORLD_WIDTH - margin, cmdr.x));
-    cmdr.y = Math.max(margin, Math.min(BATTLE_WORLD_HEIGHT - margin, cmdr.y));
-}
+    const worldH = (typeof BATTLE_WORLD_HEIGHT !== "undefined") ? BATTLE_WORLD_HEIGHT : 2600;
+    const siegeYCap = worldH * 0.45;
 
+    cmdr.x = Math.max(margin, Math.min(BATTLE_WORLD_WIDTH - margin, cmdr.x));
+
+    // Siege-only Y lock: never go below 45% of map height
+    if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
+        cmdr.y = Math.min(cmdr.y, siegeYCap);
+        if (cmdr.vy > 0 && cmdr.y >= siegeYCap) {
+            cmdr.vy = 0;
+            cmdr.targetVy = Math.min(cmdr.targetVy || 0, 0);
+        }
+    } else {
+        cmdr.y = Math.max(margin, Math.min(worldH - margin, cmdr.y));
+    }
+}
 function fireCommanderProjectile(cmdr, angle) {
     let projSpeed = 12;
     battleEnvironment.projectiles.push({

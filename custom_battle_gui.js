@@ -88,12 +88,11 @@ const FactionUnitRules = {
             // "Only Cavalry and Militia"
             // We ban every role that ISN'T cavalry, horse_archer, or basic infantry.
             bannedRoles: [
-                 "pike", "two_handed", "crossbow", 
-                "archer", "throwing", "bomb", 
+                 "pike", "two_handed", "crossbow", "throwing", "bomb", 
                 "Rocket", "Repeater Crossbowman"
             ],
             // Then we ban all "Infantry" role units EXCEPT the "Militia"
-            bannedUnits: ["Glaiveman", "War Elephant", "Shielded Infantry","Slinger"] 
+            bannedUnits: ["Glaiveman", "War Elephant", "Slinger","Camel Cannon","Elite Lancer"] 
         },
 
         "Yamato Clans": {
@@ -289,12 +288,29 @@ const FactionUnitRules = {
             updateUI();
         });
 		
-		document.getElementById("cb-mode-select").addEventListener("change", (e) => {
+document.getElementById("cb-mode-select").addEventListener("change", (e) => {
     customBattleMode = e.target.value;
+
     const mapSelect = document.getElementById("cb-map-select");
     if (mapSelect) mapSelect.disabled = (customBattleMode === "siege");
-});
 
+    // 🔴 SIMPLE FIX: WIPE ALL UNITS when switching mode
+    playerSetup.roster = [];
+    playerSetup.cost = 0;
+
+    enemySetup.roster = [];
+    enemySetup.cost = 0;
+
+    // Refresh BOTH unit-card panels so visuals update
+    if (window.__cbPanels?.player) {
+        window.__cbPanels.player.refreshCatalog();
+        window.__cbPanels.player.updateUI();
+    }
+    if (window.__cbPanels?.enemy) {
+        window.__cbPanels.enemy.refreshCatalog();
+        window.__cbPanels.enemy.updateUI();
+    }
+});
         document.getElementById("cb-map-select").addEventListener("change", (e) => {
             selectedMap = e.target.value;
         });
@@ -442,6 +458,12 @@ tray.style.minHeight = "0";
             catalog.appendChild(card);
         });
     };
+	
+	window.__cbPanels = window.__cbPanels || {};
+window.__cbPanels[side] = {
+    refreshCatalog,
+    updateUI
+};
 
     // Button Events
     clearBtn.onmousedown = (e) => {
@@ -694,37 +716,34 @@ if (countEl) {
         updateUI(); 
         launchCustomBattle();
     }
-    // --- REGICIDE WIN/LOSS MONITOR (SEPARATE FUNCTION) ---
-    function startRegicideMonitor() {
-        // Ensure any previous monitors are cleared before starting a new one
-        if (window.cbRegicideMonitor) {
-            clearInterval(window.cbRegicideMonitor);
+
+function startCustomBattleMonitor() {
+    if (window.cbCustomBattleMonitor) {
+        clearInterval(window.cbCustomBattleMonitor);
+    }
+
+    window.__CUSTOM_BATTLE_ENDED__ = false;
+
+    window.cbCustomBattleMonitor = setInterval(() => {
+        if (!inBattleMode || window.__CUSTOM_BATTLE_ENDED__) {
+            clearInterval(window.cbCustomBattleMonitor);
+            return;
         }
 
-        window.cbRegicideMonitor = setInterval(() => {
-            // Stop checking if battle ends or game mode is interrupted
-            if (!inBattleMode) {
-                clearInterval(window.cbRegicideMonitor);
-                return;
+        const units = (battleEnvironment && battleEnvironment.units) ? battleEnvironment.units : [];
+        const pAlive = units.filter(u => u.side === "player" && u.hp > 0).length;
+        const eAlive = units.filter(u => u.side === "enemy" && u.hp > 0).length;
+
+        if (pAlive <= 0 || eAlive <= 0) {
+            window.__CUSTOM_BATTLE_ENDED__ = true;   // lock immediately
+            clearInterval(window.cbCustomBattleMonitor);
+
+            if (typeof window.leaveBattlefield === "function") {
+                window.leaveBattlefield();
             }
-
-            // Check if player commander is dead
-            let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.disableAICombat);
-            let pIsDead = (pCmdr && pCmdr.hp <= 0) || (typeof player !== 'undefined' && player.hp <= 0);
-
-            // Check if enemy commander is dead
-            let eCmdr = battleEnvironment.units.find(u => u.isCommander && !u.disableAICombat);
-            let eIsDead = (eCmdr && eCmdr.hp <= 0);
-
-            // Trigger battle exit if a commander has fallen
-            if (pIsDead || eIsDead) {
-                clearInterval(window.cbRegicideMonitor);
-                if (typeof window.leaveBattlefield === 'function') {
-                    window.leaveBattlefield();
-                }
-            }
-        }, 1000); // Check once per second to reduce overhead
-    }
+        }
+    }, 250);
+}
 
     // --- LAUNCH BATTLE ENGINE ---
     function launchCustomBattle() {
@@ -812,10 +831,10 @@ if (typeof window.player === "undefined" || !window.player) {
 // FORK: Field vs Siege
         if (customBattleMode === "siege" && typeof window.launchCustomSiege === "function") { //siege mode
             window.launchCustomSiege(playerSetup, enemySetup);
-        } else { //gemeni help me  I AM NOT ACTUALLY SURE IF THE BELOW NEEDS TO BE REPLICATED FOR THE SIEGE MODE.
+        } else {  
 					
 					BATTLE_WORLD_WIDTH = 2400;
-					BATTLE_WORLD_HEIGHT = 1600;
+					BATTLE_WORLD_HEIGHT = 3600;
 					BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
 					BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
 
@@ -927,8 +946,7 @@ if (typeof window.player === "undefined" || !window.player) {
         window.isPaused = false;
         console.log("Custom Battle Launched: Units Spawned =", battleEnvironment.units.length);
 
-        // 👉 HOOK REGICIDE MODE
-        startRegicideMonitor();
+startCustomBattleMonitor();
 		console.log("Custom Battle Launched: Units Spawned =", battleEnvironment.units.length);
 		
     }
@@ -1080,57 +1098,78 @@ cmdrStats.experienceLevel = cmdrStats.experienceLevel || 5;
             player.maxHealth = finalMaxHp;
         }
     }
+
 function handleCustomBattleExit() {
+    if (window.__CUSTOM_BATTLE_EXITING__) return;
+    window.__CUSTOM_BATTLE_EXITING__ = true;
+
     if (window.cbRegicideMonitor) {
         clearInterval(window.cbRegicideMonitor);
         window.cbRegicideMonitor = null;
     }
+    if (window.cbCustomBattleMonitor) {
+        clearInterval(window.cbCustomBattleMonitor);
+        window.cbCustomBattleMonitor = null;
+    }
 
-    // --- TALLY RESULTS BEFORE CLEARING ANYTHING ---
     let pAlive = 0, pHP = 0;
     let eAlive = 0, eHP = 0;
 
-    if (typeof battleEnvironment !== "undefined" && battleEnvironment?.units) {
+    // If siege breach already decided the result, use the snapshot.
+    if (window.__CUSTOM_SIEGE_RESULT__ === "victory" && window.__CUSTOM_SIEGE_COUNTS__) {
+        pAlive = window.__CUSTOM_SIEGE_COUNTS__.pAlive || 0;
+        eAlive = window.__CUSTOM_SIEGE_COUNTS__.eAlive || 0;
+        pHP = 0;
+        eHP = 0;
+    } else if (typeof battleEnvironment !== "undefined" && battleEnvironment?.units) {
         battleEnvironment.units.forEach(u => {
-            if (u.hp > 0) {
+            if (u && u.hp > 0) {
                 if (u.side === "player") { pAlive++; pHP += u.hp; }
-                else { eAlive++; eHP += u.hp; }
+                else if (u.side === "enemy") { eAlive++; eHP += u.hp; }
             }
         });
     }
 
-    let pLosses = preBattleStats.playerMen - pAlive;
-    let eLosses = preBattleStats.enemyMen - eAlive;
+    const pMen = preBattleStats?.playerMen ?? 0;
+    const eMen = preBattleStats?.enemyMen ?? 0;
 
-    let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.disableAICombat);
-    let eCmdr = battleEnvironment.units.find(u => u.isCommander && !u.disableAICombat);
+    const pLosses = Math.max(0, pMen - pAlive);
+    const eLosses = Math.max(0, eMen - eAlive);
 
-    let pCommanderDead = (pCmdr && pCmdr.hp <= 0) || (typeof player !== 'undefined' && player.hp <= 0);
-    let eCommanderDead = (eCmdr && eCmdr.hp <= 0);
+    let isVictory = false;
+    let isDefeat = false;
+    let resultStr = "Battle Ended";
 
-    let isVictory = eCommanderDead && !pCommanderDead;
-    let isDefeat = pCommanderDead;
-
-    let resultStr = "Results:";
-    if (isDefeat) {
-        resultStr = "Defeat! (Your Commander Fell)";
-    } else if (isVictory) {
-        resultStr = "Decisive Victory (Enemy Commander Slain)!";
-    } else if (eAlive === 0) {
-        resultStr = "Victory (Enemies Routed)!";
+    if (window.__CUSTOM_SIEGE_RESULT__ === "victory") {
         isVictory = true;
+        resultStr = "Victory! (Gate breached)";
     } else {
-        resultStr = "Battle Ended / Draw";
+        const playerWiped = pAlive <= 0;
+        const enemyWiped = eAlive <= 0;
+
+        isVictory = enemyWiped && !playerWiped;
+        isDefeat = playerWiped && !enemyWiped;
+
+        if (isVictory && isDefeat) {
+            resultStr = "Mutual Destruction";
+        } else if (isDefeat) {
+            resultStr = "Defeat! (Your army was wiped)";
+        } else if (isVictory) {
+            resultStr = "Victory! (Enemy army was wiped)";
+        }
     }
 
     let reportData = {
         resultStr,
         resultColor: isVictory ? "#4caf50" : (isDefeat ? "#f44336" : "#ff9800"),
-        pMen: preBattleStats.playerMen, pAlive, pLosses,
-        eMen: preBattleStats.enemyMen, eAlive, eLosses
+        pMen,
+        pAlive,
+        pLosses,
+        eMen,
+        eAlive,
+        eLosses
     };
 
-    // --- NOW CLEAN UP BATTLE STATE ---
     window.leaveBattlefield = originalLeaveBattlefield;
     originalLeaveBattlefield = null;
 
@@ -1141,7 +1180,7 @@ function handleCustomBattleExit() {
 
     if (typeof battleEnvironment !== "undefined" && battleEnvironment) {
         battleEnvironment.units = [];
-		if (typeof window.cleanupCustomSiege === "function") window.cleanupCustomSiege();
+        if (typeof window.cleanupCustomSiege === "function") window.cleanupCustomSiege();
         battleEnvironment.projectiles = [];
         battleEnvironment.groundEffects = [];
         battleEnvironment.grid = null;
@@ -1158,17 +1197,20 @@ function handleCustomBattleExit() {
     if (typeof keys !== "undefined") {
         Object.keys(keys).forEach(k => keys[k] = false);
     }
-    // Restore overworld control
-    player.hp = Math.max(1, player.maxHealth || 100);   // or set to full if you prefer
+
+    player.hp = Math.max(1, player.maxHealth || 100);
     player.isMoving = false;
     player.stunTimer = 0;
     player.onWall = false;
-
 
     const overworldUI = document.getElementById("ui");
     if (overworldUI) overworldUI.style.display = "block";
 
     window.showCustomBattleMenu(reportData);
+
+    window.__CUSTOM_SIEGE_RESULT__ = null;
+    window.__CUSTOM_SIEGE_COUNTS__ = null;
+    window.__CUSTOM_BATTLE_EXITING__ = false;
 }
 
     // --- POST BATTLE REPORT MODAL ---
@@ -1257,3 +1299,23 @@ function handleCustomBattleExit() {
 })();
 
 
+function showBattleEndText(text) {
+    let el = document.createElement("div");
+    el.id = "battle-end-text";
+    el.innerText = text;
+
+    el.style.position = "fixed";
+    el.style.top = "50%";
+    el.style.left = "50%";
+    el.style.transform = "translate(-50%, -50%)";
+    el.style.fontSize = "48px";
+    el.style.color = "#fff";
+    el.style.fontFamily = "Georgia, serif";
+    el.style.background = "rgba(0,0,0,0.7)";
+    el.style.padding = "20px 40px";
+    el.style.border = "2px solid #d4b886";
+    el.style.zIndex = "99999";
+    el.style.textAlign = "center";
+
+    document.body.appendChild(el);
+}

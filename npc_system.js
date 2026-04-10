@@ -78,7 +78,7 @@ let worldMapRef = null;
 let tSize = 8;
 let maxCols = 0, maxRows = 0;
 let lastBattleTime = 0;
-const MAX_GARRISON = 60;          ///////////DEBUG LOW NUMBER
+const MAX_GARRISON = 200;          ///////////DEBUG LOW NUMBER
 const BATTLE_COOLDOWN = 2000;  
 const MAX_GLOBAL_NPCS = 500; // NEW: Hard cap to save CPU
 // ============================================================================

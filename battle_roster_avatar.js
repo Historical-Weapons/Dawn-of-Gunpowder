@@ -463,11 +463,11 @@ createBattleSummaryUI = function(...args) {
         statusText.style.fontWeight = "bold";
         statusText.style.fontSize = "16px";
 
-        let text = "RETREAT: You have left the battlefield.";
+        let text = "RETREAT!";
         if (currentBattleData && currentBattleData.playerDefeatedText) {
-            text = "They left you to die but you were saved by a villager";
+            text = "They left you to die but you miraculously survived";
         } else if (args[0] && typeof args[0] === 'string' && args[0].includes("Victory")) {
-            text = "VICTORY: Your forces have secured the field!";
+            text = "VICTORY!";
         }
         statusText.innerText = text;
         summaryDiv.appendChild(statusText);

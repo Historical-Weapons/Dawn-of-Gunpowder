@@ -189,6 +189,8 @@ function updateBattleUnits() {
     const pCount = units.filter(u => u.side === 'player').length;
     const eCount = units.filter(u => u.side === 'enemy').length;
 
+updateCasualtyMoralePressure(units, currentBattleData);
+
     // 3. Process Each Unit
     units.forEach(unit => {
         // Death Hook
@@ -208,6 +210,8 @@ function updateBattleUnits() {
 
         // Morale & Cowardice (AI Only)
         if (!unit.isCommander) {
+			
+			
             const isFleeingOrWavering = AICategories.processMoraleAndFleeing(unit, pCount, eCount, currentBattleData);
             if (isFleeingOrWavering) return; // Skip normal targeting/combat if they are running away
         }
@@ -245,7 +249,7 @@ function updateBattleUnits() {
 
     // 4. Collisions
     applyUnitCollisions(units);
-	
+	applyWallGravity(units);
 // 5. Update Projectiles & Ground Effects Cleanup (Migrated)
     if (battleEnvironment.projectiles && battleEnvironment.projectiles.length > 0 || battleEnvironment.groundEffects) {
         AICategories.processProjectilesAndCleanup(battleEnvironment);
@@ -273,13 +277,23 @@ function updateBattleUnits() {
 
 // --- DYNAMIC TIERED COLLISION ENGINE ---
 function applyUnitCollisions(units) {
+	
+ 
+
     for (let i = 0; i < units.length; i++) {
         let u1 = units[i];
         if (u1.hp <= 0 || u1.state === "FLEEING") continue; 
 
+// SURGERY Fix: If u1 is climbing, skip entirely. They are locked to the ladder.
+        if (u1.isClimbing) continue;
+		
         for (let j = i + 1; j < units.length; j++) {
             let u2 = units[j];
             if (u2.hp <= 0 || u2.state === "FLEEING") continue;
+            
+            // SURGERY Fix: Also skip if u2 is climbing! 
+            // This prevents ground units from pushing climbing units sideways.
+            if (u2.isClimbing) continue;
 
             let minDistance = (u1.stats.radius + u2.stats.radius) * 0.6;
             let dx = u2.x - u1.x;
@@ -307,6 +321,7 @@ function applyUnitCollisions(units) {
                     push1 = overlap; 
                     push2 = 0;       
                 } 
+                // ... (Hierarchy Rule logic remains exactly the same) ...
                 else {
                     // Same Tier? Distribute the push based on exact mass.
                     let totalMass = u1.stats.mass + u2.stats.mass;
@@ -314,15 +329,63 @@ function applyUnitCollisions(units) {
                     push2 = (u1.stats.mass / totalMass) * overlap;
                 }
 
+                // Cache original X positions before displacement
+                let oldX1 = u1.x;
+                let oldX2 = u2.x;
+
                 // Apply physical separation
                 u1.x -= nx * push1;
                 u1.y -= ny * push1;
                 u2.x += nx * push2;
                 u2.y += ny * push2;
+
+// AFTER — revert ANY X displacement on a climbing unit:
+if (u1.isClimbing) u1.x = oldX1;
+if (u2.isClimbing) u2.x = oldX2;
             }
         }
     }
 }
+function applyWallGravity(units) {
+    if (!inSiegeBattle || !battleEnvironment.grid) return;
+
+    units.forEach(u => {
+        if (u.hp <= 0 || u.isClimbing || u.onWall) {
+            u.isFalling = false; // Reset if they regain footing
+            return;
+        }
+
+        let tx = Math.floor(u.x / BATTLE_TILE_SIZE);
+        let ty = Math.floor(u.y / BATTLE_TILE_SIZE);
+
+        if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) return;
+
+        let currentTile = battleEnvironment.grid[tx][ty];
+
+        // Start falling if inside a wall or already falling
+        if (currentTile === 6 || currentTile === 7 || u.isFalling) {
+            u.isFalling = true;
+            
+            // Move down. Because we changed isBattleCollision, 
+            // the physics engine won't block this movement anymore.
+            u.y += 1.5; 
+
+            // Look ahead to see if the NEXT position is soil
+            let nextTy = Math.floor((u.y + 2) / BATTLE_TILE_SIZE);
+            if (nextTy < BATTLE_ROWS) {
+                let groundTile = battleEnvironment.grid[tx][nextTy];
+                
+                // If it's ground (0, 1, or any non-wall tile)
+                if (groundTile !== 6 && groundTile !== 7) {
+                    u.isFalling = false;
+                    u.y = nextTy * BATTLE_TILE_SIZE; // Snap to soil
+                    u.ignoreCollisionTicks = 20; // Stay ghosted long enough to walk away
+                }
+            }
+        }
+    });
+}
+
 function isBattleCollision(x, y, onWall = false, unit = null) {
     let tx = Math.floor(x / BATTLE_TILE_SIZE);
     let ty = Math.floor(y / BATTLE_TILE_SIZE);
@@ -331,38 +394,58 @@ function isBattleCollision(x, y, onWall = false, unit = null) {
 
     let tile = (battleEnvironment.grid && battleEnvironment.grid[tx]) ? battleEnvironment.grid[tx][ty] : null;
 
-let isLarge = false;
+    let isLarge = false;
     if (unit) {
         let typeStr = String(unit.type || unit.unitType || unit.role || "").toLowerCase();
         isLarge = unit.stats?.isLarge || unit.isMounted || typeStr.match(/(cav|horse|camel|eleph|general|player|commander)/);
     }
-	
-    if (inSiegeBattle) {
-// SURGERY: Hard block mounts and large beasts from touching ladders or wall floors
+    
+if (inSiegeBattle) {
+        // 1. MOUNT/LARGE UNIT RESTRICTIONS
+        // Prevents horses from getting onto ladders (9, 12) or walking on parapets/platforms (8, 10)
         if (isLarge && (tile === 9 || tile === 12 || tile === 8 || tile === 10)) return true;
 
-        // 1. UNIVERSAL PASSABLE TILES
+        // 2. LADDER LOCK (No horizontal sliding while climbing)
+        if (unit) {
+            let currentTx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+            let currentTy = Math.floor(unit.y / BATTLE_TILE_SIZE);
+            let currentTile = (battleEnvironment.grid && battleEnvironment.grid[currentTx]) ? battleEnvironment.grid[currentTx][currentTy] : null;
+            
+            let isOnLadder = (currentTile === 9 || currentTile === 12 || unit.isClimbing);
+            
+            // If on a ladder, any X-axis change is blocked to prevent hovering off the side
+            if (isOnLadder && x !== unit.x) return true;
+        }
+
+        // 3. THE "GHOST FALL" SURGERY (The fix for the stuck units)
+        // If a unit is falling, we FORCE Tile 6 and 7 to be non-solid. 
+        // This allows them to pass through the "Gray Wall" until they hit soil.
+        if (unit && unit.isFalling) {
+            if (tile === 6 || tile === 7) return false; 
+        }
+
+        // 4. UNIVERSAL PASSABLE TILES
+        // Ladders, broken gate debris, and interior walkways are always passable
         if (tile === 9 || tile === 12 || tile === 13) return false;
 
-        // 2. WALL LOGIC (Units currently on the elevated sections)
-        if (onWall) {
-            // Blocked ONLY by Outer Walls (6) and Towers (7) to prevent falling off the map
-            // They can walk on Floor (8, 10) and Ground (0, 1, 2, 3, 4, 5)
-            return (tile === 6 || tile === 7);
-        }
-        
-        // 3. GROUND LOGIC (Units moving from the city toward the wall)
-        else {
-            // SURGERY: Removed tile 8 and 10 from 'isSolidStructure'.
-            // This allows units to walk directly from ground onto the wall floor.
-            const isSolidStructure = (tile === 6 || tile === 7);
+        // 5. THE SOLID WALL LOGIC
+        const isSolidWall = (tile === 6 || tile === 7);
 
+        if (onWall) {
+            // While ON the wall, the stone (6, 7) acts as the boundary (parapet)
+            return isSolidWall;
+        } else {
+            // While ON the ground:
+            
+            // If they just landed or were extracted, let them walk through walls for a few frames
             if (unit && unit.ignoreCollisionTicks > 0) {
-                return isSolidStructure; 
+                // They can walk through everything EXCEPT the solid stone
+                // Note: Keep this 'true' so they don't walk through the wall from the ground
+                return isSolidWall; 
             }
 
-            // Standard blockers (Water/Mountains) + the now-limited solid structures
-            return tile === 2 || tile === 3 || tile === 4 || isSolidStructure;
+            // Standard ground blocking: Water (2), Deep Mud (3), Props (4), and Solid Walls (6, 7)
+            return tile === 2 || tile === 3 || tile === 4 || isSolidWall;
         }
     }
     
@@ -764,3 +847,56 @@ ctx.ellipse(
     ctx.restore();
 }
 
+
+function updateCasualtyMoralePressure(units, currentBattleData) {
+    if (!Array.isArray(units) || !currentBattleData || !currentBattleData.initialCounts) return;
+
+    const pStart = Math.max(1, currentBattleData.initialCounts.player || 0);
+    const eStart = Math.max(1, currentBattleData.initialCounts.enemy || 0);
+
+    const pAlive = units.filter(u => u && u.side === "player" && u.hp > 0 && !u.isCommander).length;
+    const eAlive = units.filter(u => u && u.side === "enemy" && u.hp > 0 && !u.isCommander).length;
+
+    const pLostPct = 1 - (pAlive / pStart);
+    const eLostPct = 1 - (eAlive / eStart);
+
+    applyCasualtyPressureToSide(units, "player", pLostPct);
+    applyCasualtyPressureToSide(units, "enemy", eLostPct);
+}
+
+function applyCasualtyPressureToSide(units, side, casualtyPct) {
+    let moraleMultiplier = 1;
+    let panicLock = false;
+
+    if (casualtyPct >= 0.60) {
+        moraleMultiplier = 4.0;
+        panicLock = true;
+    } else if (casualtyPct >= 0.45) {
+        moraleMultiplier = 2.5;
+    } else if (casualtyPct >= 0.30) {
+        moraleMultiplier = 1.5;
+    }
+
+    units.forEach(u => {
+        if (!u || u.side !== side || u.hp <= 0) return;
+
+        // put flags on the unit
+        u.casualtyMoraleMultiplier = moraleMultiplier;
+        u.forcePanicFromCasualties = panicLock;
+        u.casualtyMoralePct = casualtyPct;
+
+        // also put flags on stats in case morale logic reads there
+        if (u.stats) {
+            u.stats.casualtyMoraleMultiplier = moraleMultiplier;
+            u.stats.forcePanicFromCasualties = panicLock;
+            u.stats.casualtyMoralePct = casualtyPct;
+        }
+
+        // keep morale fields in sync if one of them exists
+        if (u.stats && typeof u.stats.morale !== "number" && typeof u.morale === "number") {
+            u.stats.morale = u.morale;
+        } else if (typeof u.morale !== "number" && u.stats && typeof u.stats.morale === "number") {
+            u.morale = u.stats.morale;
+        }
+    });
+}

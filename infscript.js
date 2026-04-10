@@ -97,35 +97,156 @@ function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttack
             ctx.beginPath(); ctx.moveTo(-1.5, -18.5); ctx.lineTo(1.5, -18.5); ctx.lineTo(0, -23); ctx.fill(); 
             ctx.fillStyle = "#4e342e"; 
             ctx.fillRect(-5, -14, 3, 5); ctx.fillRect(2, -14, 3, 5);
-} else if (factionColor === "#00838f") {
-            // Dali Kingdom (Hmong) -> Heavy Woven Rattan Helmet
-            ctx.fillStyle = "#8d6e63";   // Dark Lacquered Rattan
-            ctx.strokeStyle = "#5d4037"; // Deep brown for the weave lines
-            ctx.lineWidth = 0.5;
+}
 
-            // 1. The main conical structure of the rattan helm
-            ctx.beginPath();
-            ctx.moveTo(-6, -13); // Bottom Left
-            ctx.lineTo(0, -21);  // High Point (Conical peak)
-            ctx.lineTo(6, -13);  // Bottom Right
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+else if (factionColor === "#7b1fa2") {
 
-            // 2. Add the Woven Texture (Cross-hatching)
-            // This adds small detail lines to make it look like organic material
-            ctx.beginPath();
-            // Horizontal bands
-            ctx.moveTo(-3, -16); ctx.lineTo(3, -16);
-            ctx.moveTo(-4.5, -14.5); ctx.lineTo(4.5, -14.5);
-            // Vertical supports
-            ctx.moveTo(-2, -13); ctx.lineTo(-0.5, -20);
-            ctx.moveTo(2, -13); ctx.lineTo(0.5, -20);
-            ctx.stroke();
+    // 1. The Neck/Ear Guards (Practical Padded Cloth) - Shifted Up
+    ctx.fillStyle = "#4a148c"; // Darker purple for the fabric base
+    ctx.beginPath();
+    ctx.moveTo(-3.5, -12.5);
+    ctx.lineTo(-4.5, -6.5);
+    ctx.lineTo(-1, -6.5); // Rear guard
+    ctx.lineTo(-0.5, -12.5);
+    ctx.fill();
 
-            // 3. The Top Knob (Traditional finish for these hats/helms)
-            ctx.fillStyle = "#5d4037";
-            ctx.fillRect(-1, -22, 2, 2);
+    ctx.beginPath();
+    ctx.moveTo(0.5, -12.5);
+    ctx.lineTo(1, -6.5);
+    ctx.lineTo(4, -6.5); // Side guard
+    ctx.lineTo(3.5, -13.5);
+    ctx.fill();
+
+    // Simple Iron Rivets on guards
+    ctx.fillStyle = "#757575"; // Iron gray rivets
+    const ironStuds = [[-3, -9.5], [-2.5, -8], [2, -9.5], [2.5, -8]];
+    ironStuds.forEach(s => {
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // 2. The Segmented Iron Bowl (Munjatugu)
+    ctx.fillStyle = "#37474f"; // Wrought iron/dark steel
+    ctx.beginPath();
+    ctx.moveTo(-4, -13);
+    ctx.quadraticCurveTo(-4, -20.5, 0, -21.5); 
+    ctx.quadraticCurveTo(4, -20.5, 4, -13);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Vertical Plate Segments
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.lineWidth = 0.3;
+    const segments = [-2.5, -0.8, 0.8, 2.5];
+    segments.forEach(x => {
+        ctx.beginPath();
+        ctx.moveTo(x, -13);
+        ctx.lineTo(x * 0.5, -21.5); 
+        ctx.stroke();
+    });
+
+    // 4. Iron Forehead Band & Rivets
+    ctx.fillStyle = "#455a64"; 
+    ctx.fillRect(-4.1, -14, 8.2, 1); // Structural rim band
+    
+    ctx.fillStyle = "#9e9e9e"; // Lighter iron for rivets
+    const rimRivets = [-3.5, -2, 0, 2, 3.5];
+    rimRivets.forEach(x => {
+        ctx.beginPath();
+        ctx.arc(x, -13.5, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // 5. The Top Finial (Functional Iron Spike)
+    ctx.fillStyle = "#37474f";
+    // Base plate
+    ctx.fillRect(-0.8, -22, 1.6, 0.5);
+    // Simple spike
+    ctx.beginPath();
+    ctx.moveTo(-0.3, -22);
+    ctx.lineTo(0, -24);
+    ctx.lineTo(0.3, -22);
+    ctx.fill();
+
+    // 6. Chin Strap (Functional)
+    ctx.strokeStyle = "#eeeeee";
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-3, -12.5);
+    ctx.quadraticCurveTo(0, -9.5, 3, -12.5);
+    ctx.stroke();
+
+}
+
+ else if (factionColor === "#00838f") {
+
+// Dali Kingdom - Heavy Leather Helmet
+// Features: Reinforced bowl, ear guards, and ceremonial plume
+
+// 1. Side Ear Flaps (Rounded Leather)
+ctx.fillStyle = "#8d6e63"; // Medium-dark leather brown
+ctx.beginPath();
+ctx.arc(-2.8, -13.5, 1.2, 0, Math.PI * 2); // Left flap
+ctx.arc(2.8, -13.5, 1.2, 0, Math.PI * 2);  // Right flap
+ctx.fill();
+
+// 2. Main Helmet Bowl
+ctx.fillStyle = "#a1887f"; // Slightly lighter leather for the crown
+ctx.beginPath();
+ctx.arc(0, -15, 3.5, Math.PI, 0); // Large rounded top
+ctx.lineTo(3.5, -13.5);
+ctx.lineTo(-3.5, -13.5);
+ctx.closePath();
+ctx.fill();
+
+// 3. The Prominent Red Band (Forehead Guard)
+ctx.fillStyle = "#c62828"; // Deep historical red
+ctx.fillRect(-3.6, -14.8, 7.2, 1); 
+
+// 4. The Top Finial & Plume (Golden Base + Black Brush)
+// Plume (The dark hair/brush)
+ctx.fillStyle = "#1a1a1a";
+ctx.beginPath();
+ctx.moveTo(-0.5, -18.5);
+ctx.lineTo(-1.2, -19.8); // Individual strands effect
+ctx.lineTo(0.2, -19.5);
+ctx.lineTo(0.8, -20.2);
+ctx.lineTo(0.5, -18.5);
+ctx.fill();
+
+// Golden Base (The ornament holding the plume)
+ctx.fillStyle = "#fbc02d"; 
+ctx.beginPath();
+ctx.moveTo(-0.8, -18.5);
+ctx.quadraticCurveTo(0, -19.5, 0.8, -18.5);
+ctx.lineTo(0.5, -17.5);
+ctx.lineTo(-0.5, -17.5);
+ctx.closePath();
+ctx.fill();
+// 5. The White Chin Tie (Lowered to collar/chest level)
+ctx.strokeStyle = "#ffffff";
+ctx.fillStyle = "#ffffff";
+ctx.lineWidth = 0.4;
+
+// The bow/knot - Shifted south to -8.5
+ctx.beginPath();
+ctx.arc(-0.5, -8.5, 0.4, 0, Math.PI * 2); // Left loop
+ctx.arc(0.5, -8.5, 0.4, 0, Math.PI * 2);  // Right loop
+ctx.fill();
+
+// The dangling ends - Starting at -8.5 and extending to -7.5
+ctx.beginPath();
+ctx.moveTo(0, -8.5);
+ctx.lineTo(-0.8, -7.5);
+ctx.moveTo(0, -8.5);
+ctx.lineTo(0.8, -7.5);
+ctx.stroke();
+// 6. Leather Texture/Outline Detail
+ctx.strokeStyle = "rgba(0,0,0,0.2)";
+ctx.lineWidth = 0.15;
+ctx.stroke(); // Adds a subtle edge to the last path
+
 } else {
     // Default (Chinese/Korean) -> Steel Dome with Lamellar Neck Guard
     ctx.fillStyle = "#9e9e9e";
@@ -153,7 +274,10 @@ function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttack
             ctx.fill(); 
             ctx.stroke();
         
-        } else if (factionColor === "#1976d2" || factionColor === "#455a64") {
+        } 
+		
+		
+else if (factionColor === "#1976d2" || factionColor === "#455a64") {
 
 			
 // --- SURGERY: Replace the Mongol/Nomad helmet logic in infscript.js ---
@@ -190,28 +314,89 @@ if (isMongolFaction) {
 }
         
 } else if (factionColor === "#00838f") {
-// Dali Kingdom (Hmong) -> Large Indigo Turban with Silver Highlight
-// Dali Kingdom (Hmong) -> Large Indigo Turban with Silver Highlight
-            ctx.fillStyle = "#1a237e"; // Deep indigo-dyed cloth color
-            
-            // 1. The main bulky wrap (Half size)
-            // Lowered to -14.5 to eliminate the final gap
-            ctx.fillRect(-3, -14.5, 6, 2.5); 
-            
-            // 2. The rounded top layer (Half radius)
-            // Lowered center to match the base at -14.5
-            ctx.beginPath(); 
-            ctx.arc(0, -14.5, 3, Math.PI, 0); 
+// Dali Kingdom (Historical Structured Cap)
+// This replaces the "turban" look with the authentic tapered cap silhouette
+
+// 1. The White Banded Base (The "Stripes" at the bottom)
+ctx.fillStyle = "#ffffff";
+ctx.fillRect(-3.2, -14.5, 6.4, 0.8); // Primary thick white band
+ctx.fillStyle = "#d1d1d1"; 
+ctx.fillRect(-3.2, -13.8, 6.4, 0.2); // Thin accent line for texture
+
+// 2. The Main Cap Body (Dark Indigo/Black)
+ctx.fillStyle = "#1a1a1a"; // Using a near-black indigo for historical dye depth
+ctx.beginPath();
+ctx.moveTo(-3.2, -14.5);           // Bottom Left
+ctx.lineTo(3.2, -14.5);            // Bottom Right
+ctx.lineTo(3.8, -16.5);            // Slight flare on the right
+ctx.quadraticCurveTo(2, -19, -1, -18.5); // The soft, structured "peak"
+ctx.lineTo(-3.5, -16);             // Tapering back to the left
+ctx.closePath();
+ctx.fill();
+
+// 3. The Floral Designs (Circular Silver/White Motifs)
+ctx.fillStyle = "#e0e0e0"; 
+const flowerPositions = [
+    {x: -1.8, y: -15.8},
+    {x: 0.8, y: -15.5},
+    {x: 2.5, y: -16.2},
+    {x: 0.2, y: -17.5},
+    {x: -1.2, y: -17.2}
+];
+
+flowerPositions.forEach(pos => {
+    // Draw the main flower circle
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add a tiny dark center for the "floral" look
+    ctx.fillStyle = "#1a1a1a";
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e0e0e0"; // Reset for next iteration
+});
+
+// 4. Final Detail: Soft fold line to give it dimension
+ctx.strokeStyle = "rgba(255,255,255,0.1)";
+ctx.lineWidth = 0.1;
+ctx.beginPath();
+ctx.moveTo(-1, -18.5);
+ctx.lineTo(1, -16);
+ctx.stroke();
+} else if (factionColor === "#388e3c") { //vietnam rice hat
+		           
+            ctx.fillStyle = "#8d6e63";   // Dark Lacquered Rattan
+            ctx.strokeStyle = "#5d4037"; // Deep brown for the weave lines
+            ctx.lineWidth = 0.5;
+
+            // 1. The main conical structure of the rattan helm
+            ctx.beginPath();
+            ctx.moveTo(-6, -13); // Bottom Left
+            ctx.lineTo(0, -21);  // High Point (Conical peak)
+            ctx.lineTo(6, -13);  // Bottom Right
+            ctx.closePath();
             ctx.fill();
-            
-            // 3. The Iconic Silver Clasp/Ornament (Half size)
-            // Positioned centered on the new lower wrap
-            ctx.fillStyle = "#e0e0e0"; 
-            ctx.fillRect(-0.5, -15.5, 1, 1);
-        }
-		
+            ctx.stroke();
+
+            // 2. Add the Woven Texture (Cross-hatching)
+            // This adds small detail lines to make it look like organic material
+            ctx.beginPath();
+            // Horizontal bands
+            ctx.moveTo(-3, -16); ctx.lineTo(3, -16);
+            ctx.moveTo(-4.5, -14.5); ctx.lineTo(4.5, -14.5);
+            // Vertical supports
+            ctx.moveTo(-2, -13); ctx.lineTo(-0.5, -20);
+            ctx.moveTo(2, -13); ctx.lineTo(0.5, -20);
+            ctx.stroke();
+
+            // 3. The Top Knob (Traditional finish for these hats/helms)
+            ctx.fillStyle = "#5d4037";
+            ctx.fillRect(-1, -22, 2, 2);	
+		}
 		else {
-            // Default/Chinese/Viet -> Bamboo Rice Hat
+            // Default/Chinese -> simplified Rice Hat
             ctx.fillStyle = "#8d6e63"; 
             ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(0, -16); ctx.lineTo(6, -12);
             ctx.quadraticCurveTo(0, -13.5, -6, -12); ctx.fill(); ctx.stroke();

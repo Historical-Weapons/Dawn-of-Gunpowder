@@ -1,11 +1,8 @@
 // ============================================================================
 // EMPIRE OF THE 13TH CENTURY - BATTLEFIELD TACTICAL ENGINE
 // ============================================================================
-
-
-// FOR SIEGE COMPATIBILITY REPLACED TO LET INSTEAD
 let BATTLE_WORLD_WIDTH = 2400; 
-let BATTLE_WORLD_HEIGHT = 1600; 
+let BATTLE_WORLD_HEIGHT = 3600; 
 const BATTLE_TILE_SIZE = 8;
 let BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
 let BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
@@ -39,22 +36,14 @@ let battleEnvironment = {
     cityGates: [] // <--- ADD THIS
 };
 
- 
-// Locate this function in battlefield_system.js
 function isExitAllowed() {
     if (!inBattleMode) return true; 
-    
-    // Check for remaining enemies (units not on player side with HP > 0)
     const enemyCount = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
-    
-    // Safely check if the player exists before checking HP
-    const playerDead = (typeof player !== 'undefined' && player) ? (player.hp <= 0) : false;
-    
+    const playerDead = (typeof player !== 'undefined' && player) ? (player.hp <= 0) : false;   
     return (playerDead || enemyCount === 0);
 }
 
 function generateBattleOrganicFeatures(grid, typeValue, count, maxSize) {
-    // --- NEW SURGERY: Abort procedural generation if inside a city ---
     if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) return;
 
     for (let i = 0; i < count; i++) {
@@ -67,10 +56,8 @@ function generateBattleOrganicFeatures(grid, typeValue, count, maxSize) {
         for (let j = 0; j < spread * 5; j++) {
             let cx = centerX + Math.floor((Math.random() - 0.5) * spread);
             let cy = centerY + Math.floor((Math.random() - 0.5) * spread);
-            
-            // Bounds check
+
             if (cx >= 0 && cx < BATTLE_COLS && cy >= 0 && cy < BATTLE_ROWS) {
-                // Priority: Don't overwrite existing mountain peaks (Type 8)
                 if (grid[cx][cy] === 0) grid[cx][cy] = typeValue; 
             }
         }
@@ -199,11 +186,17 @@ fgCanvas.height = BATTLE_WORLD_HEIGHT + (VISUAL_PADDING * 2);
 const fgCtx = fgCanvas.getContext('2d'); // We will use this to draw trees!
 	
  
- // 1. Paint the "Infinite" Floor
-    ctx.fillStyle = groundColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
- 
+// 1. Paint the "Infinite" Floor / Abyss
+    if (typeof inNavalBattle !== 'undefined' && inNavalBattle) {
+        ctx.fillStyle = "#000000"; // Deep Black Abyss for naval edges
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = groundColor; // Inner water color
+        ctx.fillRect(VISUAL_PADDING, VISUAL_PADDING, BATTLE_WORLD_WIDTH, BATTLE_WORLD_HEIGHT);
+    } else {
+        ctx.fillStyle = groundColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 	
     // 2. SURGERY: Decorative Outer Bound Textures
     // This populates the "Abyss" so it looks like a real world
@@ -541,15 +534,71 @@ else if (grid[i][j] === 10) { // GRASS TEXTURE
     battleEnvironment.visualPadding = VISUAL_PADDING; // Store this for the camera!
 }
 
-
-
-
-
-// --- ENTER BATTLE LOGIC ---
 function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     if (inCityMode) return; 
 
+// --- NAVAL BATTLE HOOK ---
+const tileName = currentWorldMapTile.name || "Plains";
+if (tileName === "Ocean" || tileName === "River" || tileName === "Coastal") {
+    
+    // 1. Flush Keys & UI to prevent ghost inputs
+    if (typeof keys !== 'undefined') { for (let k in keys) keys[k] = false; }
+    closeParleUI();
+    const panel = document.getElementById('parle-panel');
+    if (panel) panel.style.display = 'none';
+    inBattleMode = true;
+
+    // 2. Setup Battle Data
+    currentBattleData = {
+        enemyRef: enemyNPC,
+        playerFaction: playerObj.faction || "Hong Dynasty",
+        enemyFaction: enemyNPC.faction,
+        initialCounts: { player: 0, enemy: 0 },
+        playerColor: (typeof FACTIONS !== 'undefined' && FACTIONS[playerObj.faction]) ? FACTIONS[playerObj.faction].color : "#ffffff",
+        enemyColor: (typeof FACTIONS !== 'undefined' && FACTIONS[enemyNPC.faction]) ? FACTIONS[enemyNPC.faction].color : "#000000"
+    };
+
+    // 3. Initialize the Naval Map
  
+ BATTLE_WORLD_WIDTH = 4800; 
+ BATTLE_WORLD_HEIGHT = 3200;
+ initNavalBattle(enemyNPC, playerObj, tileName, playerObj.troops || 0, enemyNPC.count || 0);
+    savedWorldPlayerState_Battle.x = playerObj.x;
+    savedWorldPlayerState_Battle.y = playerObj.y;
+    
+    // 4. DEPLOY THE TROOPS
+    let playerTroopCount = playerObj.troops || 0; 
+    let totalCombatants = playerTroopCount + enemyNPC.count;
+    window.GLOBAL_BATTLE_SCALE = totalCombatants > 400 ? Math.ceil(totalCombatants / 300) : 1;
+    
+    deployNavalArmy(currentBattleData.playerFaction, playerTroopCount, "player"); 
+    deployNavalArmy(enemyNPC.faction, enemyNPC.count, "enemy");
+
+    // 5. Snap Camera to Commander
+    let deployedCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+    if (deployedCmdr) { 
+        playerObj.x = deployedCmdr.x; 
+        playerObj.y = deployedCmdr.y; 
+    } else { 
+        playerObj.x = BATTLE_WORLD_WIDTH / 2; 
+        playerObj.y = BATTLE_WORLD_HEIGHT/2 + 45; 
+    }
+    
+  
+
+    // 7. Audio & Cinematic FX
+    if (typeof AudioManager !== 'undefined') {
+        AudioManager.init();
+        AudioManager.playMP3('music/battlemusic.mp3', false);
+    }
+    AudioManager.playSound("charge"); 
+    if (typeof triggerEpicZoom === 'function') {
+        triggerEpicZoom(0.1, 1.5, 3500);
+    }
+    
+    return; // Stop the regular land/siege battle generator from running!
+}
+// --- END NAVAL BATTLE HOOK ---
 
 if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
         // SURGERY: Fallback to 300x200 if city variables are missing
@@ -559,7 +608,10 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
         BATTLE_WORLD_HEIGHT = rows * BATTLE_TILE_SIZE;
     } else {
         BATTLE_WORLD_WIDTH = 2400; 
-        BATTLE_WORLD_HEIGHT = 1600;
+        BATTLE_WORLD_HEIGHT = 3600; // <--- SURGERY: TRIPLED HEIGHT (3 * 1600)
+		
+		mapCols = BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE;
+        mapRows = BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE; // This forces the map to draw the extra height
     }
 
     // 2. Recalculate grid columns and rows based on chosen dimensions
@@ -659,6 +711,49 @@ let playerTroopCount = playerObj.troops || 0;
  
 }
  
+ 
+ // ============================================================================
+// BRAND NEW NAVAL DEPLOYMENT CHECKER
+// Brute forces random coordinates until it finds a valid spot on the ship's deck
+// ============================================================================
+function findValidShipDeckPosition(ship, role, side) {
+    let maxAttempts = 5000; // Massive attempt pool to prevent ocean spawning
+    let rx = ship.width / 2;
+    let ry = ship.height / 2;
+    
+    let roleStr = String(role || "").toLowerCase();
+    let isRanged = roleStr.includes("archer") || roleStr.includes("crossbow") || roleStr.includes("gun");
+    let isCav = roleStr.includes("cavalry") || roleStr.includes("horse") || roleStr.includes("mount");
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        // Generate a random test offset from the ship's center
+        // Multiplied by 0.75 to keep them slightly away from the edge/railings
+        let dx = (Math.random() - 0.5) * ship.width * 0.75; 
+        let dy = (Math.random() - 0.5) * ship.height * 0.75;
+
+        // TACTICAL POSITIONING: 
+        // Player faces North (-Y is front). Enemy faces South (+Y is front).
+        if (side === "player") {
+            if (isRanged && dy > -15) continue; // Force ranged toward the top half (front)
+            if (isCav && dy < 15) continue;     // Force cav toward the bottom half (back)
+        } else if (side === "enemy") {
+            if (isRanged && dy < 15) continue;  // Force ranged toward the bottom half (front)
+            if (isCav && dy > -15) continue;    // Force cav toward the top half (back)
+        }
+
+        // EXACT COLLISION MATCH WITH generateShips() HULL MATH
+        let distance = Math.pow(Math.abs(dx) / rx, 2.5) + Math.pow(Math.abs(dy) / ry, 2.5);
+
+        // If distance <= 0.85, they are safely inside the solid deck floor area
+        if (distance <= 0.85) {
+            return { x: ship.x + dx, y: ship.y + dy };
+        }
+    }
+    
+    // Fallback: If 500 attempts fail (due to massive armies), drop them dead center
+    return { x: ship.x, y: ship.y };
+}
+ 
 // --- ARMY DEPLOYMENT BASED ON FACTION RACE & ACTUAL ROSTER ---
 function deployArmy(faction, totalTroops, side, uniqueType) {
     
@@ -725,196 +820,8 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
 // =========================================================
 
  
-
 let isSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
-
-if (isSiege) {
-    // ---------------------------------------------------------
-    // SCENARIO 1: SIEGE BATTLES (STRICTLY NO CAVALRY/LARGE UNITS)
-    // ---------------------------------------------------------
-    if (faction === "Great Khaganate") {
-        composition = [
-            {type: "Archer", pct: 0.50},              // Replaces Horse Archer
-            {type: "Heavy Crossbowman", pct: 0.20},   // Replaces Heavy Horse Archer
-            {type: "Heavy Two Handed", pct: 0.10},    // Replaces Keshig (dismounted shock)
-            {type: "Spearman", pct: 0.15},            // Replaces Lancer
-            {type: "Shielded Infantry", pct: 0.05}    // Replaces Heavy Lancer
-        ];
-    } else if (faction === "Dab Tribes") {
-        composition = [
-            {type: "Shielded Infantry", pct: 0.35},   // Absorbed the 5% War Elephant
-            {type: "Poison Crossbowman", pct: 0.25}, 
-            {type: "Javelinier", pct: 0.15},
-            {type: "Spearman", pct: 0.25}
-        ];
-    } else if (faction === "Hong Dynasty") {
-        composition = [
-            {type: "Shielded Infantry", pct: 0.30}, 
-            {type: "Heavy Crossbowman", pct: 0.25}, 
-            {type: "Rocket", pct: 0.15},
-            {type: "Firelance", pct: 0.05}, 
-            {type: "Repeater Crossbowman", pct: 0.05}, 
-            {type: "Heavy Firelance", pct: 0.05}, 
-            {type: "Bomb", pct: 0.05},
-            {type: "Archer", pct: 0.05}
-        ];
-    } else if (faction === "Tran Realm") {
-        composition = [
-            {type: "Firelance", pct: 0.10}, 
-            {type: "Poison Crossbowman", pct: 0.25}, 
-            {type: "Javelinier", pct: 0.20},
-            {type: "Archer", pct: 0.15}, 
-            {type: "Spearman", pct: 0.30}
-        ];
-    } else if (faction === "Jinlord Confederacy") {
-        composition = [
-            {type: "Archer", pct: 0.20}, 
-            {type: "Heavy Crossbowman", pct: 0.30},
-            {type: "Shielded Infantry", pct: 0.20},
-            {type: "Hand Cannoneer", pct: 0.15}, 
-            {type: "Heavy Two Handed", pct: 0.10},    // Replaces Heavy Lancer
-            {type: "Spearman", pct: 0.05}             // Replaces Elite Lancer
-        ];
-    } else if (faction === "Xiaran Dominion") {
-        composition = [
-            {type: "Hand Cannoneer", pct: 0.40},      // Absorbed the 20% Camel Cannon
-            {type: "Slinger", pct: 0.25},
-            {type: "Spearman", pct: 0.20}, 
-            {type: "Shielded Infantry", pct: 0.15}    // Replaces Lancer
-        ];
-    } else if (faction === "Goryun Kingdom") {
-        composition = [
-            {type: "Archer", pct: 0.40}, 
-            {type: "Spearman", pct: 0.20}, 
-            {type: "Shielded Infantry", pct: 0.20},
-            {type: "Rocket", pct: 0.10}, 
-            {type: "Hand Cannoneer", pct: 0.05}, 
-            {type: "Repeater Crossbowman", pct: 0.05}
-        ];
-    } else if (faction === "High Plateau Kingdoms") {
-        composition = [
-            {type: "Slinger", pct: 0.30}, 
-            {type: "Archer", pct: 0.45},              // Absorbed the 20% Heavy Horse Archer
-            {type: "Shielded Infantry", pct: 0.25}
-        ];
-    } else if (faction === "Yamato Clans") {
-        composition = [
-            {type: "Glaiveman", pct: 0.40}, 
-            {type: "Heavy Two Handed", pct: 0.20}, 
-            {type: "Archer", pct: 0.40}               // Absorbed the 10% Heavy Horse Archer
-        ];
-    } else if (faction === "Bandits") {
-        composition = [
-            {type: "Militia", pct: 0.70}, 
-            {type: "Slinger", pct: 0.15}, 
-            {type: "Javelinier", pct: 0.15}
-        ];
-    } else {
-        composition = [
-            {type: "Shielded Infantry", pct: 0.25}, 
-            {type: "Spearman", pct: 0.30},            // Absorbed the 10% Lancer
-            {type: "Archer", pct: 0.20},
-            {type: "Crossbowman", pct: 0.15}, 
-            {type: "Light Two Handed", pct: 0.10}
-        ];
-    }
-
-} else {
-    // ---------------------------------------------------------
-    // SCENARIO 2: FIELD BATTLES (ORIGINAL COMBINED ARMS ROSTER)
-    // ---------------------------------------------------------
-    if (faction === "Great Khaganate") {
-        composition = [
-            {type: "Horse Archer", pct: 0.50}, 
-            {type: "Heavy Horse Archer", pct: 0.20},
-            {type: "Keshig", pct: 0.10}, 
-            {type: "Lancer", pct: 0.15}, 
-            {type: "Heavy Lancer", pct: 0.05}
-        ];
-    } else if (faction === "Dab Tribes") {
-        composition = [
-            {type: "War Elephant", pct: 0.05}, 
-            {type: "Poison Crossbowman", pct: 0.25}, 
-            {type: "Javelinier", pct: 0.15},
-            {type: "Spearman", pct: 0.25}, 
-            {type: "Shielded Infantry", pct: 0.30} 
-        ];
-    } else if (faction === "Hong Dynasty") {
-        composition = [
-            {type: "Shielded Infantry", pct: 0.30}, 
-            {type: "Heavy Crossbowman", pct: 0.25}, 
-            {type: "Rocket", pct: 0.15},
-            {type: "Firelance", pct: 0.05}, 
-            {type: "Repeater Crossbowman", pct: 0.05}, 
-            {type: "Heavy Firelance", pct: 0.05}, 
-            {type: "Bomb", pct: 0.05},
-            {type: "Archer", pct: 0.05}
-        ];
-    } else if (faction === "Tran Realm") {
-        composition = [
-            {type: "Firelance", pct: 0.10}, 
-            {type: "Poison Crossbowman", pct: 0.25}, 
-            {type: "Javelinier", pct: 0.20},
-            {type: "Archer", pct: 0.15}, 
-            {type: "Spearman", pct: 0.30}
-        ];
-    } else if (faction === "Jinlord Confederacy") {
-        composition = [
-            {type: "Archer", pct: 0.20}, 
-            {type: "Heavy Crossbowman", pct: 0.30},
-            {type: "Shielded Infantry", pct: 0.20},
-            {type: "Hand Cannoneer", pct: 0.15}, 
-            {type: "Heavy Lancer", pct: 0.10}, 
-            {type: "Elite Lancer", pct: 0.05}
-        ];
-    } else if (faction === "Xiaran Dominion") {
-        composition = [
-            {type: "Camel Cannon", pct: 0.20}, 
-            {type: "Hand Cannoneer", pct: 0.20}, 
-            {type: "Slinger", pct: 0.25},
-            {type: "Spearman", pct: 0.20}, 
-            {type: "Lancer", pct: 0.15}
-        ];
-    } else if (faction === "Goryun Kingdom") {
-        composition = [
-            {type: "Archer", pct: 0.40}, 
-            {type: "Spearman", pct: 0.20}, 
-            {type: "Shielded Infantry", pct: 0.20},
-            {type: "Rocket", pct: 0.10}, 
-            {type: "Hand Cannoneer", pct: 0.05}, 
-            {type: "Repeater Crossbowman", pct: 0.05}
-        ];
-    } else if (faction === "High Plateau Kingdoms") {
-        composition = [
-            {type: "Slinger", pct: 0.30}, 
-            {type: "Heavy Horse Archer", pct: 0.20}, 
-            {type: "Archer", pct: 0.25}, 
-            {type: "Shielded Infantry", pct: 0.25}
-        ];
-    } else if (faction === "Yamato Clans") {
-        composition = [
-            {type: "Glaiveman", pct: 0.40}, 
-            {type: "Heavy Two Handed", pct: 0.20}, 
-            {type: "Archer", pct: 0.30},
-            {type: "Heavy Horse Archer", pct: 0.10}
-        ];
-    } else if (faction === "Bandits") {
-        composition = [
-            {type: "Militia", pct: 0.70}, 
-            {type: "Slinger", pct: 0.15}, 
-            {type: "Javelinier", pct: 0.15}
-        ];
-    } else {
-        composition = [
-            {type: "Shielded Infantry", pct: 0.25}, 
-            {type: "Spearman", pct: 0.20}, 
-            {type: "Archer", pct: 0.20},
-            {type: "Crossbowman", pct: 0.15}, 
-            {type: "Lancer", pct: 0.10}, 
-            {type: "Light Two Handed", pct: 0.10}
-        ];
-    }
-}
+composition = getFactionComposition(faction, isSiege);
 
 }
 	 
@@ -985,8 +892,6 @@ composition.forEach(comp => {
                     baseTemplate.role.toLowerCase().includes("horse");
 
     let groupWidth = Math.min(count, unitsPerRow) * spacingX;
-// Locate the loop where units are pushed (inside composition.forEach)
-// Replace the calculation for finalX and finalY with this override:
 
 for (let i = 0; i < count; i++) {
     let row = Math.floor(i / unitsPerRow);
@@ -1001,52 +906,46 @@ for (let i = 0; i < count; i++) {
         tacticalY = tPos.y;
     }
 
-    // 2. Calculate X/Y
-    let finalX, finalY;
+        let finalX, finalY;
 
-    // =========================================================
-    // --- SURGERY: CLUMPED SPAWN FOR SIEGE DEFENDERS ONLY ---
-    // =========================================================
-if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
+// =========================================================
+        // --- SURGERY: NAVAL SPAWN TIER OVERRIDE ---
+        // =========================================================
+        if (window.inNavalBattle) {
+            let myShip = window.navalEnvironment.ships.find(s => s.side === side);
+            if (myShip) {
+                // Call the massive coordinate checker function
+                let safePos = findValidShipDeckPosition(myShip, baseTemplate.role, side);
+                finalX = safePos.x;
+                finalY = safePos.y;
+            }
+        } 
 
-    let southGate = typeof overheadCityGates !== 'undefined'
-        ? overheadCityGates.find(g => g.side === "south")
-        : null;
+//SIEGE
+        else if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
+            let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
+            let plazaY = southGate ? (southGate.y * BATTLE_TILE_SIZE) - 450 : (BATTLE_WORLD_HEIGHT / 2);
+            const personalSpace = 12;
+            let angle = (i * 0.5) + (Math.random() * Math.PI * 2);
+            let dist = (Math.sqrt(i) * personalSpace) + (Math.random() * 20);
 
-    // Push the enemy spawn to the plaza / city center
-    let plazaY = southGate
-        ? (southGate.y * BATTLE_TILE_SIZE) - 450
-        : (BATTLE_WORLD_HEIGHT / 2);
-
-    const personalSpace = 12;
-
-    // Spread sideways around the plaza, but keep Y centered there
-    let angle = (i * 0.5) + (Math.random() * Math.PI * 2);
-    let dist = (Math.sqrt(i) * personalSpace) + (Math.random() * 20);
-
-    finalX = spawnXCenter + Math.cos(angle) * dist;
-    finalY = plazaY + (Math.random() - 0.5) * 25;
-
-    // Extra jitter to break up rigid patterns
-    finalX += (Math.random() - 0.5) * 15;
-        finalY += (Math.random() - 0.5) * 15;
-
-    } else {
-        // --- ORIGINAL GRID LOGIC FOR ALL OTHER SCENARIOS ---
-        if (isFlank) {
-            let internalX = (col * spacingX) - (groupWidth / 2);
-            finalX = spawnXCenter + tacticalX + internalX;
+            finalX = spawnXCenter + Math.cos(angle) * dist;
+            finalY = plazaY + (Math.random() - 0.5) * 25;
+            finalX += (Math.random() - 0.5) * 15;
+            finalY += (Math.random() - 0.5) * 15;
         } else {
-            finalX = spawnXCenter + currentLineXOffset + (col * spacingX);
+            // --- ORIGINAL GRID LOGIC ---
+            if (isFlank) {
+                let internalX = (col * spacingX) - (groupWidth / 2);
+                finalX = spawnXCenter + tacticalX + internalX;
+            } else {
+                finalX = spawnXCenter + currentLineXOffset + (col * spacingX);
+            }
+            let gridY = row * spacingY * rankDir;
+            finalY = spawnY + tacticalY + gridY;
+            finalX += (Math.random() - 0.5) * 3;
+            finalY += (Math.random() - 0.5) * 2;
         }
-
-        let gridY = row * spacingY * rankDir;
-        finalY = spawnY + tacticalY + gridY;
-
-        // Original Human Jitter
-        finalX += (Math.random() - 0.5) * 3;
-        finalY += (Math.random() - 0.5) * 2;
-    }
 
     let isCmdr = (baseTemplate.isCommander === true) || (comp.type === "Commander");
 	
@@ -1065,9 +964,8 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
             faction: faction,
             color: factionColor,
             unitType: comp.type, 
-			isCommander: isCmdr, // <--- ADD THIS LINE HERE
-			// ADD THIS LINE: Explicitly tag the player's commander
-    disableAICombat: (side === 'player' && isCmdr),
+			isCommander: isCmdr, 
+			disableAICombat: (side === 'player' && isCmdr),
             stats: unitStats, 
             hp: unitStats.health,
             x: finalX,
@@ -1080,7 +978,6 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
         });
     }
 
-    // If it was a line unit, move the "cursor" for the next group to the right
     if (!isFlank) {
         currentLineXOffset += groupWidth + groupGap;
     }
@@ -1093,67 +990,140 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
 }
 
 
-function getSiegePlazaY() {
-    if (!(typeof inSiegeBattle !== 'undefined' && inSiegeBattle)) return null;
+function deployNavalArmy(faction, totalTroops, side, uniqueType) {
+    if (!currentBattleData.initialCounts) {
+        currentBattleData.initialCounts = { player: 0, enemy: 0 };
+    }
 
-    const southGate = (typeof overheadCityGates !== 'undefined')
-        ? overheadCityGates.find(g => g.side === "south")
-        : null;
+    const factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[faction])
+        ? FACTIONS[faction].color
+        : "#ffffff";
 
-    // Plaza center fallback if gate data is missing
-    return southGate
-        ? (southGate.y * BATTLE_TILE_SIZE) - 450
-        : (BATTLE_WORLD_HEIGHT / 2);
-}
+    const ship = window.navalEnvironment?.ships?.find(s => s.side === side);
+    if (!ship) {
+        console.error(`[NAVAL] No ship found for side=${side}. Abort naval deployment.`);
+        return;
+    }
 
-function isPlazaUnit(baseTemplate, comp) {
-    const role = (baseTemplate?.role || "").toLowerCase();
-    const type = (comp?.type || "").toLowerCase();
+    // Build composition exactly like deployArmy does, but without any land-grid logic.
+    let composition = [];
 
-    return (
-        baseTemplate?.isLarge === true ||
-        role.includes("cavalry") ||
-		        role.includes("keshig") ||
-						        role.includes("lancer") ||
-        role.includes("horse") ||
-        type.includes("camel") ||
-        type.includes("elephant")
-    );
-}
+    if (side === "player" && typeof player !== 'undefined' && player.roster && player.roster.length > 0) {
+        const counts = {};
+        player.roster.forEach(unit => {
+            let rawType = unit.type || unit.name;
+            if (!rawType) return;
+            let type = rawType.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            if (type.toLowerCase() === "militia") type = "Militia";
+            counts[type] = (counts[type] || 0) + 1;
+        });
 
-function getSiegePlazaOverride({ side, baseTemplate, comp, row, col, spawnXCenter, currentLineXOffset, spacingX }) {
-    if (!(typeof inSiegeBattle !== 'undefined' && inSiegeBattle)) return null;
-
-    // --- DEFENDER LOGIC (Keep whatever existing logic you have here) ---
-    if (side === "enemy") {
-        if (isPlazaUnit(baseTemplate, comp)) {
-            let plazaY = getSiegePlazaY()-100;
-            let safeX = Math.max(100, Math.min(BATTLE_WORLD_WIDTH - 100, spawnXCenter + currentLineXOffset));
-            return { x: safeX, y: plazaY + (row * spacingX) };
+        const totalRosterSize = player.roster.length;
+        for (const [type, count] of Object.entries(counts)) {
+            composition.push({ type, pct: count / totalRosterSize });
         }
+        totalTroops = totalRosterSize;
+    } else {
+        const isSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
+        composition = getFactionComposition(faction, isSiege);
     }
 
-    // --- NEW: ATTACKER CAVALRY REAR-GUARD SURGERY ---
-    // Force player cavalry to clump at the absolute bottom edge of the map, behind the commander.
-    if (side === "player" && isPlazaUnit(baseTemplate, comp)) {
-        const bottomEdge = (typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600);
-        
-        const isCommander = baseTemplate?.isCommander === true;
+    const visualScale = window.GLOBAL_BATTLE_SCALE || 1;
+    const unitsToSpawn = Math.max(1, Math.round(totalTroops / visualScale));
 
-        // Commander stands 120 pixels from the back edge.
-        // Rest of the cavalry is clamped tightly at 40 pixels from the back edge (BEHIND the commander).
-        const targetY = bottomEdge - (isCommander ? 120 : 40);
+// Expand composition into a flat spawn list so every unit gets its own deck slot.
+    const spawnList = [];
+    if (side === "player") spawnList.push("Commander"); // SURGERY: Force commander onto the deck
+    let allocated = 0;
+    composition.forEach((comp, idx) => {
+        let count = Math.round(unitsToSpawn * comp.pct);
+        if (count === 0 && unitsToSpawn > 0) count = 1;
+        count = Math.min(count, unitsToSpawn - allocated);
+        for (let i = 0; i < count; i++) {
+            spawnList.push(comp.type);
+        }
+        allocated += count;
+    });
 
-        // Discard the wide 'currentLineXOffset' and clump them tightly behind the center
-        // Using modulo math to arrange them into a dense block rather than a long line
-        const clumpSpacing = 15; 
-        const targetX = spawnXCenter + ((col % 15) - 7) * clumpSpacing;
+// SURGERY: Tighter Formations - Deterministic deck grid inside the hull
+    const cols = 18; // Increased from 10 (forces troops closer horizontally)
+    const rows = Math.max(2, Math.ceil(spawnList.length / cols));
+    const marginX = ship.width * 0.05; // Reduced from 0.12 (pushes them closer to edges)
+    const marginY = ship.height * 0.05; 
+    const usableW = ship.width - marginX * 2;
+    const usableH = ship.height - marginY * 2;
 
-        return {
-            x: targetX,
-            y: targetY + (Math.random() * 10) // Tiny organic scatter to prevent exact overlapping
-        };
+
+
+    spawnList.forEach((type, i) => {
+        let baseTemplate = UnitRoster.allUnits[type];
+        if (!baseTemplate) baseTemplate = UnitRoster.allUnits["Militia"];
+
+const safePos = slotForIndex(i, baseTemplate.role, ship, cols, rows, marginX, marginY, usableW, usableH, side);
+
+        const isCmdr = (baseTemplate.isCommander === true) || (type === "Commander");
+        const unitStats = Object.assign(
+            new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
+            baseTemplate
+        );
+        unitStats.morale = 20;
+        unitStats.maxMorale = 20;
+        unitStats.faction = faction;
+
+        battleEnvironment.units.push({
+            id: unitIdCounter++,
+            side,
+            faction,
+            color: factionColor,
+            unitType: type,
+            isCommander: isCmdr,
+            disableAICombat: (side === 'player' && isCmdr),
+            stats: unitStats,
+            hp: unitStats.health,
+            x: safePos.x,
+            y: safePos.y,
+            target: null,
+            state: "idle",
+            animOffset: Math.random() * 100,
+            cooldown: 170,
+            hasOrders: false,
+            spawnMode: "naval"
+        });
+    });
+
+    currentBattleData.initialCounts[side] += spawnList.length;
+}
+
+    function pointInShip(x, y, s) {
+        const dx = x - s.x;
+        const dy = y - s.y;
+        const rx = s.width / 2;
+        const ry = s.height / 2;
+        // Increased deployment safe zone to match our new collision wall
+        return (Math.pow(Math.abs(dx) / rx, 2.5) + Math.pow(Math.abs(dy) / ry, 2.5)) <= 0.90;
     }
 
-    return null; // Return null so infantry follow normal line-spawning rules
+function slotForIndex(i, unitRole, ship, cols, rows, marginX, marginY, usableW, usableH, side) {
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+
+    let x = ship.x - ship.width / 2 + marginX + ((col + 0.5) * (usableW / cols));
+    let y = ship.y - ship.height / 2 + marginY + ((row + 0.5) * (usableH / rows));
+
+    const role = String(unitRole || "").toLowerCase();
+    const isRanged = role.includes("archer") || role.includes("crossbow") || role.includes("gun");
+    const isCav = role.includes("cavalry") || role.includes("horse") || role.includes("mount");
+
+    if (side === "player") {
+        if (isRanged) y -= ship.height * 0.16;
+        if (isCav) y += ship.height * 0.16;
+    } else {
+        if (isRanged) y += ship.height * 0.16;
+        if (isCav) y -= ship.height * 0.16;
+    }
+
+    if (!pointInShip(x, y, ship)) {
+        return { x: ship.x, y: ship.y };
+    }
+    return { x, y };
 }

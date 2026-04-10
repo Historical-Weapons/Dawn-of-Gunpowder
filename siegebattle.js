@@ -1,6 +1,260 @@
+
+function getSiegePlazaY() {
+    if (!(typeof inSiegeBattle !== 'undefined' && inSiegeBattle)) return null;
+
+    const southGate = (typeof overheadCityGates !== 'undefined')
+        ? overheadCityGates.find(g => g.side === "south")
+        : null;
+
+    // Plaza center fallback if gate data is missing
+    return southGate
+        ? (southGate.y * BATTLE_TILE_SIZE) - 450
+        : (BATTLE_WORLD_HEIGHT / 2);
+}
+
+function isPlazaUnit(baseTemplate, comp) {
+    const role = (baseTemplate?.role || "").toLowerCase();
+    const type = (comp?.type || "").toLowerCase();
+
+    return (
+        baseTemplate?.isLarge === true ||
+        role.includes("cavalry") ||
+		        role.includes("keshig") ||
+						        role.includes("lancer") ||
+        role.includes("horse") ||
+        type.includes("camel") ||
+        type.includes("elephant")
+    );
+}
+
+function getSiegePlazaOverride({ side, baseTemplate, comp, row, col, spawnXCenter, currentLineXOffset, spacingX }) {
+    if (!(typeof inSiegeBattle !== 'undefined' && inSiegeBattle)) return null;
+
+    // --- DEFENDER LOGIC (Keep whatever existing logic you have here) ---
+    if (side === "enemy") {
+        if (isPlazaUnit(baseTemplate, comp)) {
+            let plazaY = getSiegePlazaY()-100;
+            let safeX = Math.max(100, Math.min(BATTLE_WORLD_WIDTH - 100, spawnXCenter + currentLineXOffset));
+            return { x: safeX, y: plazaY + (row * spacingX) };
+        }
+    }
+
+    // --- NEW: ATTACKER CAVALRY REAR-GUARD SURGERY ---
+    // Force player cavalry to clump at the absolute bottom edge of the map, behind the commander.
+    if (side === "player" && isPlazaUnit(baseTemplate, comp)) {
+        const bottomEdge = (typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600);
+        
+        const isCommander = baseTemplate?.isCommander === true;
+
+        // Commander stands 120 pixels from the back edge.
+        // Rest of the cavalry is clamped tightly at 40 pixels from the back edge (BEHIND the commander).
+        const targetY = bottomEdge - (isCommander ? 120 : 40);
+
+        // Discard the wide 'currentLineXOffset' and clump them tightly behind the center
+        // Using modulo math to arrange them into a dense block rather than a long line
+        const clumpSpacing = 15; 
+        const targetX = spawnXCenter + ((col % 15) - 7) * clumpSpacing;
+
+        return {
+            x: targetX,
+            y: targetY + (Math.random() * 10) // Tiny organic scatter to prevent exact overlapping
+        };
+    }
+
+    return null; // Return null so infantry follow normal line-spawning rules
+}
+
+
 // ============================================================================
-// EMPIRE OF THE 13TH CENTURY - FULL CITY SIEGE ENGINE (V3 - TOPOGRAPHY UPDATE)
+// FACTION COMPOSITIONS
 // ============================================================================
+
+const FACTION_COMPOSITIONS = {
+    siege: {
+        "Great Khaganate": [
+            {type: "Archer", pct: 0.50},
+            {type: "Heavy Crossbowman", pct: 0.20},
+            {type: "Heavy Two Handed", pct: 0.10},
+            {type: "Spearman", pct: 0.15},
+            {type: "Shielded Infantry", pct: 0.05}
+        ],
+
+        "Dab Tribes": [
+            {type: "Shielded Infantry", pct: 0.35},
+            {type: "Poison Crossbowman", pct: 0.25},
+            {type: "Javelinier", pct: 0.15},
+            {type: "Spearman", pct: 0.25}
+        ],
+
+        "Hong Dynasty": [
+            {type: "Shielded Infantry", pct: 0.30},
+            {type: "Heavy Crossbowman", pct: 0.25},
+            {type: "Rocket", pct: 0.15},
+            {type: "Firelance", pct: 0.05},
+            {type: "Repeater Crossbowman", pct: 0.05},
+            {type: "Heavy Firelance", pct: 0.05},
+            {type: "Bomb", pct: 0.05},
+            {type: "Archer", pct: 0.05}
+        ],
+
+        "Tran Realm": [
+            {type: "Firelance", pct: 0.10},
+            {type: "Poison Crossbowman", pct: 0.25},
+            {type: "Javelinier", pct: 0.20},
+            {type: "Archer", pct: 0.15},
+            {type: "Spearman", pct: 0.30}
+        ],
+
+        "Jinlord Confederacy": [
+            {type: "Archer", pct: 0.20},
+            {type: "Heavy Crossbowman", pct: 0.30},
+            {type: "Shielded Infantry", pct: 0.20},
+            {type: "Hand Cannoneer", pct: 0.15},
+            {type: "Heavy Two Handed", pct: 0.10},
+            {type: "Spearman", pct: 0.05}
+        ],
+
+        "Xiaran Dominion": [
+            {type: "Hand Cannoneer", pct: 0.40},
+            {type: "Slinger", pct: 0.25},
+            {type: "Spearman", pct: 0.20},
+            {type: "Shielded Infantry", pct: 0.15}
+        ],
+
+        "Goryun Kingdom": [
+            {type: "Archer", pct: 0.40},
+            {type: "Spearman", pct: 0.20},
+            {type: "Shielded Infantry", pct: 0.20},
+            {type: "Rocket", pct: 0.10},
+            {type: "Hand Cannoneer", pct: 0.05},
+            {type: "Repeater Crossbowman", pct: 0.05}
+        ],
+
+        "High Plateau Kingdoms": [
+            {type: "Slinger", pct: 0.30},
+            {type: "Archer", pct: 0.45},
+            {type: "Shielded Infantry", pct: 0.25}
+        ],
+
+        "Yamato Clans": [
+            {type: "Glaiveman", pct: 0.40},
+            {type: "Heavy Two Handed", pct: 0.20},
+            {type: "Archer", pct: 0.40}
+        ],
+
+        "Bandits": [
+            {type: "Militia", pct: 0.70},
+            {type: "Slinger", pct: 0.15},
+            {type: "Javelinier", pct: 0.15}
+        ],
+
+        default: [
+            {type: "Shielded Infantry", pct: 0.25},
+            {type: "Spearman", pct: 0.30},
+            {type: "Archer", pct: 0.20},
+            {type: "Crossbowman", pct: 0.15},
+            {type: "Light Two Handed", pct: 0.10}
+        ]
+    },
+
+    field: {
+        "Great Khaganate": [
+            {type: "Horse Archer", pct: 0.50},
+            {type: "Heavy Horse Archer", pct: 0.20},
+            {type: "Keshig", pct: 0.10},
+            {type: "Lancer", pct: 0.15},
+            {type: "Heavy Lancer", pct: 0.05}
+        ],
+
+        "Dab Tribes": [
+            {type: "War Elephant", pct: 0.05},
+            {type: "Poison Crossbowman", pct: 0.25},
+            {type: "Javelinier", pct: 0.15},
+            {type: "Spearman", pct: 0.25},
+            {type: "Shielded Infantry", pct: 0.30}
+        ],
+
+        "Hong Dynasty": [
+            {type: "Shielded Infantry", pct: 0.30},
+            {type: "Heavy Crossbowman", pct: 0.25},
+            {type: "Rocket", pct: 0.15},
+            {type: "Firelance", pct: 0.05},
+            {type: "Repeater Crossbowman", pct: 0.05},
+            {type: "Heavy Firelance", pct: 0.05},
+            {type: "Bomb", pct: 0.05},
+            {type: "Archer", pct: 0.05}
+        ],
+
+        "Tran Realm": [
+            {type: "Firelance", pct: 0.10},
+            {type: "Poison Crossbowman", pct: 0.25},
+            {type: "Javelinier", pct: 0.20},
+            {type: "Archer", pct: 0.15},
+            {type: "Spearman", pct: 0.30}
+        ],
+
+        "Jinlord Confederacy": [
+            {type: "Archer", pct: 0.20},
+            {type: "Heavy Crossbowman", pct: 0.30},
+            {type: "Shielded Infantry", pct: 0.20},
+            {type: "Hand Cannoneer", pct: 0.15},
+            {type: "Heavy Lancer", pct: 0.10},
+            {type: "Elite Lancer", pct: 0.05}
+        ],
+
+        "Xiaran Dominion": [
+            {type: "Camel Cannon", pct: 0.20},
+            {type: "Hand Cannoneer", pct: 0.20},
+            {type: "Slinger", pct: 0.25},
+            {type: "Spearman", pct: 0.20},
+            {type: "Lancer", pct: 0.15}
+        ],
+
+        "Goryun Kingdom": [
+            {type: "Archer", pct: 0.40},
+            {type: "Spearman", pct: 0.20},
+            {type: "Shielded Infantry", pct: 0.20},
+            {type: "Rocket", pct: 0.10},
+            {type: "Hand Cannoneer", pct: 0.05},
+            {type: "Repeater Crossbowman", pct: 0.05}
+        ],
+
+        "High Plateau Kingdoms": [
+            {type: "Slinger", pct: 0.30},
+            {type: "Heavy Horse Archer", pct: 0.20},
+            {type: "Archer", pct: 0.25},
+            {type: "Shielded Infantry", pct: 0.25}
+        ],
+
+        "Yamato Clans": [
+            {type: "Glaiveman", pct: 0.40},
+            {type: "Heavy Two Handed", pct: 0.20},
+            {type: "Archer", pct: 0.30},
+            {type: "Heavy Horse Archer", pct: 0.10}
+        ],
+
+        "Bandits": [
+            {type: "Militia", pct: 0.70},
+            {type: "Slinger", pct: 0.15},
+            {type: "Javelinier", pct: 0.15}
+        ],
+
+        default: [
+            {type: "Shielded Infantry", pct: 0.25},
+            {type: "Spearman", pct: 0.20},
+            {type: "Archer", pct: 0.20},
+            {type: "Crossbowman", pct: 0.15},
+            {type: "Lancer", pct: 0.10},
+            {type: "Light Two Handed", pct: 0.10}
+        ]
+    }
+};
+
+function getFactionComposition(faction, isSiege = false) {
+    const rosterSet = isSiege ? FACTION_COMPOSITIONS.siege : FACTION_COMPOSITIONS.field;
+    return rosterSet[faction] || rosterSet.default;
+}
+
 
 let inSiegeBattle = false;
 let currentSiegeCity = null;
@@ -85,7 +339,9 @@ function enterSiegeBattlefield(enemyNPC, playerObj, cityObj) {
     battleEnvironment.bgCanvas = cityDimensions[faction].bgCanvas;
     battleEnvironment.fgCanvas = null; 
     battleEnvironment.groundColor = "#000000";
-    battleEnvironment.visualPadding = 0; 
+    battleEnvironment.visualPadding = 0;
+	battleEnvironment.defenderGateDummyStartedAt = Date.now();
+	battleEnvironment.defenderGateDummyDisabled = false;	
     // ---> ADD THIS LINE <---
     battleEnvironment.cityGates = typeof overheadCityGates !== 'undefined' ? overheadCityGates : [];
     // 3. CALIBRATE TOPOGRAPHY
@@ -364,7 +620,7 @@ if (!inSiegeBattle || unit.side !== "player" || unit.onWall) {
 }
  
 function initSiegeEquipment() {
-    siegeEquipment = { rams: [], trebuchets: [], mantlets: [], ladders: [] };
+siegeEquipment = { rams: [], trebuchets: [], mantlets: [], ladders: [], ballistas: [] };
     
   // --- GATE BREACH CHECK: No siege equipment spawns if gate is already broken ---
     let isGlobalBreach = window.__SIEGE_GATE_BREACHED__ === true;
@@ -406,7 +662,7 @@ function initSiegeEquipment() {
             y: campY + 350, 
             hp: 300, 
             cooldown: Math.random() * 100, 
-            fireRate: 250,
+            fireRate: 450,
             side: "player" // <--- Added explicitly
         });
     }
@@ -432,13 +688,25 @@ for (let i = 0; i < TREB_COUNT_PER_SIDE; i++) {
 positions.forEach(xPos => {
     siegeEquipment.trebuchets.push({
         x: xPos,
-        y: SiegeTopography.wallPixelY - 230, // SURGERY: Pushed further North
+        y: SiegeTopography.wallPixelY - 220,  
         hp: 300,
         cooldown: Math.random() * 100,
-        fireRate: 250,
+        fireRate: 450,
         side: "enemy",
         crewAssigned: []
     });
+	
+	// ---> NEW: Spawn Ballistas +100px Y with random X offset
+    siegeEquipment.ballistas.push({
+        x: xPos + ((Math.random() - 0.5) * 160), // Randomness in X
+        y: SiegeTopography.wallPixelY - 230 + 150, 
+        hp: 200,
+        cooldown: Math.random() * 100,
+        fireRate: 350,
+        side: "enemy",
+        crewAssigned: []
+    });
+	
 });
  // --- SURGERY: MANTLET SPREAD & GAP BRIDGING ---
 // No manlets in the middle. Wings pushed to extreme left/right.
@@ -573,7 +841,7 @@ function processSiegeEngines() {
                 ram.isBreaking = true;
                 
                 if (Math.random() > 0.99) { 
-                    ram.targetGate.gateHP -= 55; 
+                    ram.targetGate.gateHP -= 35; 
                     if (typeof AudioManager !== 'undefined') AudioManager.playSound('hit'); 
                     
                     if (ram.targetGate.gateHP <= 0) {
@@ -786,8 +1054,8 @@ battleEnvironment.projectiles.push({
                 maxRange: 3500,
                 attackerStats: { 
                     role: "bomb", 
-                    missileAPDamage: 150, 
-                    missileBaseDamage: 50, 
+                    missileAPDamage: 15, 
+                    missileBaseDamage: 35, 
                     name: "Trebuchet Boulder",
                     currentStance: "statusrange", // <--- THE CRITICAL FIX
                     isRanged: true                // <--- Safety fallback
@@ -800,6 +1068,96 @@ battleEnvironment.projectiles.push({
             if (typeof AudioManager !== 'undefined') AudioManager.playSound('bomb'); 
         }
     });
+	
+	
+	// ============================================================================
+    // BALLISTA LOGIC & 1-MAN CREW AI
+    // ============================================================================
+    siegeEquipment.ballistas.forEach(bal => {
+        if (bal.hp <= 0) return;
+
+        let poolToDrawFrom = allAliveEnemies;
+        let targetPool = playerUnits;
+        let requiredCrew = 1; 
+
+        // 1. Purge dead crew members
+        bal.crewAssigned = (bal.crewAssigned || []).filter(id => {
+            let u = poolToDrawFrom.find(e => e.id === id);
+            return u && u.hp > 0;
+        });
+
+        // 2. Draft new crew if empty
+        while (bal.crewAssigned.length < requiredCrew) {
+            let availableRecruits = poolToDrawFrom.filter(u => 
+                !u.isCommander && !u.siegeRole.includes("crew") && canUseSiegeEngines(u)
+            );
+            if (availableRecruits.length > 0) {
+                let closest = availableRecruits.reduce((prev, curr) => 
+                    Math.hypot(curr.x - bal.x, curr.y - bal.y) < Math.hypot(prev.x - bal.x, prev.y - bal.y) ? curr : prev
+                );
+                bal.crewAssigned.push(closest.id);
+                closest.siegeRole = "ballista_crew";
+                closest.disableAICombat = true; 
+            } else break; 
+        }
+
+        // 3. Move crew to the Ballista
+        bal.crewAssigned.forEach(id => {
+            let u = poolToDrawFrom.find(e => e.id === id);
+            if (u) {
+                u.target = { x: bal.x, y: bal.y - 20, isDummy: true };
+                u.state = "moving";
+                u.hasOrders = true;
+            }
+        });
+
+        // 4. Firing Execution
+        let physicallyPresentCrew = poolToDrawFrom.filter(u => Math.hypot(u.x - bal.x, u.y - bal.y) < 40);
+        
+        if (physicallyPresentCrew.length >= requiredCrew) {
+            bal.cooldown--;
+            bal.isManned = true; 
+        } else {
+            bal.isManned = false;
+            return; 
+        }
+        
+        if (bal.cooldown <= 0 && targetPool.length > 0) {
+            bal.cooldown = bal.fireRate;
+            
+            // Ballistas aim for the closest target for accuracy
+            let target = targetPool.reduce((prev, curr) => 
+                Math.hypot(curr.x - bal.x, curr.y - bal.y) < Math.hypot(prev.x - bal.x, prev.y - bal.y) ? curr : prev
+            );
+            
+            let dx = target.x - bal.x;
+            let dy = target.y - bal.y;
+            let dist = Math.hypot(dx, dy);
+            let speed = 16; // Fast projectile
+
+            battleEnvironment.projectiles.push({
+                x: bal.x, y: bal.y,
+                vx: (dx / dist) * speed, vy: (dy / dist) * speed,
+                startX: bal.x, startY: bal.y,
+                maxRange: 1500,
+                attackerStats: { 
+                    role: "crossbowman", 
+                    missileAPDamage: 120, // Ballistas pierce armor easily
+                    missileBaseDamage: 50, 
+                    name: "Crossbowman", // Tricks your renderer into drawing a heavy bolt
+                    currentStance: "statusrange",
+                    isRanged: true                
+                },
+                side: bal.side,
+                projectileType: "bolt", 
+                isFire: false
+            });
+            
+            if (typeof AudioManager !== 'undefined') AudioManager.playSound('arrow'); 
+        }
+    });
+	
+	
 	// ============================================================================
 // 2. DEFENDER AI (ENEMY)
 // ============================================================================
@@ -856,27 +1214,52 @@ if (siegeAITick % 6 === 0) {
                     u.state = "moving";
                     u.hasOrders = true;
                 }
-            } else {
-                // Ground troops plug the gate
-                let targetY = SiegeTopography.wallPixelY - (isLarge ? 650 : 480); 
-                let targetX = SiegeTopography.gatePixelX + (Math.random() - 0.5) * 300; 
+        } else {
+                // ---> NEW SURGERY: WIDE PATROL & PROXIMITY AGGRO <---
+                let attackRange = isSiegeRangedDefender(u) ? (u.stats.range || 400) : 50;
+                let closestAttacker = null;
+                let minDist = Infinity;
+                
+                // 1. Scan for nearby enemies to aggro
+                for (let i = 0; i < playerUnits.length; i++) {
+                    let attacker = playerUnits[i];
+                    let dist = Math.hypot(u.x - attacker.x, u.y - attacker.y);
+                    if (dist < minDist) { minDist = dist; closestAttacker = attacker; }
+                }
 
-                if (u.state === "idle" || !u.hasOrders || (u.target && !u.target.isDummy)) {
-                    u.target = { x: targetX, y: targetY - (Math.random() * 30), isDummy: true };
-                    u.state = "moving";
+                // 2. If an enemy is within range, attack immediately
+                if (closestAttacker && minDist <= attackRange) {
+                    u.target = closestAttacker;
+                    u.state = "attacking";
                     u.hasOrders = true;
-                } else {
-                    let distToTarget = Math.hypot(u.x - u.target.x, u.y - u.target.y);
-                    if (distToTarget < 30) {
-                        u.state = "idle";
-                        u.target.x = u.x;
-                        u.target.y = u.y;
-                        u.vx = 0; 
-                        u.vy = 0;
+                } 
+                // 3. Otherwise, perform a wide patrol behind the wall
+                else {
+                    let isPatrolling = (u.state === "moving" && u.target && u.target.isDummy);
+                    
+                    if (u.state === "idle" || !u.hasOrders || !isPatrolling) {
+                        // Spread out across 80% of the map width, and varying depths behind the wall
+                        let spreadWidth = BATTLE_WORLD_WIDTH * 0.8;
+                        let targetX = (BATTLE_WORLD_WIDTH / 2) + ((Math.random() - 0.5) * spreadWidth);
+                        let targetY = SiegeTopography.wallPixelY - 150 - (Math.random() * 400); // Deep patrol depth
+
+                        u.target = { x: targetX, y: targetY, isDummy: true };
+                        u.state = "moving";
+                        u.hasOrders = true;
+                    } else {
+                        // Stop moving once they reach their random patrol waypoint
+                        let distToTarget = Math.hypot(u.x - u.target.x, u.y - u.target.y);
+                        if (distToTarget < 30) {
+                            u.state = "idle";
+                            u.target.x = u.x;
+                            u.target.y = u.y;
+                            u.vx = 0; 
+                            u.vy = 0;
+                        }
                     }
                 }
-            }
-        } else {
+		}}
+		else {
             // GATE IS BROKEN: FALLBACK TO PLAZA OR ATTACK
             let plazaX = SiegeTopography.gatePixelX; 
             let plazaY = SiegeTopography.plazaPixelY;
@@ -1659,6 +2042,182 @@ siegeEquipment.trebuchets.forEach(t => {
     ctx.restore();
 });
 
+// ============================================================================
+// BALLISTA RENDERING (BIRDS-EYE)
+// ============================================================================
+siegeEquipment.ballistas.forEach(bal => {
+    if (bal.hp <= 0) return;
+    ctx.save();
+    ctx.translate(bal.x, bal.y);
+
+    if (bal.side === "enemy") {
+        ctx.rotate(Math.PI); // Invert 180 degrees to face South
+    }
+
+    // Determine state (True if snapped forward / just fired)
+    const isFired = bal.cooldown > bal.fireRate - 15;
+    
+    // --- 1. RESILIENT SEED GENERATION FOR BALLISTA TYPE ---
+    let seed = 0;
+    if (bal.id !== undefined && bal.id !== null) {
+        if (typeof bal.id === 'number') {
+            seed = Math.abs(bal.id);
+        } else if (typeof bal.id === 'string') {
+            for (let i = 0; i < bal.id.length; i++) {
+                seed += bal.id.charCodeAt(i);
+            }
+        }
+    } else {
+        // Fallback permanent random seed to prevent flickering
+        if (typeof bal._typeSeed === 'undefined') {
+            bal._typeSeed = Math.floor(Math.random() * 1000);
+        }
+        seed = bal._typeSeed;
+    }
+
+    const availableTypes = ["single", "double", "m-type", "d-type"];
+    // If it has a valid type assigned, keep it. Otherwise, use the seed.
+    const ballistaType = (bal.type && availableTypes.includes(bal.type)) ? bal.type : availableTypes[seed % availableTypes.length];
+
+    // --- 2. 2/3 SCALED BASE & STOCK ---
+    ctx.fillStyle = "#3e2723"; // Dark heavy wood base
+    ctx.fillRect(-10, -8, 20, 16); 
+    
+    ctx.fillStyle = "#4e342e"; // Main central stock
+    ctx.fillRect(-4, -23, 8, 40);
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-4, -23, 8, 40);
+
+    // Iron mounting beams and Winch mechanism at the rear
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(-9, -7, 18, 4);  // Main mounting crossbeam
+    ctx.fillRect(-7, 10, 14, 5);  // Rear winch housing
+    ctx.fillStyle = "#5c5c5c";
+    ctx.fillRect(-3, 9, 6, 8);    // Spool / Latch
+
+    // --- 3. HELPER FUNCTION: LONGER BOWS, LESS TENSION ---
+    const drawBowLayer = (yOffset, thickness, woodColor, isComposite, isInverted = false) => {
+        ctx.strokeStyle = "#c0baba"; // Hemp string color
+        ctx.lineWidth = 1.0; 
+        ctx.beginPath();
+        
+        // Much wider span relative to the new 2/3 scale body
+        const spanX = 36; 
+        const drawX = 28; 
+        const latchY = 10; // Scaled down latch position
+
+        if (isInverted) {
+            // INVERTED BOW STRING (Faces rear operator)
+            if (isFired) {
+                ctx.moveTo(-spanX, 9 + yOffset);
+                ctx.lineTo(spanX, 9 + yOffset);
+            } else {
+                ctx.moveTo(-drawX, 3 + yOffset);
+                ctx.lineTo(0, latchY); // Pulled back to latch
+                ctx.lineTo(drawX, 3 + yOffset);
+            }
+        } else {
+            // STANDARD BOW STRING (Faces forward)
+            if (isFired) {
+                ctx.moveTo(-spanX, -3 + yOffset);
+                ctx.lineTo(spanX, -3 + yOffset);
+            } else {
+                ctx.moveTo(-drawX, 5 + yOffset);
+                ctx.lineTo(0, latchY); // Pulled back to latch
+                ctx.lineTo(drawX, 5 + yOffset);
+            }
+        }
+        ctx.stroke();
+
+        // Bow Limbs
+        ctx.strokeStyle = woodColor;
+        ctx.lineWidth = thickness * 0.66; // Scaled down limb thickness
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        
+        if (isInverted) {
+            // INVERTED BOW SHAPE
+            let flexY = -3 + yOffset;
+            if (isFired) {
+                ctx.moveTo(-spanX, 9 + yOffset);
+                ctx.quadraticCurveTo(0, flexY, spanX, 9 + yOffset);
+            } else {
+                ctx.moveTo(-drawX, 3 + yOffset);
+                ctx.quadraticCurveTo(0, flexY, drawX, 3 + yOffset);
+            }
+        } else if (isComposite) {
+            // M-SHAPE RECURVE (Gentler curves)
+            let flexY = -3 + yOffset;
+            let peakY = isFired ? -16 + yOffset : -12 + yOffset; 
+            if (isFired) {
+                ctx.moveTo(-spanX, -3 + yOffset);
+                ctx.bezierCurveTo(-18, peakY, -8, flexY, 0, -10 + yOffset);
+                ctx.bezierCurveTo(8, flexY, 18, peakY, spanX, -3 + yOffset);
+            } else {
+                ctx.moveTo(-drawX, 5 + yOffset);
+                ctx.bezierCurveTo(-15, peakY, -8, flexY, 0, -10 + yOffset);
+                ctx.bezierCurveTo(8, flexY, 15, peakY, drawX, 5 + yOffset);
+            }
+        } else {
+            // STANDARD D-SHAPE (Drastically reduced tension)
+            let flexY = isFired ? -18 + yOffset : -20 + yOffset; 
+            if (isFired) {
+                ctx.moveTo(-spanX, -3 + yOffset);
+                ctx.quadraticCurveTo(0, flexY, spanX, -3 + yOffset);
+            } else {
+                ctx.moveTo(-drawX, 5 + yOffset);
+                ctx.quadraticCurveTo(0, flexY, drawX, 5 + yOffset);
+            }
+        }
+        ctx.stroke();
+    };
+
+    // --- 4. RENDER SPECIFIC BALLISTA TYPES ---
+    // Scaled Y-offsets for the double-bow
+    switch (ballistaType) {
+        case "single":
+            drawBowLayer(0, 6, "#5d4037", false, false);
+            break;
+            
+        case "double":
+            drawBowLayer(-6, 5, "#4e342e", false, false); // Front bow
+            drawBowLayer(4, 5, "#5d4037", false, true);   // Rear bow
+            break;
+            
+        case "m-type":
+            drawBowLayer(0, 7, "#2c2c2c", true, false); 
+            break;
+            
+        case "d-type":
+            drawBowLayer(0, 8, "#8d6e63", false, false); 
+            break;
+    }
+
+    // --- 5. THE LOADED BOLT (TINY ARROWHEAD, 2/3 SCALE SHAFT) ---
+    if (!isFired) {
+        // Tiny Iron Tip
+        ctx.fillStyle = "#a0a0a0"; 
+        ctx.beginPath();
+        ctx.moveTo(0, -28); // Tip
+        ctx.lineTo(-1.5, -22); // Ultra-narrow base
+        ctx.lineTo(1.5, -22);
+        ctx.fill();
+        
+        // Heavy Wooden shaft
+        ctx.fillStyle = "#3e2723"; 
+        ctx.fillRect(-1, -22, 2, 28); // Narrower, shorter shaft
+
+        // Small Fletchings
+        ctx.fillStyle = "#8b0000"; 
+        ctx.fillRect(-2, 2, 1, 4);
+        ctx.fillRect(1, 2, 1, 4);
+    }
+
+    ctx.restore();
+});
+
+
 }
 function checkAssaultLadders(unit) {
   if (!inSiegeBattle || unit.hp <= 0 || unit.onWall) return;
@@ -2008,19 +2567,28 @@ const isCustom = window.__CUSTOM_BATTLE_MODE__ ||
                  (currentSiegeCity && typeof currentSiegeCity.militaryPop === 'undefined');
 
 console.log(`[SIEGE SYSTEM] Battle Mode Detected: ${isCustom ? "CUSTOM" : "CAMPAIGN"}`);
-        if (isCustom) {
-            console.log("Cleaning up Custom Siege Battle...");
-            
-            // Clear runtime objects
-            battleEnvironment.units = [];
-            battleEnvironment.projectiles = [];
-            battleEnvironment.groundEffects = [];
+if (isCustom) {
+    console.log("Cleaning up Custom Siege Battle...");
 
-            // Trigger the UI menu return cleanly
-            if (typeof window.leaveBattlefield === 'function') {
-                window.leaveBattlefield(typeof player !== 'undefined' ? player : null);
-            }
-        } else {
+    // SNAPSHOT THE FINAL SIEGE STATE BEFORE CLEARING ANYTHING
+    window.__CUSTOM_SIEGE_RESULT__ = "victory";
+    window.__CUSTOM_SIEGE_COUNTS__ = {
+        pAlive: battleEnvironment.units.filter(u => u.side === "player" && u.hp > 0).length,
+        eAlive: battleEnvironment.units.filter(u => u.side === "enemy" && u.hp > 0).length
+    };
+
+    // Clear runtime objects
+    battleEnvironment.units = [];
+    battleEnvironment.projectiles = [];
+    battleEnvironment.groundEffects = [];
+
+    // Trigger the UI menu return cleanly
+    if (typeof window.leaveBattlefield === 'function') {
+        window.leaveBattlefield(typeof player !== 'undefined' ? player : null);
+    }
+}
+		
+		else {
             console.log("Concluding Campaign Siege...");
             let pObj = (typeof playerObj !== 'undefined') ? playerObj : (window.player || null);
             let victory = (typeof forceVictory !== 'undefined') ? forceVictory : false;
@@ -2034,7 +2602,7 @@ console.log(`[SIEGE SYSTEM] Battle Mode Detected: ${isCustom ? "CUSTOM" : "CAMPA
             SiegeTopography[key] = 0;
         }
 
-    }, 5000);
+    }, 15000);
 }
 
 }

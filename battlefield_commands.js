@@ -107,7 +107,11 @@ document.addEventListener("keydown", (event) => {
             });
             return;
         }
-		currentSelectionGroup = groupNum;
+		
+		// =========================
+        // 1-5: UNIT SELECTION (REVISED)
+        // =========================
+        currentSelectionGroup = groupNum;
         playerUnits.forEach(u => {
             let roleCat = getTacticalRole(u);
             let willBeSelected = false;
@@ -115,21 +119,34 @@ document.addEventListener("keydown", (event) => {
             if (groupNum === 5) willBeSelected = true;
             if (groupNum === 1 && ["INFANTRY", "SHIELD"].includes(roleCat)) willBeSelected = true;
             if (groupNum === 2 && roleCat === "RANGED") willBeSelected = true;
-			if (groupNum === 3 && isMountedOrBeast(u)) willBeSelected = true;
+            if (groupNum === 3 && isMountedOrBeast(u)) willBeSelected = true;
             if (groupNum === 4 && roleCat === "GUNPOWDER") willBeSelected = true;
 
             // STRICT OVERRIDE: Check the central logic gate
             if (willBeSelected && !canSelectUnitNow(u)) {
                 willBeSelected = false;
             }
+            
             if (u.selected && !willBeSelected) {
                 if (u.hasOrders && u.orderType === "follow") {
                     u.orderType = "hold_position";
                     u.orderTargetPoint = { x: commander.x + (u.formationOffsetX || 0), y: commander.y + (u.formationOffsetY || 0) };
                 }
             }
+            
             u.selected = willBeSelected;
+            
+            // ---> NEW SURGERY: BREAK THE LAZY CHARGE UPON SELECTION <---
+            if (u.selected && u.orderType === "seek_engage") {
+                u.hasOrders = false;
+                u.orderType = null; 
+                u.orderTargetPoint = null;
+                u.target = null; // Forces them to clear dynamic targets and await orders
+            }
         });
+        
+        // Temporarily pause the interval so it doesn't instantly hijack your selection
+        stopLazyGeneral(); 
         return;
     }
 
@@ -139,7 +156,7 @@ document.addEventListener("keydown", (event) => {
     // =========================
     // Z, X, C, V, B: FORMATIONS 
     // =========================
-    if (["z", "x", "c", "v", "b"].includes(key)) {
+    if (["z", "x", "v", "c", "b"].includes(key)) {
         
         stopLazyGeneral(); // Disable lazy spam if manual formation ordered
          
@@ -147,8 +164,8 @@ document.addEventListener("keydown", (event) => {
 
         if (key === "z") currentFormationStyle = "tight";  
         if (key === "x") currentFormationStyle = "standard";  
-        if (key === "c") currentFormationStyle = "line";   
-        if (key === "v") currentFormationStyle = "circle"; 
+        if (key === "v") currentFormationStyle = "line";   
+        if (key === "c") currentFormationStyle = "circle"; 
         if (key === "b") currentFormationStyle = "square"; 
         
         // 1. Calculate the Centroid (Average position of the selected group)
@@ -317,10 +334,7 @@ function processTacticalOrders() {
         const tacticalRole = getTacticalRole(unit);
         const isRanged = (tacticalRole === "RANGED" || tacticalRole === "GUNPOWDER");
         let emergencyThreshold = 100; 
-
-// Removed move_to_point and siege_assault from the absolute strict list
-        const isStrictCommand = unit.hasOrders && ["retreat", "follow"].includes(unit.orderType);
-
+		const isStrictCommand = unit.hasOrders && ["retreat", "follow", "move_to_point"].includes(unit.orderType);
         // ====================================================================
         // SURVIVAL OVERRIDE: 100px Emergency Self-Defense
         // ====================================================================
@@ -569,12 +583,51 @@ function processTacticalOrders() {
                 rawDestX = unit.orderTargetPoint.x;
                 rawDestY = unit.orderTargetPoint.y;
             }
-
-            let safeDest = getSafeMapCoordinates(rawDestX, rawDestY);
+			let safeDest = getSafeMapCoordinates(rawDestX, rawDestY);
             let destX3 = safeDest.x;
             let destY3 = safeDest.y;
 
             let distToDest = Math.hypot(unit.x - destX3, unit.y - destY3);
+
+          // 2. UPDATE THE SETTLE LOGIC (Near the bottom of the function)
+			const settleDistance = isMountedOrBeast(unit) ? 35 : 18;
+
+                if (distToDest <= settleDistance) {
+                if (unit.originalRange) {
+                    unit.stats.range = unit.originalRange;
+                    unit.originalRange = null;
+                }
+
+                // --- NEW ANCHOR LOGIC ---
+                // Only apply this fake stabilization in open land battles
+                if (typeof inSiegeBattle === 'undefined' || !inSiegeBattle) {
+                    unit.target = {
+                        x: unit.x, // Lock exactly to their current sub-pixel
+                        y: unit.y,
+                        hp: 9999,
+                        isDummy: true,
+                        isAnchor: true // Custom flag to prevent AI tampering
+                    };
+                    unit.vx = 0; // Hard stop momentum
+                    unit.vy = 0;
+                } else {
+                    unit.target = null; // Preserve old logic for sieges
+                }
+
+                unit.state = "idle";
+                
+                // SURGERY: Do NOT wipe orders for follow or move_to_point.
+                if (unit.orderType === "follow" || unit.orderType === "move_to_point") {
+                    return; 
+                }
+ 
+
+				// Only wipe one-off move orders or retreats
+				unit.hasOrders = false;
+				unit.orderType = null;
+				unit.orderTargetPoint = null;
+				return; 
+			}
             let shouldFocusOnShooting = false;
             
             if (distToDest > 20) {
@@ -1043,8 +1096,7 @@ function calculateFormationOffsets(units, style, centerPoint) {
             let rawX = (c - (unitsInThisRow - 1) / 2) * spacingX;
             let rawY = startY + (r * spacingY);
             
-            rawX += (Math.random() - 0.5) * 5; // Human Jitter
-            rawY += (Math.random() - 0.5) * 5;
+
 
             // Apply angular diagonal rotation
             let rotated = applyRotation(rawX, rawY);
@@ -1057,14 +1109,18 @@ function calculateFormationOffsets(units, style, centerPoint) {
         group.forEach((u, i) => {
             // Pure geometric circle math - ignores mapWidth/mapAngle entirely
             let angle = (i / group.length) * Math.PI * 2;
-            u.formationOffsetX = Math.cos(angle) * radius + (Math.random() - 0.5) * 5;
-            u.formationOffsetY = Math.sin(angle) * radius + (Math.random() - 0.5) * 5;
+           u.formationOffsetX = Math.cos(angle) * radius + (Math.random() - 0.5) * 2;
+           u.formationOffsetY = Math.sin(angle) * radius + (Math.random() - 0.5) * 2;
             
             // Logic check: Since it's a circle, we don't apply the 'mapAngle' rotation here.
             // This ensures the "North" of the circle is always the "North" of the map.
         });
     };
-    // --- GEOMETRY STYLES ---
+// --- GEOMETRY STYLES ---
+    // SURGERY: Ratio-based override for large mounted groups
+    const cavalryRatio = largeUnits.length / units.length;
+    const forceUnifiedShape = (cavalryRatio > 0.40);
+
     switch (style) {
         case "tight": 
             assignBlock(shields, -40, 16, 16, 30); 
@@ -1083,91 +1139,66 @@ function calculateFormationOffsets(units, style, centerPoint) {
 
         case "line":
             let lineGroup = [...shields, ...infantry, ...ranged, ...gunpowder, ...cavalry];
-            assignBlock(lineGroup, 0, 35, 30, 40); // Base line wraps gracefully at 40 width
+            assignBlock(lineGroup, 0, 35, 30, 40); 
             break;
             
         case "circle":
-            let nonLarge = [...shields, ...infantry, ...ranged, ...gunpowder];
-            
-            if (units.length <= 12) {
-                // Skirmish mode: Beasts in the middle, small guard ring around them
-                largeUnits.forEach(u => {
-                    u.formationOffsetX = (Math.random() - 0.5) * 15;
-                    u.formationOffsetY = (Math.random() - 0.5) * 15;
-                });
-                assignRing(nonLarge, Math.max(50, units.length * 8));
+            // SURGERY: If cavalry ratio > 40%, ignore roles and form one big circle
+            if (forceUnifiedShape) {
+                assignRing(units, Math.max(70, units.length * 5));
             } else {
-                // Army mode: Dynamic scaling rings
-                let innerRadius = Math.max(60, nonLarge.length * 3.5);
-                assignRing(nonLarge, innerRadius);
-                
-                if (largeUnits.length > 0) {
-                    let outerRadius = innerRadius + 60 + (largeUnits.length * 1.5);
-                    assignRing(largeUnits, outerRadius);
+                let nonLarge = [...shields, ...infantry, ...ranged, ...gunpowder];
+                if (units.length <= 12) {
+                    largeUnits.forEach(u => {
+                        u.formationOffsetX = (Math.random() - 0.5) * 15;
+                        u.formationOffsetY = (Math.random() - 0.5) * 15;
+                    });
+                    assignRing(nonLarge, Math.max(50, units.length * 8));
+                } else {
+                    let innerRadius = Math.max(60, nonLarge.length * 3.5);
+                    assignRing(nonLarge, innerRadius);
+                    if (largeUnits.length > 0) {
+                        let outerRadius = innerRadius + 60 + (largeUnits.length * 1.5);
+                        assignRing(largeUnits, outerRadius);
+                    }
                 }
             }
             break;
+case "square":
+            // SURGERY: Simplified Blob. No sorting or extra arrays.
+            const sideSize = Math.ceil(Math.sqrt(units.length));
+            const spacing =30; // Personal spacing
             
-        case "square":
-            let squarePool = [...cavalry, ...shields, ...infantry, ...gunpowder, ...ranged];
-            let sqCols = Math.ceil(Math.sqrt(squarePool.length));
-            
-            // Dynamically tighten the grid based on how many units are in the box
-            let sqSpacing = Math.max(20, 40 - (squarePool.length * 0.1)); 
-            let gridPoints = [];
-            
-            let half = (sqCols - 1) / 2;
-            for (let r = 0; r < sqCols; r++) {
-                for (let c = 0; c < sqCols; c++) {
-                    let rawX = (c - half) * sqSpacing;
-                    let rawY = (r - half) * sqSpacing;
-                    
-                    // Standard upright grid coordinates, ignoring all diagonal tilt math
-                    gridPoints.push({ x: rawX, y: rawY });
-                }
-            }
-            
-            gridPoints.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
-            
-            squarePool.forEach((u, i) => {
-                let pt = gridPoints[i];
-                if (pt) {
-                    u.formationOffsetX = pt.x + (Math.random() - 0.5) * 5;
-                    u.formationOffsetY = pt.y + (Math.random() - 0.5) * 5;
-                }
+            units.forEach((u, i) => {
+                const col = i % sideSize;
+                const row = Math.floor(i / sideSize);
+                
+                // Center the blob and add high jitter (20) for the "blob" look
+                u.formationOffsetX = (col - sideSize / 2) * spacing + (Math.random() - 0.5) * 20;
+                u.formationOffsetY = (row - sideSize / 2) * spacing + (Math.random() - 0.5) * 20;
             });
             break;
     }
 }
 
-// ============================================================================
-// SURGERY: THE LAZY FORMATION ADJUSTMENT LOOP (Callable Function)
-// ============================================================================
 function applyFormationAdjustment() {
-    // 1. Safety Checks
     if (typeof inBattleMode === 'undefined' || !inBattleMode || !battleEnvironment || !battleEnvironment.units) return;
 
-    // 2. Filter units that are currently ALIVE, HOLDING A POSITION, and belong to the correct side.
+    // SURGERY: Filter for all selected units in this formation, 
+    // even if they have already arrived (u.hasOrders is now preserved).
     let adjustingUnits = battleEnvironment.units.filter(u =>
-        u.hasOrders &&
-        u.orderType === "move_to_point" &&
-        u.orderTargetPoint &&
+        u.side === "player" &&
+        u.selected &&
         u.hp > 0 &&
-        (
-            // --- PLAYER CONDITION ---
-            (u.side === "player" && u.selected) 
-            
-            // --- ENEMY AI CONDITION (Commented out for later) ---
-            // || (u.side === "enemy" && typeof u.aiSquadState !== 'undefined' && u.aiSquadState === "holding_formation")
-        )
+        u.orderType === "move_to_point" &&
+        u.orderTargetPoint
     );
 
-    if (adjustingUnits.length <= 1) return; // Need at least 2 units to adjust a formation
+    if (adjustingUnits.length <= 1) return; 
 
-    // 3. Check for nearby enemies (Interrupt adjustment if being attacked)
+    // Enemy check (Strictly preserved)
     let inDanger = false;
-    let emergencyThreshold = 150; // Slightly larger than standard 100px survival override
-    
+    let emergencyThreshold = 150; 
     for (let u of adjustingUnits) {
         let nearestDist = Infinity;
         battleEnvironment.units.forEach(other => {
@@ -1178,83 +1209,53 @@ function applyFormationAdjustment() {
         });
         if (nearestDist < emergencyThreshold) {
             inDanger = true;
-            break; // Stop checking, the group is under threat
+            break; 
         }
     }
-
-    // Abort adjustment; the survival override in processTacticalOrders will handle combat
     if (inDanger) return; 
 
-    // 4. Determine the current Target Centroid of the group
-    let sumX = 0, sumY = 0;
-    adjustingUnits.forEach(u => {
-        sumX += u.orderTargetPoint.x;
-        sumY += u.orderTargetPoint.y;
-    });
-    let currentCentroid = { 
-        x: sumX / adjustingUnits.length, 
-        y: sumY / adjustingUnits.length 
-    };
-
-    // 5. Recalculate pure offsets to clean up any messy lines over time
-    if (typeof currentFormationStyle !== 'undefined') {
-        calculateFormationOffsets(adjustingUnits, currentFormationStyle, currentCentroid);
-    }
-
-    // 6. BOUNDARY SHIFT: Calculate the bounding box of the IDEAL formation
+    // BOUNDARY SHIFT: Calculate stable bounding box
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    
     adjustingUnits.forEach(u => {
-        let idealX = currentCentroid.x + (u.formationOffsetX || 0);
-        let idealY = currentCentroid.y + (u.formationOffsetY || 0);
-        
-        if (idealX < minX) minX = idealX;
-        if (idealX > maxX) maxX = idealX;
-        if (idealY < minY) minY = idealY;
-        if (idealY > maxY) maxY = idealY;
+        if (u.orderTargetPoint.x < minX) minX = u.orderTargetPoint.x;
+        if (u.orderTargetPoint.x > maxX) maxX = u.orderTargetPoint.x;
+        if (u.orderTargetPoint.y < minY) minY = u.orderTargetPoint.y;
+        if (u.orderTargetPoint.y > maxY) maxY = u.orderTargetPoint.y;
     });
 
-    // 7. Calculate required shifts to keep the WHOLE formation out of the red lines
     const maxWidth = typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : 2400;
     const maxHeight = typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600;
-    const margin = 60; // Keep slightly away from the exact edge
+    const margin = 60; 
 
     let shiftX = 0;
     let shiftY = 0;
-
-    // If the left edge of the circle is off-map, push the whole centroid right, etc.
     if (minX < margin) shiftX = margin - minX; 
     if (maxX > maxWidth - margin) shiftX = (maxWidth - margin) - maxX; 
     if (minY < margin) shiftY = margin - minY; 
     if (maxY > maxHeight - margin) shiftY = (maxHeight - margin) - maxY; 
 
-    // 8. Apply the shift to the Centroid
+    // Apply the shift only if the whole formation is out of bounds
     if (shiftX !== 0 || shiftY !== 0) {
-        currentCentroid.x += shiftX;
-        currentCentroid.y += shiftY;
+        adjustingUnits.forEach(u => {
+            // --- PROTECT SIEGE LOGIC ---
+            if (u.siegeRole === "ladder_fanatic") return; 
+            
+            if (u.siegeRole === "counter_battery" && u.orderType === "attack") {
+                // Ignore shift to keep sniping
+            } else {
+                 u.orderType = "move_to_point"; // Use engine-standard string
+                 
+                 let rawDestX = u.orderTargetPoint.x + shiftX;
+                 let rawDestY = u.orderTargetPoint.y + shiftY;
+                 
+                 if (typeof getSafeMapCoordinates === 'function') {
+                     u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
+                 } else {
+                     u.orderTargetPoint = {x: rawDestX, y: rawDestY};
+                 }
+            }
+        });
     }
-
-// 9. Quietly update their target points
-    adjustingUnits.forEach(u => {
-        // --- SURGERY: PROTECT LADDER FANATICS FROM MOVEMENT COMMANDS ---
-        if (u.siegeRole === "ladder_fanatic") return; // They ignore commands to keep swarming
-        
-        // --- SURGERY: ALLOW SNIPERS TO MOVE, BUT DON'T BREAK THEIR FIRING STANCE ---
-        if (u.siegeRole === "counter_battery" && u.orderType === "attack") {
-            // Keep their attack order active even if they are repositioning
-        } else {
-             u.orderType = "move";
-        }
-
-        let rawDestX = currentCentroid.x + (u.formationOffsetX || 0);
-        let rawDestY = currentCentroid.y + (u.formationOffsetY || 0);
-        
-        if (typeof getSafeMapCoordinates === 'function') {
-            u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
-        } else {
-            u.orderTargetPoint = {x: rawDestX, y: rawDestY};
-        }
-    });
 }
 
 function isRangedType(unit) {

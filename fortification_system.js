@@ -59,7 +59,7 @@ function buildCityWalls(grid, arch, ctx, factionName) {
     cityLadders = [];
     const gateDrawn = { north: false, south: false };
     const margin = 45; 
-    const wallThick = 12; 
+    const wallThick = 10; 
     const startX = margin;
     const endX = CITY_COLS - margin;
     const startY = margin;
@@ -145,7 +145,7 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
                     ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
                     
                     // Shadow the outer parapet edge to give it depth
-                    if (minDistToEdge < 2) {
+                    if (minDistToEdge < 2.0) {
                         ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
                         ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
                     }

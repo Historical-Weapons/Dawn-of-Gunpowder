@@ -1,10 +1,6 @@
-
  let economyTick = 0;
  let uiSyncTick = 0;
- 
- 
 function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
-    // --- 1. STATUS LOCKS ---
     if ((player.isSieging && !inBattleMode) || player.stunTimer > 0) {
         if (player.stunTimer > 0) player.stunTimer--;
         player.isMoving = false;
@@ -13,8 +9,6 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     
     let dx = 0, dy = 0;
     player.isMoving = false;
-
-    // --- 2. TERRAIN SPEED & MOUNTS ---
     let currentSpeed = speed;
     let isClimbing = false;
     let isMounted = false;
@@ -50,11 +44,10 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
         currentSpeed *= 0.20; 
     }
 
-    // ---> SURGERY 2: Add 'P' to return to Overworld.
+// ---> SURGERY 2: Add 'P' to return to Overworld.
     if (inCityMode && !inBattleMode && keys['p']) {
         keys['p'] = false;
-        inCityMode = false;
-        if (typeof enterOverworldMode === 'function') enterOverworldMode();
+        if (typeof leaveCity === 'function') leaveCity(player);
         return;
     }
 
@@ -75,13 +68,10 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
         const outOfBounds = (nextX < 0 || nextX >= CITY_WORLD_WIDTH || 
                              nextY < 0 || nextY >= CITY_WORLD_HEIGHT);
 
-        if (nextY >= CITY_WORLD_HEIGHT - 5) {
-            inCityMode = false;
-            if (typeof enterOverworldMode === 'function') enterOverworldMode();
+if (nextY >= CITY_WORLD_HEIGHT - 5) {
+            if (typeof leaveCity === 'function') leaveCity(player);
             return;
         }
-
-        // ---> SURGERY 3: DYNAMIC LADDER DOWN-CLIMBING FIX <---
         const curTx = Math.floor(player.x / CITY_TILE_SIZE);
         const curTy = Math.floor(player.y / CITY_TILE_SIZE);
         const currentTile = cityDimensions[currentActiveCityFaction]?.grid?.[curTx]?.[curTy];
@@ -317,6 +307,12 @@ window.onwheel = (e) => {
     if (inBattleMode) 
 	{
         if (!battleEnvironment?.grid || typeof pCmdr === 'undefined' || !pCmdr) return;
+		
+		// --- NAVAL PHYSICS HOOK ---
+        if (typeof inNavalBattle !== 'undefined' && inNavalBattle) {
+            updateNavalPhysics();
+        }
+        // --- END NAVAL PHYSICS HOOK ---
         
         player.size = 24;
 // SURGERY: Battle speed reduced to 70%
@@ -418,8 +414,7 @@ player.speed = player.baseSpeed * starvPenalty * currentTile.speed * 0.60;
         document.getElementById('terrain-text').innerText = inCityMode ? "City" : currentTile.name;
         document.getElementById('speed-text').innerText = currentTile.speed + "x";
         document.getElementById('zoom-text').innerText = zoom.toFixed(2) + "x";
-		
-      // ---> SURGERY: Prevent overworld collision checks while exploring city interiors <---
+
         if (!inCityMode) {
             let touchingCity = cities.find(c => Math.hypot(player.x - c.x, player.y - c.y) < c.radius + player.size) || null;
             
@@ -474,23 +469,51 @@ function draw() {
     ctx.scale(zoom, zoom);
     ctx.translate(-player.x, -player.y);
 
-    if (inBattleMode) {
-        // 1. Draw Infinite Floor
-        ctx.fillStyle = battleEnvironment.groundColor || "#767950";
-        ctx.fillRect(-3000, -3000, 8400, 7600);
+	if (inBattleMode) {
+			if (typeof inNavalBattle !== 'undefined' && inNavalBattle) {
+				// --- FIX 1: THE BLACK ABYSS ---
+				// 1. Paint the infinite background pure black
+				ctx.fillStyle = "#000000"; 
+				ctx.fillRect(-3000, -3000, 8400, 7600);
+				
+				// 2. Paint the actual playable naval grid with water
+				ctx.fillStyle = navalEnvironment.waterColor;
+				ctx.fillRect(0, 0, BATTLE_WORLD_WIDTH, BATTLE_WORLD_HEIGHT);
 
-        // 2. Draw Background Terrain
-        if (battleEnvironment.bgCanvas) {
-            ctx.drawImage(battleEnvironment.bgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
-        }
+				drawNavalBackground(ctx);
+				drawNavalShips(ctx);
+				drawCosmeticWaves(ctx);
+			} else {
+				// 1. Draw Infinite Floor (LAND)
+				ctx.fillStyle = battleEnvironment.groundColor || "#767950";
+				ctx.fillRect(-3000, -3000, 8400, 7600);
 
-        // 3. Draw Units
-        drawBattleUnits(ctx);
+				// 2. Draw Background Terrain (LAND)
+				if (battleEnvironment.bgCanvas) {
+					ctx.drawImage(battleEnvironment.bgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
+				}
+			}
 
-        // 4. Draw Foreground Terrain (Trees/Canopy)
-        if (battleEnvironment.fgCanvas) {
-            ctx.drawImage(battleEnvironment.fgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
-        }
+			// 3. Draw Units
+			ctx.save();
+            
+			// --- FIX 2 & 3: CANVAS LEAK & SHIP SWAY ---
+			if (typeof inNavalBattle !== 'undefined' && inNavalBattle) {
+                // Apply the wave bobbing to the troops so they stay pinned to the swaying deck
+                ctx.translate(navalEnvironment.shipSwayX, navalEnvironment.shipSwayY);
+                
+                // DELETED the broken unit loop with unmatched ctx.save() and ctx.clip() calls. 
+                // Any water clipping MUST be handled individually inside troop_system.js per unit.
+			}
+            
+			drawBattleUnits(ctx);
+			ctx.restore();
+
+			// 4. Draw Foreground Terrain (Trees/Canopy) - ONLY ON LAND
+			if (!(typeof inNavalBattle !== 'undefined' && inNavalBattle) && battleEnvironment.fgCanvas) {
+				ctx.drawImage(battleEnvironment.fgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
+			}
+        
 
         // 5. Draw Dynamic Assets (Gates & Engines)
         if (typeof renderDynamicGates === 'function') {
@@ -655,11 +678,7 @@ function draw() {
     });
 
     updateAndDrawPlayerSystems(ctx, player, zoom, WORLD_WIDTH, WORLD_HEIGHT, typeof globalNPCs !== 'undefined' ? globalNPCs : []);
-	
-	
-
 	updateCitySystems();
-	
 }
 
 
