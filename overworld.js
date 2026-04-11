@@ -1158,11 +1158,11 @@ let tile = {
 if (e < 0.25) {
     tile.name = "Ocean"; tile.color = PALETTE.ocean; tile.speed = 1.5; 
 } else if (e < 0.35) {
-    tile.name = "Coastal"; tile.color = PALETTE.coastal; tile.speed = 1.1; 
+    tile.name = "Coastal"; tile.color = PALETTE.coastal; tile.speed = 1.3; 
 } else if (isMacroRiver || isProcRiver) {
     tile.name = "River"; 
     tile.color = PALETTE.coastal; // Using your coastal color for rivers
-    tile.speed = 1.3;
+    tile.speed = 1.5;
 } 
 
 // 2. HIGH ALTITUDE (Mountains & Snow)
@@ -1171,7 +1171,7 @@ else if (e > 0.82) {
     tile.name = "Large Mountains"; tile.color = PALETTE.snow; tile.speed = 0.3; tile.impassable = false;
 } else if (e > 0.72) {
     // High Mountains
-    tile.name = "Mountains"; tile.color = PALETTE.mountains; tile.speed = 0.3;
+    tile.name = "Mountains"; tile.color = PALETTE.mountains; tile.speed = 0.4;
 } else if (e > 0.58) {
     // Highlands / Plateaus
     if (m < 0.2) {
@@ -1191,17 +1191,17 @@ else {
     if (m < 0.25) {
         tile.name = "Desert"; tile.color = PALETTE.desert; tile.speed = 0.4;
     } else if (m < 0.35) {
-        tile.name = "Dunes"; tile.color = PALETTE.dune; tile.speed = 0.45;
+        tile.name = "Dunes"; tile.color = PALETTE.dune; tile.speed = 0.65;
     } else if (m > 0.75) {
       //  tile.name = "Dense Forest"; tile.color = PALETTE.jungle; tile.speed = 0.24;
 	          tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.4;
     } else if (m > 0.55) {
         tile.name = "Forest"; tile.color = PALETTE.forest; tile.speed = 0.4;
     } else if (m > 0.42) {
-        tile.name = "Plains"; tile.color = PALETTE.meadow; tile.speed = 0.5;
+        tile.name = "Plains"; tile.color = PALETTE.meadow; tile.speed = 0.85;
     } else {
         // Default temperate land
-        tile.name = "Steppes"; tile.color = PALETTE.plains; tile.speed = 0.49;
+        tile.name = "Steppes"; tile.color = PALETTE.plains; tile.speed = 0.8;
     }
 }
 

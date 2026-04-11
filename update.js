@@ -6,7 +6,6 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
         player.isMoving = false;
         return;
     }
-    
     let dx = 0, dy = 0;
     player.isMoving = false;
     let currentSpeed = speed;
@@ -17,11 +16,9 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     if (inBattleMode && typeof battleEnvironment !== 'undefined') {
         let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
         if (pCmdr) activeUnit = pCmdr;
-    }
-    
+    } 
     isMounted = activeUnit.stats?.isLarge || activeUnit.isMounted || String(activeUnit.unitType || "").toLowerCase().match(/(cav|horse|camel|eleph)/);
 
-// ---> SURGERY 1: Isolate Climbing Logic. 
     if (inCityMode && !inBattleMode) {
         const tx = Math.floor(player.x / CITY_TILE_SIZE);
         const ty = Math.floor(player.y / CITY_TILE_SIZE);
@@ -120,8 +117,11 @@ if (nextY >= CITY_WORLD_HEIGHT - 5) {
             }
         }
 
-        const canMoveX = bypassGateCollision || (!isBattleCollision(nextX, player.y, player.onWall, activeUnit) && tileX !== 8);
-        const canMoveY = bypassGateCollision || (!isBattleCollision(player.x, nextY, player.onWall, activeUnit) && tileY !== 8);
+     // In naval battles tile 8 is the hull rail — physics handles friction, not hard collision.
+        // In siege / field battles tile 8 is still a platform wall, so keep blocking there.
+        const tile8Blocks = !window.inNavalBattle;
+        const canMoveX = bypassGateCollision || (!isBattleCollision(nextX, player.y, player.onWall, activeUnit) && (!tile8Blocks || tileX !== 8));
+        const canMoveY = bypassGateCollision || (!isBattleCollision(player.x, nextY, player.onWall, activeUnit) && (!tile8Blocks || tileY !== 8));
         
         if (canMoveX) player.x = Math.max(0, Math.min(nextX, bW));
         if (canMoveY) player.y = Math.max(0, Math.min(nextY, bH));
@@ -189,10 +189,10 @@ let player = {
     x: SAFE_WIDTH * 0.5,
     y: SAFE_HEIGHT * 0.45,
     size: 24,
-    distTrack: 0,      // Track distance for food mechanic
+    distTrack: 0,       
 
     // --- MOVEMENT & STATE ---
-    baseSpeed: 15,     // Original speed
+    baseSpeed: 15,     
     speed: 15,
     isMoving: false,
     stunTimer: 0,
@@ -203,7 +203,7 @@ let player = {
     gold: 500,
     food: 100,
     maxFood: 2000,
-    troops: 20, //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>dpnt forget
+    troops: 150, //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>dpnt forget
 
     // --- PROGRESSION ---
     experience: 0,
@@ -219,8 +219,8 @@ let player = {
     // --- DIPLOMACY ---
     faction: "Player's Kingdom",
     enemies: ["Bandits"],
-// roster: ["Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", "General", "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", "Heavy Lancer", "Elite Lancer", "Rocket", "Keshig", "Hand Cannoneer", "Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", "Slinger", "Glaiveman", "Javelinier", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Archer", "Archer", "Archer", "Archer", "Archer", "Archer", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Bomb", "Repeater Crossbowman", "Repeater Crossbowman", "Repeater Crossbowman", "Poison Crossbowman", "Slinger"].map(unitName => ({ type: unitName, exp: 1 })),
-roster: ["Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance"].map(unitName => ({ type: unitName, exp: 1 })),
+ roster: ["Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", "General", "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", "Heavy Lancer", "Elite Lancer", "Rocket", "Keshig", "Hand Cannoneer", "Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", "Slinger", "Glaiveman", "Javelinier", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Archer", "Archer", "Archer", "Archer", "Archer", "Archer", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Bomb", "Repeater Crossbowman", "Repeater Crossbowman", "Repeater Crossbowman", "Poison Crossbowman", "Slinger"].map(unitName => ({ type: unitName, exp: 1 })),
+//roster: ["Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance"].map(unitName => ({ type: unitName, exp: 1 })),
     // --- SYSTEM ---
     isInitialized: false
 };
@@ -236,34 +236,26 @@ function initPlayer() {
     player.x = worldW * 0.5;
     player.y = worldH * 0.45;
 }
-/**
- * Call this ONLY when the user clicks the "Overworld" button 
- * in your Main Menu (Option B).
- */
 function enterOverworldMode() {
     // Ensure constants are available or use fallbacks
     const w = (typeof WORLD_WIDTH !== 'undefined') ? WORLD_WIDTH : 2000;
     const h = (typeof WORLD_HEIGHT !== 'undefined') ? WORLD_HEIGHT : 2000;
-
     player.x = w * 0.5;
     player.y = h * 0.45;
     player.hp = Math.max(1, player.maxHealth || 100);
     player.stunTimer = 0;
     player.isMoving = false;
     player.isInitialized = true;
-    
-    console.log("Overworld Started: Player spawned at", player.x, player.y);
+    AudioManager.init();
+    AudioManager.stopMusic();
 }
-
 
 // 1. ADD THIS: Tell the game when a key is pressed!
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
-
 window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 window.onwheel = (e) => {
-    // 1. SURGICAL FIX: Prevent map zoom if Diplomacy/Parle UI is open
     if (typeof inParleMode !== 'undefined' && inParleMode) {
-        return; // Allow the table to scroll, but stop the map from zooming
+        return;
     }
 
     // 2. If player scrolls normally, cancel cinematic instantly
@@ -304,7 +296,7 @@ window.onwheel = (e) => {
 
     if (typeof inParleMode !== 'undefined' && inParleMode) return;
     
-    if (inBattleMode) 
+   if (inBattleMode) 
 	{
         if (!battleEnvironment?.grid || typeof pCmdr === 'undefined' || !pCmdr) return;
 		
@@ -315,9 +307,47 @@ window.onwheel = (e) => {
         // --- END NAVAL PHYSICS HOOK ---
         
         player.size = 24;
-// SURGERY: Battle speed reduced to 70%
-calculateMovement((player.baseSpeed / 4) * 0.70, null, typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8, null, null, true);
+
+       // ---> SURGERY: UNIVERSAL WATER SLOWDOWN FOR PLAYER <---
+        let pTx = Math.max(0, Math.min(BATTLE_COLS - 1, Math.floor(player.x / BATTLE_TILE_SIZE)));
+        let pTy = Math.max(0, Math.min(BATTLE_ROWS - 1, Math.floor(player.y / BATTLE_TILE_SIZE)));
+        let playerTile = (battleEnvironment.grid[pTx] && battleEnvironment.grid[pTx][pTy]) ? battleEnvironment.grid[pTx][pTy] : 0;
+        
+        let waterSpeedMulti = 1.0;
+
+        // NAVAL FIX: The grid is 100% water. Rely on exact 3D deck math instead!
+        if (window.inNavalBattle && typeof window.getNavalSurfaceAt === 'function') {
+            let surface = window.getNavalSurfaceAt(player.x, player.y);
+            if (surface === 'WATER' || surface === 'EDGE') {
+                waterSpeedMulti = 0.40;
+            }
+        } else {
+            // Standard field/river battles still use the underlying grid tile
+            if (playerTile === 4 || playerTile === 11) {
+                waterSpeedMulti = 0.40; 
+            }
+        }
+
+        // SURGERY: Battle speed reduced to 70%, multiplied by water terrain penalty
+        calculateMovement(((player.baseSpeed / 4) * 0.70) * waterSpeedMulti, null, typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8, null, null, true);
+        
         if (typeof updateBattleUnits === 'function') updateBattleUnits();
+
+        // ---> SURGERY: UNIVERSAL WATER SLOWDOWN FOR ALL TROOPS <---
+        // This dampens the AI velocity vectors so they wade slowly through the river
+        if (!window.inNavalBattle) {
+            battleEnvironment.units.forEach(unit => {
+                if (unit.hp <= 0) return;
+                let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+                let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
+                let currentTile = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty]) ? battleEnvironment.grid[tx][ty] : 0;
+                
+                if (currentTile === 4 || currentTile === 11) {
+                    if (typeof unit.vx !== 'undefined') unit.vx *= 0.50; // Cut momentum in half
+                    if (typeof unit.vy !== 'undefined') unit.vy *= 0.50;
+                }
+            });
+        }
         
         pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
         if (pCmdr && player) {
@@ -409,12 +439,92 @@ player.speed = player.baseSpeed * starvPenalty * currentTile.speed * 0.60;
         updateNPCs(cities);
         
 
+	
+		// --- ADVANCED PROXIMITY AUDIO SYSTEM ---
+if (typeof globalNPCs !== 'undefined' && player) {
+    let closestDist = 1000;
+    let closestEnemy = null;
 
-        document.getElementById('loc-text').innerText = `${Math.round(player.x)}, ${Math.round(player.y)}`;
-        document.getElementById('terrain-text').innerText = inCityMode ? "City" : currentTile.name;
-        document.getElementById('speed-text').innerText = currentTile.speed + "x";
-        document.getElementById('zoom-text').innerText = zoom.toFixed(2) + "x";
+    // 1. Find the nearest hostile entity
+    for (let npc of globalNPCs) {
+        if (npc.faction !== player.faction) {
+            let d = Math.hypot(npc.x - player.x, npc.y - player.y);
+            if (d < closestDist) {
+                closestDist = d;
+                closestEnemy = npc;
+            }
+        }
+    }
 
+    // 2. Define State Thresholds
+    // Danger (<250), Alert (250-600), Safe (>600)
+    if (closestDist < 0) {
+       //  TRIGGER: HIGH TENSION
+       if (AudioManager.currentTrack !== "WorldMap_Tension") {
+            AudioManager.playMusic("WorldMap_Tension");
+            AudioManager.playSound('ui_click'); // Small percussive 'heartbeat' sync
+        }
+        
+        // FACTION-SPECIFIC ENCOUNTER STINGERS (Plays once per encounter)
+        if (!player.lastEncounteredFaction || player.lastEncounteredFaction !== closestEnemy.faction) {
+            player.lastEncounteredFaction = closestEnemy.faction;
+            
+            // Surgical sound selection based on faction identity
+            if (closestEnemy.faction === "Great Khaganate") {
+                AudioManager.playSound('charge'); // Horse-lords warcry
+            } else if (closestEnemy.faction === "Hong Dynasty") {
+                AudioManager.playSound('firelance'); // Gunpowder crackle
+            } else if (closestEnemy.faction === "Shahdom of Iransar") {
+                AudioManager.playSound('sword_clash'); // Steel ring
+            }
+        }
+
+    } else if (closestDist < 1) {
+        // TRIGGER: ALERT/LOW TENSION 
+        // We use the "Bandits" track here as a low-level threat ambient
+        if (AudioManager.currentTrack !== "Bandits") {
+            AudioManager.playMusic("Bandits");
+        }
+        player.lastEncounteredFaction = null; // Reset stinger so it can trigger if you move back in
+
+    } else {
+// Define what SHOULD be playing
+const targetSong = 'music/gameloop.mp3';
+
+// TRIGGER: SAFE/CALM
+if (AudioManager.currentTrack !== targetSong) {
+    // This only runs ONCE when the song changes
+AudioManager.playRandomMP3List([
+    'music/gameloop1.mp3',
+    'music/gameloop2.mp3',
+    'music/gameloop3.mp3'
+]);
+        }
+        player.lastEncounteredFaction = null;
+    }
+}
+// --- END AUDIO SYSTEM ---
+
+//what is displayed in the topleft gui is here
+document.getElementById('loc-text').innerText =
+    `${Math.round(player.x)}, ${Math.round(player.y)}`;
+
+document.getElementById('terrain-text').innerText =
+    inCityMode ? "City" : currentTile.name;
+
+const speedEl = document.getElementById('speed-text');
+
+if (inBattleMode || (typeof inCityMode !== 'undefined' && inCityMode)) {
+    speedEl.style.display = 'none';
+} else {
+    speedEl.style.display = 'block';
+    speedEl.innerText = currentTile.speed + "x";
+}
+
+document.getElementById('zoom-text').innerText =
+    zoom.toFixed(2) + "x";
+	
+	
         if (!inCityMode) {
             let touchingCity = cities.find(c => Math.hypot(player.x - c.x, player.y - c.y) < c.radius + player.size) || null;
             

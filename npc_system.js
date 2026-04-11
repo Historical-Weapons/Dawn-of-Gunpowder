@@ -1,6 +1,6 @@
 const FACTIONS = {
     // 1. THE HEARTLAND: Central China (Nudged North to clear the South)
-    "Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.50, south: 0.50, west: 0.40, east: 0.60 } }, 
+    "Hong Dynasty":          { color: "#d32f2f", geoWeight: { north: 0.40, south: 0.60, west: 0.40, east: 0.60 } }, 
 
     // 2. YUNAN: Center-Left, Extreme South
     "Dab Tribes":            { color: "#00838f", geoWeight: { north: 0.01, south: 0.99, west: 0.70, east: 0.30 } }, 
@@ -9,7 +9,7 @@ const FACTIONS = {
     "Great Khaganate":       { color: "#1976d2", geoWeight: { north: 0.85, south: 0.15, west: 0.60, east: 0.40 } }, 
 
     // 4. JURCHEN FORESTS: Top-Right
-    "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.98, south: 0.02, west: 0.05, east: 0.95 } }, 
+    "Jinlord Confederacy":   { color: "#455a64", geoWeight: { north: 0.88, south: 0.12, west: 0.05, east: 0.95 } }, 
 
     // 5. VIET REALM: Center-Right, Extreme South
     "Tran Realm":            { color: "#388e3c", geoWeight: { north: 0.01, south: 0.99, west: 0.30, east: 0.70 } }, 

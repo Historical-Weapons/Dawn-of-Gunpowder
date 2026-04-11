@@ -33,7 +33,7 @@ let battleEnvironment = {
     units: [],
     projectiles: [], 
     groundEffects: [],
-    cityGates: [] // <--- ADD THIS
+    cityGates: [] 
 };
 
 function isExitAllowed() {
@@ -45,7 +45,7 @@ function isExitAllowed() {
 
 function generateBattleOrganicFeatures(grid, typeValue, count, maxSize) {
     if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) return;
-
+    if (window.inNavalBattle) return;  // naval grid is entirely managed by naval_battles.js
     for (let i = 0; i < count; i++) {
         // Pick a center point anywhere in the grid
         let centerX = Math.floor(Math.random() * BATTLE_COLS);
@@ -101,8 +101,71 @@ else if (worldTerrainType.includes("Plains")) {
     generateBattleOrganicFeatures(grid, 6, 2, 10);   // Occasional rocks
  
 }
-	
 
+else if (worldTerrainType.includes("River")) {
+    groundColor = "#6b7a4a";
+    treeColorPool = ["#4e6b3e", "#3a522d", "#2d5a27"];
+    rockColor = "#7a7a7a";
+
+    generateBattleOrganicFeatures(grid, 3, 25, 15);
+    generateBattleOrganicFeatures(grid, 7, 20, 10);
+
+    // --- NEW: Calculate the forbidden margins ---
+    const marginPx = 200;
+    const marginTiles = Math.ceil(marginPx / BATTLE_TILE_SIZE); 
+    
+    // 1. SPREAD OUT THE TRANSITION: Increased from 45 to 90 to make the curve longer
+    const curveBuffer = 90; 
+
+    for (let y = 0; y < BATTLE_ROWS; y++) {
+        // DRASTIC MEANDER
+        let riverCenterX = 
+            (BATTLE_COLS / 2) + 
+            Math.sin(y * 0.03) * 45 +  
+            Math.sin(y * 0.01) * 25;  
+
+        // --- SURGERY: SOFTER, LONGER EXIT CURVES ---
+        let topLimit = marginTiles + curveBuffer;
+        let bottomLimit = BATTLE_ROWS - marginTiles - curveBuffer;
+        
+        let intensity = 0; // Track curve intensity to adjust width later
+
+if (y < topLimit) {
+    intensity = (topLimit - y) / curveBuffer; 
+    // REVISE THIS LINE: Change 0.6 to 0.25
+    riverCenterX -= Math.pow(intensity, 1.8) * (BATTLE_COLS * 0.25); 
+} else if (y > bottomLimit) {
+    intensity = (y - bottomLimit) / curveBuffer;
+    // REVISE THIS LINE: Change 0.6 to 0.25
+    riverCenterX += Math.pow(intensity, 1.8) * (BATTLE_COLS * 0.25);
+}
+
+        // Base width
+        let riverWidth = 42 + Math.sin(y * 0.06) * 4; 
+
+        // 3. THICKNESS CORRECTION: As the river turns horizontal, we artificially 
+        // inflate the X-axis width. This keeps the visual perpendicular thickness higher 
+        // than your screenshot, but still slightly less thick than the main vertical body.
+        riverWidth += (intensity * 35); 
+
+        for (let x = 0; x < BATTLE_COLS; x++) {
+            let distX = Math.abs(x - riverCenterX);
+
+            // Slightly more aggressive edge noise for the wider banks
+            let edgeNoise = Math.sin(y * 0.12 + x * 0.18) * 1.5;
+            let d = distX - riverWidth + edgeNoise;
+
+            if (d < 0) {
+                grid[x][y] = 4; // Main river body
+            } else if (d < 3) {
+                grid[x][y] = 7; // Muddy shoreline
+            } else if (d < 6) {
+                // Increased probability of scattered mud on the banks
+                if (Math.random() > 0.5) grid[x][y] = 7; 
+            }
+        }
+    }
+}
 else if (worldTerrainType.includes("Desert") || worldTerrainType.includes("Dunes")) {
         groundColor = "#cfae7e";
         treeColorPool = ["#8b7e71", "#a68a5c"]; 
@@ -143,7 +206,7 @@ grid[Math.floor(Math.random() * BATTLE_COLS)][Math.floor(Math.random() * BATTLE_
 }
 	
 // 2. TROPICAL HIGHLANDS (Jungle Karst): Steep, mossy, and humid
-else if (worldTerrainType.includes("Mountain") && !worldTerrainType.includes("Snowy")) {
+else if (worldTerrainType.includes("Mountain") && !worldTerrainType.includes("Large Mountains")) {
     groundColor = "#3E2723"; // Deep mossy/clay earth
     // Tropical Palette: Bright Limes, Deep Ferns, and Jungle Teals
     treeColorPool = ["#2d5a27", "#4a7c38", "#1e3d1a", "#5c913c"]; 
@@ -537,12 +600,18 @@ else if (grid[i][j] === 10) { // GRASS TEXTURE
 function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     if (inCityMode) return; 
 
+// ---> FIX 1: FLUSH THE NAVAL FLAG <---
+    // This stops the previous naval battle from leaking into your land battles!
+    window.inNavalBattle = false;
+	
 // --- NAVAL BATTLE HOOK ---
-const tileName = currentWorldMapTile.name || "Plains";
-if (tileName === "Ocean" || tileName === "River" || tileName === "Coastal") {
+    const tileName = currentWorldMapTile.name || "Plains";
     
-    // 1. Flush Keys & UI to prevent ghost inputs
-    if (typeof keys !== 'undefined') { for (let k in keys) keys[k] = false; }
+    // ---> FIX 2: REMOVE RIVER FROM NAVAL SPAWNER <---
+    if (tileName === "Ocean" || tileName === "Coastal") {
+        
+        // 1. Flush Keys & UI to prevent ghost inputs
+        if (typeof keys !== 'undefined') { for (let k in keys) keys[k] = false; }
     closeParleUI();
     const panel = document.getElementById('parle-panel');
     if (panel) panel.style.display = 'none';
@@ -558,11 +627,16 @@ if (tileName === "Ocean" || tileName === "River" || tileName === "Coastal") {
         enemyColor: (typeof FACTIONS !== 'undefined' && FACTIONS[enemyNPC.faction]) ? FACTIONS[enemyNPC.faction].color : "#000000"
     };
 
-    // 3. Initialize the Naval Map
- 
- BATTLE_WORLD_WIDTH = 4800; 
- BATTLE_WORLD_HEIGHT = 3200;
- initNavalBattle(enemyNPC, playerObj, tileName, playerObj.troops || 0, enemyNPC.count || 0);
+	// 3. Initialize the Naval Map
+	 
+	 BATTLE_WORLD_WIDTH = 4800; 
+	 BATTLE_WORLD_HEIGHT = 3200;
+	 
+	 // Prevents the physical grid array from cutting off at the center of the ship
+	 BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
+	 BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+	 
+	 initNavalBattle(enemyNPC, playerObj, tileName, playerObj.troops || 0, enemyNPC.count || 0);
     savedWorldPlayerState_Battle.x = playerObj.x;
     savedWorldPlayerState_Battle.y = playerObj.y;
     
@@ -780,16 +854,10 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
             spawnY = BATTLE_WORLD_HEIGHT - 1300; // Safe fallback deep inside walls
         }
     }
-	
-	
-	
     let composition = [];
-
 // =========================================================
     // THE FIX: If it's the player, read EXACTLY what they bought
     // =========================================================
-	
-	
     if (side === "player" && typeof player !== 'undefined' && player.roster && player.roster.length > 0) {
         let counts = {};
         
@@ -1045,53 +1113,70 @@ function deployNavalArmy(faction, totalTroops, side, uniqueType) {
         allocated += count;
     });
 
-// SURGERY: Tighter Formations - Deterministic deck grid inside the hull
-    const cols = 18; // Increased from 10 (forces troops closer horizontally)
-    const rows = Math.max(2, Math.ceil(spawnList.length / cols));
-    const marginX = ship.width * 0.05; // Reduced from 0.12 (pushes them closer to edges)
-    const marginY = ship.height * 0.05; 
-    const usableW = ship.width - marginX * 2;
-    const usableH = ship.height - marginY * 2;
+// =========================================================
+// SURGERY: Tight Centroid Formations
+// =========================================================
+// 1. Determine optimal columns and rows for the exact troop count
+let cols = Math.ceil(Math.sqrt(spawnList.length * (ship.width / ship.height)));
+if (cols < 1) cols = 1;
+let rows = Math.ceil(spawnList.length / cols);
+if (rows < 1) rows = 1;
 
+// 2. Define strict personal space limits (keeps them tight!)
+const PERSONAL_SPACE = 22; 
 
+// 3. Calculate dynamic spacing. 
+// Caps at PERSONAL_SPACE so small armies cluster. If the army is massive, 
+// it automatically squishes them down to fit 85% of the deck.
+const spacingX = Math.min(PERSONAL_SPACE, (ship.width * 0.85) / cols);
+const spacingY = Math.min(PERSONAL_SPACE, (ship.height * 0.85) / rows);
 
-    spawnList.forEach((type, i) => {
-        let baseTemplate = UnitRoster.allUnits[type];
-        if (!baseTemplate) baseTemplate = UnitRoster.allUnits["Militia"];
+// 4. Calculate the bounding box of the whole army
+const blockW = cols * spacingX;
+const blockH = rows * spacingY;
 
-const safePos = slotForIndex(i, baseTemplate.role, ship, cols, rows, marginX, marginY, usableW, usableH, side);
+// 5. Center that bounding box directly on the ship's centroid
+const startX = ship.x - (blockW / 2);
+const startY = ship.y - (blockH / 2);
 
-        const isCmdr = (baseTemplate.isCommander === true) || (type === "Commander");
-        const unitStats = Object.assign(
-            new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
-            baseTemplate
-        );
-        unitStats.morale = 20;
-        unitStats.maxMorale = 20;
-        unitStats.faction = faction;
+spawnList.forEach((type, i) => {
+    let baseTemplate = UnitRoster.allUnits[type];
+    if (!baseTemplate) baseTemplate = UnitRoster.allUnits["Militia"];
 
-        battleEnvironment.units.push({
-            id: unitIdCounter++,
-            side,
-            faction,
-            color: factionColor,
-            unitType: type,
-            isCommander: isCmdr,
-            disableAICombat: (side === 'player' && isCmdr),
-            stats: unitStats,
-            hp: unitStats.health,
-            x: safePos.x,
-            y: safePos.y,
-            target: null,
-            state: "idle",
-            animOffset: Math.random() * 100,
-            cooldown: 170,
-            hasOrders: false,
-            spawnMode: "naval"
-        });
+    // Notice the updated parameters passed to slotForIndex
+    const safePos = slotForIndex(i, baseTemplate.role, ship, cols, rows, startX, startY, spacingX, spacingY, side);
+
+    const isCmdr = (baseTemplate.isCommander === true) || (type === "Commander");
+    const unitStats = Object.assign(
+        new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
+        baseTemplate
+    );
+    unitStats.morale = 20;
+    unitStats.maxMorale = 20;
+    unitStats.faction = faction;
+
+    battleEnvironment.units.push({
+        id: unitIdCounter++,
+        side,
+        faction,
+        color: factionColor,
+        unitType: type,
+        isCommander: isCmdr,
+        disableAICombat: (side === 'player' && isCmdr),
+        stats: unitStats,
+        hp: unitStats.health,
+        x: safePos.x,
+        y: safePos.y,
+        target: null,
+        state: "idle",
+        animOffset: Math.random() * 100,
+        cooldown: 170,
+        hasOrders: false,
+        spawnMode: "naval"
     });
+});
 
-    currentBattleData.initialCounts[side] += spawnList.length;
+currentBattleData.initialCounts[side] += spawnList.length;
 }
 
     function pointInShip(x, y, s) {
@@ -1103,27 +1188,40 @@ const safePos = slotForIndex(i, baseTemplate.role, ship, cols, rows, marginX, ma
         return (Math.pow(Math.abs(dx) / rx, 2.5) + Math.pow(Math.abs(dy) / ry, 2.5)) <= 0.90;
     }
 
-function slotForIndex(i, unitRole, ship, cols, rows, marginX, marginY, usableW, usableH, side) {
+
+function slotForIndex(i, unitRole, ship, cols, rows, startX, startY, spacingX, spacingY, side) {
     const row = Math.floor(i / cols);
     const col = i % cols;
 
-    let x = ship.x - ship.width / 2 + marginX + ((col + 0.5) * (usableW / cols));
-    let y = ship.y - ship.height / 2 + marginY + ((row + 0.5) * (usableH / rows));
+    // Place exactly in the tight grid
+    let x = startX + (col * spacingX) + (spacingX / 2);
+    let y = startY + (row * spacingY) + (spacingY / 2);
 
+    // Tactical Role Shifting (Ranged in front, Cav in back)
+    // Shift amount slightly reduced to keep the formation solid
     const role = String(unitRole || "").toLowerCase();
     const isRanged = role.includes("archer") || role.includes("crossbow") || role.includes("gun");
     const isCav = role.includes("cavalry") || role.includes("horse") || role.includes("mount");
 
+    let shiftAmt = ship.height * 0.05; 
     if (side === "player") {
-        if (isRanged) y -= ship.height * 0.16;
-        if (isCav) y += ship.height * 0.16;
+        if (isRanged) y -= shiftAmt;
+        if (isCav) y += shiftAmt;
     } else {
-        if (isRanged) y += ship.height * 0.16;
-        if (isCav) y -= ship.height * 0.16;
+        if (isRanged) y += shiftAmt;
+        if (isCav) y -= shiftAmt;
     }
 
+    // Add a tiny bit of organic noise so they don't look like perfect grid robots
+    x += (Math.random() - 0.5) * (spacingX * 0.4);
+    y += (Math.random() - 0.5) * (spacingY * 0.4);
+
+    // THE SAFETY NET: If tactical shifting pushes them overboard, warp to Centroid
     if (!pointInShip(x, y, ship)) {
-        return { x: ship.x, y: ship.y };
+        let randX = (Math.random() - 0.5) * (ship.width * 0.10); 
+        let randY = (Math.random() - 0.5) * (ship.height * 0.10);
+        return { x: ship.x + randX, y: ship.y + randY };
     }
+    
     return { x, y };
 }

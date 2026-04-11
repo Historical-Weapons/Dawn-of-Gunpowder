@@ -477,7 +477,7 @@ createBattleSummaryUI = function(...args) {
         lossReport.style.color = "#eeeeee"; 
         lossReport.style.fontSize = "11px";
         lossReport.style.fontFamily = "monospace";
-        lossReport.innerHTML = `Army Remaining: <span style="color:#8bc34a">${pSurvivorsTotal}</span> (-<span style="color:#ff5252">${pLost} lost</span>) | Enemy Remaining: <span style="color:#8bc34a">${eSurvivorsTotal}</span> (-<span style="color:#ff5252">${eLost} lost</span>)`;
+     lossReport.innerHTML = `Army Remaining: <span style="color:#8bc34a">${pSurvivorsTotal}</span> | Enemy Remaining: <span style="color:#8bc34a">${eSurvivorsTotal}</span>`;
         summaryDiv.appendChild(lossReport);
 
         if (closeBtn) {

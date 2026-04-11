@@ -208,7 +208,7 @@ this.fadeInterval = null; // Used for smooth transitions
             }
         });
 
-        const MIN_PLAY_MS = 180000; // 3 minute minimum before switching
+        const MIN_PLAY_MS = 60000; // 1 minute minimum before switching
         let advanced = false;
 
         const advanceToNext = () => {

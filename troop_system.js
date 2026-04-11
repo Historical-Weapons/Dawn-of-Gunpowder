@@ -221,7 +221,7 @@ this.create("Repeater Crossbowman", "Repeater Crossbowman", ROLES.CROSSBOW, fals
     this.create("Slinger", "Slinger", ROLES.THROWING, false, { desc: "These slingers came from the hardy mountain auxiliaries from the Tibetan plateau and still use them today for herding animals. Though their weapons appear primitive, they can launch stones with bone-shattering force. These warriors serve as a cost-effective screen of skirmishers, raining blunt-force trauma upon the enemy before fading back into the mountains. The concept of slings was so foreign to the Chinese that there was no character for it, yet the staff sling found its place in warfare, used to hurl stones and bombs with deadly effect.", weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 30, health: 80, meleeAttack: 6, meleeDefense: 8, missileBaseDamage: 5, missileAPDamage: 2, accuracy: 30, armor: ARMOR_TIERS.CLOTH, speed: 1.0, range: 650, morale: 40, cost: 20 });
     this.create("Glaiveman", "Glaiveman", ROLES.INFANTRY, false, { desc: "Highly disciplined warriors wielding the naginata, a curved blade mounted on a long shaft. Combining the reach of a spear with the cutting power of a sword, the naginata remained a staple of 13th-century Japanese warfare because it allowed mounted or foot soldiers to counter cavalry while still delivering lethal slashing strikes. These infantrymen are versatile combatants, capable of holding the line against charging horsemen or carving a bloody path through tightly packed enemy formations.", weightClass: WEIGHT_CLASSES.HEAVY_INF, health: 100, meleeAttack: 30, meleeDefense: 6, armor: ARMOR_TIERS.PARTIAL_LAMELLAR, speed: 0.75, range: 30, morale: 65, cost: 65 });
     
-    this.create("Javelinier", "Javelinier", ROLES.THROWING, false, { desc: "Fast-moving tribal skirmishers from the southern fringes of the empire. Though rarely depicted in Han-dominated warfare — where crossbows were preferred — javelinmen were sometimes employed by bandits, rebels, irregulars, and non-Han ethnic groups throughout the Sinosphere due to the simplicity and utility as melee weapons. They sometimes hurled poison-tipped javelins. Their hit-and-run tactics are essential for exhausting and disrupting the enemy before the true melee begins.", weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 4, health: 120, meleeAttack: 15, meleeDefense: 20, missileBaseDamage: 18, missileAPDamage: 15, accuracy: 50, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 150, morale: 50, cost: 65 });
+    this.create("Javelinier", "Javelinier", ROLES.THROWING, false, { desc: "Fast-moving tribal skirmishers from the southern fringes of the empire. Though rarely depicted in Han-dominated warfare — where crossbows were preferred — javelins were sometimes used by bandits, rebels, irregulars, and non-Han ethnic groups throughout the Sinosphere due to the simplicity, utility as melee weapons, and the strict civilian restrictions of crossbows. They sometimes hurled poison-tipped javelins and even the Song experimented with gunpowder packed javelins. Their hit-and-run tactics are essential for exhausting and disrupting the enemy before the true melee begins.", weightClass: WEIGHT_CLASSES.LIGHT_INF, isRanged: true, ammo: 4, health: 120, meleeAttack: 15, meleeDefense: 20, missileBaseDamage: 18, missileAPDamage: 15, accuracy: 50, armor: ARMOR_TIERS.CLOTH, speed: 0.75, range: 150, morale: 50, cost: 65 });
 }
 };
 UnitRoster.init(); 
@@ -338,12 +338,23 @@ function drawBattleUnits(ctx) {
         const centerX = BATTLE_WORLD_WIDTH / 2 - 150; 
         const pColor = (currentBattleData && currentBattleData.playerColor) ? currentBattleData.playerColor : "#2196f3";
         const eColor = (currentBattleData && currentBattleData.enemyColor) ? currentBattleData.enemyColor : "#f44336";
-if (typeof inNavalBattle === 'undefined' || !inNavalBattle) {
+
+// Modified to show supply lines in both standard land battles AND River battles
+    const isRiverBattle = typeof worldTerrainType !== 'undefined' && worldTerrainType.includes("River");
+
+    if (!window.inNavalBattle || isRiverBattle) {
+        // Calculate offsets to ensure lines stay on the solid ground banks 
+        // even if the river meanders heavily near the top/bottom edges
+        const topSupplyY = 0;
+        const bottomSupplyY = BATTLE_WORLD_HEIGHT ;
+
         // Pass a dummy camera {x:0, y:0} because the canvas is already translated
-        drawSupplyLines(ctx, centerX, 80, eColor, {x: 0, y: 0});
-        drawSupplyLines(ctx, centerX, BATTLE_WORLD_HEIGHT - 80, pColor, {x: 0, y: 0});
+        // Enemy Supply Line (Top)
+        drawSupplyLines(ctx, centerX, topSupplyY, eColor, {x: 0, y: 0});
+        
+        // Player Supply Line (Bottom)
+        drawSupplyLines(ctx, centerX, bottomSupplyY, pColor, {x: 0, y: 0});
     }
- 
 
 	
 // --- CLEAN FIX: Only sort the cache, leave the original array alone ---
@@ -465,13 +476,7 @@ if (unit.stats.isRanged && unit.stats.ammo <= 0) {
         // ONLY raise the white flag if they are broken AND have crossed the red tactical boundary
         let isFleeing = unit.stats.morale <= 0 && 
                         (unit.x < 0 || unit.x > BATTLE_WORLD_WIDTH || 
-                         unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT);
-						 
-						 
-						 
-						 
-						 
-						 
+                         unit.y < 0 || unit.y > BATTLE_WORLD_HEIGHT);		 
 // ---> INSERT ANIMATION SYNC HERE <---
 // This calculates the specific frame progress for reload/release cycles
 let reloadProgress = 0;
@@ -502,6 +507,12 @@ if (["cavalry", "elephant", "camel", "horse_archer"].includes(visType)) {
         visType, isAttacking, unit.side, unit.unitType, 
         isFleeing, unit.cooldown, unit.ammo, unit, reloadProgress
     );
+}
+
+
+// ── DROWNING EFFECTS (splash particles + blood pools) ──
+if (inNavalBattle && unit.overboardTimer > 0) {
+    drawDrowningEffects(ctx);
 }
 
 // ---> DRAW STUCK PROJECTILES <---
@@ -914,6 +925,13 @@ ctx.restore();
         ctx.restore();
     }
 	
+	// ============================================================================
+// >>> PLACE IT HERE <<<
+// This ensures sails are drawn ON TOP of ships and units, but UNDER the UI
+// ============================================================================
+if (window.inNavalBattle && typeof drawNavalSailsMasterLayer === 'function') {
+    drawNavalSailsMasterLayer(ctx);
+}
 	
 	// ---> FINAL UI LAYER <---
     // This ensures the player stats/roster are never hidden by unit sprites

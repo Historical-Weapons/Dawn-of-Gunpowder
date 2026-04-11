@@ -291,7 +291,9 @@ clickAction = `onclick="troopGUI.recruitDirectly('${uniqueUnit}', ${recruitCost}
                 <div><strong>Shock:</strong> Militia &rarr; Shielded Infantry &rarr; Light Two Handed &rarr; Heavy Two Handed</div>
                 <div><strong>Heavy Cav:</strong> Militia &rarr; Lancer &rarr; Heavy Lancer</div>
                 <div><strong>Specialist:</strong> Militia &rarr; Bomb &rarr; Hand Cannoneer</div>
-                <div style="color: #b39ddb;"><strong>Faction Unique:</strong> Militia &rarr; ${uniqueUnit || 'None'}</div>
+  <div style="color: #b39ddb;">
+  <strong>Faction Unique:</strong> ${uniqueUnit || 'None'}
+</div>
             </div>
         </div>
         

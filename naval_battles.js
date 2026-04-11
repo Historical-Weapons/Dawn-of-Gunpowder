@@ -22,6 +22,8 @@ window.navalEnvironment = {
     landColor  : "#6b7a4a",
     shipSwayX  : 0,
     shipSwayY  : 0,
+    // --- Boarding plank deployment animation DELETED---
+    plankAnim  : { phase: 'idle', timer: 0, duration: 80 },
     // --- Sail overlay canvas ---
     sailCanvas : null,
     sailCtx    : null,
@@ -35,9 +37,9 @@ window.navalEnvironment = {
 // Song Dynasty ship classes:
 //   輕型哨船 Light Scout  |  中型戰船 Medium Warship  |  大型樓船 Heavy Tower Ship
 const SHIP_TYPES = {
-    LIGHT:  { maxMen:30,   width:750,  height:300, color:"#3d2418", deck:"#7a5c3a", mastCount:1, sailScale:0.40 },
-    MEDIUM: { maxMen:80,   width:1200, height:480, color:"#2e1a0f", deck:"#6e5030", mastCount:2, sailScale:0.48 },
-    HEAVY:  { maxMen:9999, width:1800, height:660, color:"#1e1008", deck:"#5e4228", mastCount:3, sailScale:0.54 }
+    LIGHT:  { maxMen:30,   width:750,  height:300, color:"#3d2418", deck:"#7a5c3a", mastCount:2, sailScale:0.50 },
+    MEDIUM: { maxMen:80,   width:1200, height:480, color:"#2e1a0f", deck:"#6e5030", mastCount:3, sailScale:0.48 },
+    HEAVY:  { maxMen:9999, width:1800, height:660, color:"#1e1008", deck:"#5e4228", mastCount:3, sailScale:0.74 }
 };
 
 // ============================================================================
@@ -49,8 +51,13 @@ function initNavalBattle(enemyNPC, playerObj, tileType, pCount, eCount) {
     inBattleMode = true;
     if (typeof inSiegeBattle !== 'undefined') inSiegeBattle = false;
 
-    navalEnvironment.mapType = tileType;
-    if (tileType === "River") {
+// River battles are now redirected to the land engine. Defensively
+// redirect any stale River calls here so nothing in this file generates
+// river banks or treats river tiles as naval water.
+if (tileType === "River") tileType = "Coastal";
+
+navalEnvironment.mapType = tileType;
+	if (tileType === "River_DEAD") {   // unreachable — kept as placeholder only
         navalEnvironment.waterColor = "#2c7278";
         navalEnvironment.landColor  = "#4a5d23";
     } else if (tileType === "Coastal") {
@@ -63,56 +70,79 @@ function initNavalBattle(enemyNPC, playerObj, tileType, pCount, eCount) {
     }
 
     generateNavalMap();
-    generateShips(pCount, eCount);
-    generateCosmetics();
-    initSailCanvas();
+	generateShips(pCount, eCount);
+	clearShipLanes();
+    // Reset boarding plank animation so it plays fresh each battle
+    navalEnvironment.plankAnim = { phase: 'animating', timer: 0, duration: 80 };
+	generateCosmetics();
+	initSailCanvas();
 }
 
 // ============================================================================
 // MAP GENERATION
 // ============================================================================
-
+// Ocean is the default state: the grid is already fully water (11), so no special generation is needed.
+// Coastal is the only map type that modifies the base ocean grid by carving land tiles along one edge using coastSide + wave noise.
+// Therefore:
+// - Ocean = implicit “do nothing” (pure water world) - Coastal = land generation on top of the ocean base
 function generateNavalMap() {
     const grid = Array.from({ length: BATTLE_COLS }, () => Array(BATTLE_ROWS).fill(11));
 
-    if (navalEnvironment.mapType === "River") {
-        for (let x = 0; x < BATTLE_COLS; x++) {
-            for (let y = 0; y < BATTLE_ROWS; y++) {
-                let bankL = (BATTLE_COLS * 0.25) + (Math.sin(y * 0.05) * 12);
-                let bankR = (BATTLE_COLS * 0.75) + (Math.sin(y * 0.04 + 2) * 12);
-                if (x < bankL || x > bankR) {
-                    grid[x][y] = 0;
-                    if (Math.random() > 0.95) grid[x][y] = 3;
-                    else if (Math.random() > 0.98) grid[x][y] = 6;
+if (navalEnvironment.mapType === "Coastal") {
+        // Land only appears as small island clusters strictly within the outer border band.
+        // The open ocean (where ships sit) stays pure water (tile 11) in all cases.
+        // One large island always sits on a random outer edge; 6–9 small pocket islands
+        // scatter in the border band but never overlap the ship/lane center zone.
+
+        const BORDER_FRAC  = 0.17;                           // islands only within 17% of any edge
+        const BORDER_COL   = Math.floor(BATTLE_COLS * BORDER_FRAC);
+        const BORDER_ROW   = Math.floor(BATTLE_ROWS * BORDER_FRAC);
+
+        // Helper: stamp a noisy island blob
+        function _stampIsland(cx, cy, r, rockBias) {
+            for (let tx = cx - r - 2; tx <= cx + r + 2; tx++) {
+                for (let ty = cy - r - 2; ty <= cy + r + 2; ty++) {
+                    if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) continue;
+                    // Organic edge noise: vary radius per angle
+                    let angle = Math.atan2(ty - cy, tx - cx);
+                    let noisyR = r * (0.70 + Math.sin(angle * 3.1 + cx) * 0.15 + Math.sin(angle * 7.3 + cy) * 0.10);
+                    let d = Math.hypot(tx - cx, ty - cy);
+                    if (d > noisyR) continue;
+                    grid[tx][ty] = 0;                         // land
+                    // Rocky centre
+                    if (d < noisyR * 0.35 && Math.random() > (1 - rockBias)) grid[tx][ty] = 6;
                 }
             }
         }
-    } else if (navalEnvironment.mapType === "Coastal") {
-        const side = navalEnvironment.coastSide;
-        for (let x = 0; x < BATTLE_COLS; x++) {
-            for (let y = 0; y < BATTLE_ROWS; y++) {
-                let isLand = false;
-                let wave   = Math.sin(x * 0.05 + y * 0.05) * 10;
-                if      (side === 0 && x < (BATTLE_COLS * 0.2) + wave) isLand = true;
-                else if (side === 1 && x > (BATTLE_COLS * 0.8) - wave) isLand = true;
-                else if (side === 2 && y < (BATTLE_ROWS * 0.2) + wave) isLand = true;
-                else if (side === 3 && y > (BATTLE_ROWS * 0.8) - wave) isLand = true;
-                if (isLand) {
-                    grid[x][y] = 0;
-                    if (Math.random() > 0.97) grid[x][y] = 6;
-                    if (Math.random() > 0.98 && Math.abs(wave) > 5) grid[x][y] = 3;
-                }
-            }
+
+        // 1. ONE BIG ISLAND on a random map edge (radius 14–22 tiles)
+        let bigR  = 14 + Math.floor(Math.random() * 9);
+        let bigSide = Math.floor(Math.random() * 4);
+        let bigCX, bigCY;
+        if (bigSide === 0) { bigCX = Math.floor(Math.random() * BORDER_COL);               bigCY = Math.floor(BATTLE_ROWS * (0.2 + Math.random() * 0.6)); }
+        else if (bigSide === 1) { bigCX = BATTLE_COLS - 1 - Math.floor(Math.random() * BORDER_COL); bigCY = Math.floor(BATTLE_ROWS * (0.2 + Math.random() * 0.6)); }
+        else if (bigSide === 2) { bigCX = Math.floor(BATTLE_COLS * (0.2 + Math.random() * 0.6));   bigCY = Math.floor(Math.random() * BORDER_ROW); }
+        else                    { bigCX = Math.floor(BATTLE_COLS * (0.2 + Math.random() * 0.6));   bigCY = BATTLE_ROWS - 1 - Math.floor(Math.random() * BORDER_ROW); }
+        _stampIsland(bigCX, bigCY, bigR, 0.55);
+
+        // 2. 6–9 MINI ISLANDS anywhere inside the border band (radius 3–7 tiles)
+        const miniCount = 6 + Math.floor(Math.random() * 4);
+        for (let m = 0; m < miniCount; m++) {
+            let r = 3 + Math.floor(Math.random() * 5);
+            // Pick a random border zone each mini island
+            let edge = Math.floor(Math.random() * 4);
+            let cx, cy;
+            if (edge === 0)      { cx = Math.floor(Math.random() * BORDER_COL);               cy = Math.floor(Math.random() * BATTLE_ROWS); }
+            else if (edge === 1) { cx = BATTLE_COLS - 1 - Math.floor(Math.random() * BORDER_COL); cy = Math.floor(Math.random() * BATTLE_ROWS); }
+            else if (edge === 2) { cx = Math.floor(Math.random() * BATTLE_COLS);               cy = Math.floor(Math.random() * BORDER_ROW); }
+            else                 { cx = Math.floor(Math.random() * BATTLE_COLS);               cy = BATTLE_ROWS - 1 - Math.floor(Math.random() * BORDER_ROW); }
+            _stampIsland(cx, cy, r, 0.30);
         }
     }
 
     battleEnvironment.grid        = grid;
     battleEnvironment.groundColor = navalEnvironment.waterColor;
 }
-
-// ============================================================================
-// SHIP GENERATION
-// ============================================================================
 
 function generateShips(pCount, eCount) {
     navalEnvironment.ships = [];
@@ -151,36 +181,54 @@ function generateShips(pCount, eCount) {
     };
 
     navalEnvironment.ships.push(pShip, eShip);
-
-    // Stamp collision into grid
-    navalEnvironment.ships.forEach(s => {
-        let startX = Math.max(0, Math.floor((s.x - s.width/2)  / BATTLE_TILE_SIZE));
-        let endX   = Math.min(BATTLE_COLS-1, Math.floor((s.x + s.width/2)  / BATTLE_TILE_SIZE));
-        let startY = Math.max(0, Math.floor((s.y - s.height/2) / BATTLE_TILE_SIZE));
-        let endY   = Math.min(BATTLE_ROWS-1, Math.floor((s.y + s.height/2) / BATTLE_TILE_SIZE));
-
-        for (let tx = startX; tx <= endX; tx++) {
-            for (let ty = startY; ty <= endY; ty++) {
-                let dx = tx * BATTLE_TILE_SIZE - s.x;
-                let dy = ty * BATTLE_TILE_SIZE - s.y;
-                let rx = s.width/2, ry = s.height/2;
-                let dist = Math.pow(Math.abs(dx)/rx, 2.5) + Math.pow(Math.abs(dy)/ry, 2.5);
-                if (dist <= 1) {
-                    battleEnvironment.grid[tx][ty] = 0;
-                    if (dist > 0.92) battleEnvironment.grid[tx][ty] = 8;
-                    if (Math.abs(dx) < 250) {
-                        if (s.side === "player" && dy < 0) battleEnvironment.grid[tx][ty] = 0;
-                        if (s.side === "enemy"  && dy > 0) battleEnvironment.grid[tx][ty] = 0;
-                    }
-                }
-            }
-        }
-    });
+    
+    // NO MORE GRID STAMPING HERE! The map stays pristine ocean.
 }
 
 // ============================================================================
-// COSMETICS
+// SHIP LANE CLEAR — removes Coastal land tiles from ship zones and boarding gap
+// Called from initNavalBattle after generateShips so ship positions are known.
 // ============================================================================
+function clearShipLanes() {
+    const BUFFER_TILES = 15;  // clear this many tiles beyond each ship's bounding box
+
+    navalEnvironment.ships.forEach(s => {
+        let minTX = Math.max(0, Math.floor((s.x - s.width  * 0.56) / BATTLE_TILE_SIZE) - BUFFER_TILES);
+        let maxTX = Math.min(BATTLE_COLS - 1, Math.floor((s.x + s.width  * 0.56) / BATTLE_TILE_SIZE) + BUFFER_TILES);
+        let minTY = Math.max(0, Math.floor((s.y - s.height * 0.57) / BATTLE_TILE_SIZE) - BUFFER_TILES);
+        let maxTY = Math.min(BATTLE_ROWS - 1, Math.floor((s.y + s.height * 0.57) / BATTLE_TILE_SIZE) + BUFFER_TILES);
+
+        for (let tx = minTX; tx <= maxTX; tx++) {
+            for (let ty = minTY; ty <= maxTY; ty++) {
+                let cell = battleEnvironment.grid[tx][ty];
+                // Leave deck (0) and hull boundary (8) alone; convert any
+                // land or non-water tile in the ship zone back to open ocean.
+                if (cell !== 0 && cell !== 8) battleEnvironment.grid[tx][ty] = 11;
+            }
+        }
+    });
+
+    // Also clear the boarding lane between the two ships
+    if (navalEnvironment.ships.length === 2) {
+        let s1 = navalEnvironment.ships[0];
+        let s2 = navalEnvironment.ships[1];
+        // Lane is the column of water between their facing edges
+ let laneMinX = Math.floor((Math.min(s1.x, s2.x) - 140) / BATTLE_TILE_SIZE);
+    let laneMaxX = Math.floor((Math.max(s1.x, s2.x) + 140) / BATTLE_TILE_SIZE);
+        // Between the near edges of the two hulls
+        let laneMinY = Math.floor((Math.min(s1.y + s1.height * 0.5, s2.y + s2.height * 0.5)) / BATTLE_TILE_SIZE);
+        let laneMaxY = Math.floor((Math.max(s1.y - s1.height * 0.5, s2.y - s2.height * 0.5)) / BATTLE_TILE_SIZE);
+
+        for (let tx = laneMinX; tx <= laneMaxX; tx++) {
+            for (let ty = Math.min(laneMinY, laneMaxY); ty <= Math.max(laneMinY, laneMaxY); ty++) {
+                if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) continue;
+                let cell = battleEnvironment.grid[tx][ty];
+                if (cell !== 0 && cell !== 8) battleEnvironment.grid[tx][ty] = 11;
+            }
+        }
+    }
+}
+
 
 function generateCosmetics() {
     navalEnvironment.waves = []; navalEnvironment.fishes = []; navalEnvironment.seagulls = [];
@@ -292,7 +340,7 @@ function _drawJunkSails(ctx, s) {
     // Mast layout along the ship centerline (stern at -X, bow at +X)
     let masts = [];
     if (s.mastCount === 1) {
-        masts = [{ x: w*0.06, sw: w*0.13, sh: h*s.sailScale, isMain:true }];
+        masts = [{ x: w*0.05, sw: w*0.13, sh: h*s.sailScale, isMain:true }];
     } else if (s.mastCount === 2) {
         masts = [
             { x:-w*0.11, sw:w*0.10, sh:h*s.sailScale*0.82, isMain:false }, // mizzen
@@ -397,15 +445,7 @@ function _drawJunkSails(ctx, s) {
         ctx.fillStyle = "#5c3018";
         ctx.beginPath(); ctx.arc(mx-1, -1, mastR*0.5, 0, Math.PI*2); ctx.fill();
 
-        // Halyard rope (faint dashed line from mast head to top-leech corner)
-        ctx.strokeStyle = "rgba(120,80,40,0.45)";
-        ctx.lineWidth   = 1;
-        ctx.setLineDash([4, 6]);
-        ctx.beginPath();
-        ctx.moveTo(mx, 0);
-        ctx.lineTo(mx + sw*0.5 + billow, -sh*0.5);
-        ctx.stroke();
-        ctx.setLineDash([]);
+ 
     });
 
     ctx.restore();
@@ -414,56 +454,90 @@ function _drawJunkSails(ctx, s) {
 // ============================================================================
 // PHYSICS UPDATE
 // ============================================================================
-
 function updateNavalPhysics() {
     if (!inNavalBattle) return;
+
+    // ── Boarding plank animation ticker ──────────────────────────────────
+    const pa = navalEnvironment.plankAnim;
+    if (pa.phase === 'animating') {
+        pa.timer++;
+        if (pa.timer >= pa.duration) pa.phase = 'done';
+    }
 
     let time = Date.now();
     navalEnvironment.shipSwayX = Math.sin(time / 1500) * 8;
     navalEnvironment.shipSwayY = Math.cos(time / 1200) * 4;
 
-    battleEnvironment.units.forEach(unit => {
-        if (unit.hp <= 0) return;
-        let tx          = Math.floor(unit.x / BATTLE_TILE_SIZE);
-        let ty          = Math.floor(unit.y / BATTLE_TILE_SIZE);
-        let currentTile = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty]) ? battleEnvironment.grid[tx][ty] : 0;
-        let inWater     = (currentTile === 4 || currentTile === 11);
+	battleEnvironment.units.forEach(unit => {
+		if (unit.hp <= 0) return;
+		let tx          = Math.floor(unit.x / BATTLE_TILE_SIZE);
+		let ty          = Math.floor(unit.y / BATTLE_TILE_SIZE);
+		let currentTile = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] !== undefined)
+							? battleEnvironment.grid[tx][ty] : 0;
+// ── Replace the old grid lookup with exact math ──
+        let surface = window.getNavalSurfaceAt(unit.x, unit.y);
+		// ── Three overboard stages ────────────────────────────────────────────
+		// Stage A  tile 0 / other  →  on deck, normal movement
+		// Stage B  tile 8          →  crossing the hull rail, near-zero velocity
+		// Stage C  tile 11 / 4     →  fully in water, immediately swimming
+let atEdge  = (surface === 'EDGE');
+        let inWater = (surface === 'WATER');
 
-        if (inWater) {
+	// The rest of your drowning logic stays exactly the same!
+        if (atEdge) {
             unit.overboardTimer = (unit.overboardTimer || 0) + 1;
-            if (unit.overboardTimer > 120) {
-                unit.isSwimming = true;
-            } else {
-                unit.isSwimming = false;
-                unit.vx *= 0.3; unit.vy *= 0.3;
-            }
+            unit.isSwimming     = false;
+            unit.vx *= 0.05;
+            unit.vy *= 0.05;
+
+        } else if (inWater) {
+            unit.overboardTimer = (unit.overboardTimer || 0) + 1;
+            unit.isSwimming     = true;
+            unit.vx *= 0.15;
+            unit.vy *= 0.15;
+
         } else {
+            // Stage A: safe on DECK or PLANK
             unit.overboardTimer = 0;
             unit.isSwimming     = false;
         }
 
-        if (unit.isSwimming) {
-            unit.vx *= 0.15; unit.vy *= 0.15;
-            if (!unit.drownTimer) unit.drownTimer = 0;
-            let drownThreshold = Math.max(150, 1500 - ((unit.stats.weightTier||1)*250) - (unit.stats.mass||10));
-            unit.drownTimer++;
-            if (unit.drownTimer > drownThreshold) {
-                unit.hp = 0; unit.deathRotation = 0;
-                if (typeof logGameEvent === 'function') logGameEvent(`${unit.unitType} drowned beneath the waves!`, "danger");
-            }
-        } else {
-            if (unit.drownTimer > 0) unit.drownTimer -= 2;
+		// Drown timer ticks only during Stage C
+		if (unit.isSwimming) {
+			if (!unit.drownTimer) unit.drownTimer = 0;
+			let drownThreshold = Math.max(150, 1500 - ((unit.stats.weightTier||1)*250) - (unit.stats.mass||10));
+			unit.drownTimer++;
+			if (unit.drownTimer > drownThreshold) {
+				unit.hp = 0; unit.deathRotation = 0;
+				if (typeof logGameEvent === 'function') logGameEvent(`${unit.unitType} drowned beneath the waves!`, "danger");
+			}
+		} else {
+			if (unit.drownTimer > 0) unit.drownTimer -= 2;
+		}
+	});
+
+navalEnvironment.fishes.forEach(f => {
+    f.x += Math.cos(f.angle) * f.speed;
+    f.y += Math.sin(f.angle) * f.speed;
+    if (Math.random() > 0.98) f.angle += (Math.random() - 0.5) * 2;
+    if (f.x < 0) f.x = BATTLE_WORLD_WIDTH;  if (f.x > BATTLE_WORLD_WIDTH)  f.x = 0;
+    if (f.y < 0) f.y = BATTLE_WORLD_HEIGHT; if (f.y > BATTLE_WORLD_HEIGHT) f.y = 0;
+    f.currentWiggle = (Date.now() / 1000) * f.wiggleRate;
+
+    // Fish can sometimes cause blood if they touch a drowning/swimming unit
+    battleEnvironment.units.forEach(u => {
+        if (u.hp <= 0) return;
+        if (!u.isSwimming) return;
+
+        const dx = u.x - f.x;
+        const dy = u.y - f.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 8 && Math.random() < 0.012) {
+            if (window.spawnFishBlood) window.spawnFishBlood(u.x, u.y);
         }
     });
-
-    navalEnvironment.fishes.forEach(f => {
-        f.x += Math.cos(f.angle) * f.speed;
-        f.y += Math.sin(f.angle) * f.speed;
-        if (Math.random() > 0.98) f.angle += (Math.random() - 0.5) * 2;
-        if (f.x < 0) f.x = BATTLE_WORLD_WIDTH;  if (f.x > BATTLE_WORLD_WIDTH)  f.x = 0;
-        if (f.y < 0) f.y = BATTLE_WORLD_HEIGHT; if (f.y > BATTLE_WORLD_HEIGHT) f.y = 0;
-        f.currentWiggle = (Date.now() / 1000) * f.wiggleRate;
-    });
+});
 
     navalEnvironment.seagulls.forEach(g => {
         g.x += Math.cos(g.angle) * g.speed;
@@ -477,21 +551,14 @@ function updateNavalPhysics() {
     });
 }
 
-// ============================================================================
-// SHIP DETECTION
-// ============================================================================
-
 function isUnitOnShip(unit) {
-    let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-    let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-    if (!battleEnvironment.grid[tx] || battleEnvironment.grid[tx][ty] === undefined) return false;
-    return battleEnvironment.grid[tx][ty] === 0 || battleEnvironment.grid[tx][ty] === 8;
+    let surface = window.getNavalSurfaceAt(unit.x, unit.y);
+    return surface === 'DECK' || surface === 'PLANK';
 }
 
 // ============================================================================
 // BACKGROUND DRAW
 // ============================================================================
-
 function drawNavalBackground(ctx) {
     if (!inNavalBattle) return;
     if (navalEnvironment.mapType !== "Ocean") {
@@ -499,7 +566,16 @@ function drawNavalBackground(ctx) {
         for (let x = 0; x < BATTLE_COLS; x++) {
             for (let y = 0; y < BATTLE_ROWS; y++) {
                 if (battleEnvironment.grid[x][y] !== 11) {
-                    ctx.fillRect(x*BATTLE_TILE_SIZE, y*BATTLE_TILE_SIZE, BATTLE_TILE_SIZE, BATTLE_TILE_SIZE);
+                    
+                    // --- MODIFIED LINE ---
+                    // Added +1 to the width and height to overlap the tile seams
+                    ctx.fillRect(
+                        x * BATTLE_TILE_SIZE, 
+                        y * BATTLE_TILE_SIZE, 
+                        BATTLE_TILE_SIZE + 1, 
+                        BATTLE_TILE_SIZE + 1
+                    );
+                    
                 }
             }
         }
@@ -510,7 +586,6 @@ function drawNavalBackground(ctx) {
 // SHIP HULL DRAW — Song Dynasty 樓船 top-down view
 // Sails are rendered on the separate sail canvas overlay, NOT here.
 // ============================================================================
-
 function drawNavalShips(ctx) {
     if (!inNavalBattle) return;
 
@@ -536,8 +611,12 @@ function drawNavalShips(ctx) {
         ctx.beginPath();
         ctx.moveTo(-w*0.470, -h*0.375);
         ctx.quadraticCurveTo(-w*0.08, -h*0.595, w*0.390, -h*0.298);
-        ctx.lineTo( w*0.520, 0);
-        ctx.lineTo( w*0.390,  h*0.298);
+        
+        // NEW: Tapered Trapezoid Bow
+        ctx.lineTo(w*0.480, -h*0.120); // Angle forward
+        ctx.lineTo(w*0.480,  h*0.120); // Flat vertical face
+        ctx.lineTo(w*0.390,  h*0.298); // Angle back
+        
         ctx.quadraticCurveTo(-w*0.08,  h*0.595, -w*0.470,  h*0.375);
         ctx.lineTo(-w*0.545, 0);
         ctx.closePath();
@@ -548,45 +627,33 @@ function drawNavalShips(ctx) {
         ctx.beginPath();
         ctx.moveTo(-w*0.445, -h*0.348);
         ctx.quadraticCurveTo(-w*0.06, -h*0.548, w*0.372, -h*0.272);
-        ctx.lineTo( w*0.492, 0);
-        ctx.lineTo( w*0.372,  h*0.272);
+        
+        // NEW: Tapered Trapezoid Bow
+        ctx.lineTo(w*0.460, -h*0.105); // Angle forward
+        ctx.lineTo(w*0.460,  h*0.105); // Flat vertical face
+        ctx.lineTo(w*0.372,  h*0.272); // Angle back
+        
         ctx.quadraticCurveTo(-w*0.06,  h*0.548, -w*0.445,  h*0.348);
         ctx.lineTo(-w*0.512, 0);
         ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = "#110804"; ctx.lineWidth = 5; ctx.stroke();
 
-        // ── 4. HULL STRAKES (structural planking lines on the hull sides) ──
-        //    Two subtle curves near the perimeter only — NO full-deck planking
-        ctx.strokeStyle = "rgba(0,0,0,0.27)"; ctx.lineWidth = 1.5;
-        [0.870, 0.932].forEach(so => {
-            ctx.beginPath();
-            ctx.moveTo(-w*0.42*so, -h*0.32*so);
-            ctx.quadraticCurveTo(-w*0.02*so, -h*0.52*so, w*0.35*so, -h*0.25*so);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(-w*0.42*so,  h*0.32*so);
-            ctx.quadraticCurveTo(-w*0.02*so,  h*0.52*so, w*0.35*so,  h*0.25*so);
-            ctx.stroke();
-        });
-
         // ── 5. DECK SURFACE (lighter wood, clean — no planking grid) ──────
         ctx.fillStyle = s.deck;
         ctx.beginPath();
         ctx.moveTo(-w*0.402, -h*0.272);
         ctx.quadraticCurveTo(-w*0.02, -h*0.432, w*0.300, -h*0.196);
-        ctx.lineTo( w*0.395, 0);
-        ctx.lineTo( w*0.300,  h*0.196);
+        
+        // NEW: Tapered Trapezoid Bow
+        ctx.lineTo(w*0.435, -h*0.080); // Angle forward
+        ctx.lineTo(w*0.435,  h*0.080); // Flat vertical face
+        ctx.lineTo(w*0.300,  h*0.196); // Angle back
+        
         ctx.quadraticCurveTo(-w*0.02,  h*0.432, -w*0.402,  h*0.272);
         ctx.lineTo(-w*0.442, 0);
         ctx.closePath();
         ctx.fill();
-
-        // Very subtle centerline grain only (3 faint marks, not a grid)
-        ctx.strokeStyle = "rgba(0,0,0,0.10)"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(-w*0.38, 0);        ctx.lineTo(w*0.36, 0);        ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-w*0.34,-h*0.10);   ctx.lineTo(w*0.30,-h*0.08);   ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-w*0.34, h*0.10);   ctx.lineTo(w*0.30, h*0.08);   ctx.stroke();
 
         // ── 6. STERN CASTLE 艉樓 (port/-X) — tiered tower ship structure ──
         // Tier 1 base
@@ -650,24 +717,26 @@ function drawNavalShips(ctx) {
         ctx.fillStyle = "#2e1b0d";
         ctx.beginPath();
         ctx.moveTo( w*0.216, -h*0.178);
-        ctx.lineTo( w*0.366, -h*0.122);
-        ctx.lineTo( w*0.436,  0);
-        ctx.lineTo( w*0.366,  h*0.122);
+        
+        // Extended forward to match the new deck trapezoid
+        ctx.lineTo( w*0.415, -h*0.070); 
+        ctx.lineTo( w*0.415,  h*0.070); 
+        
         ctx.lineTo( w*0.216,  h*0.178);
         ctx.closePath();
         ctx.fill();
         ctx.strokeStyle = "#7a1818"; ctx.lineWidth = 2; ctx.stroke();
         ctx.strokeStyle = "#992222"; ctx.lineWidth = 1.5;
+        
+        // Bow castle curve lines stretched to fit
         ctx.beginPath();
         ctx.moveTo(w*0.222, -h*0.172);
-        ctx.quadraticCurveTo(w*0.292, -h*0.202, w*0.362, -h*0.118);
+        ctx.quadraticCurveTo(w*0.318, -h*0.160, w*0.410, -h*0.068);
         ctx.stroke();
         ctx.beginPath();
         ctx.moveTo(w*0.222,  h*0.172);
-        ctx.quadraticCurveTo(w*0.292,  h*0.202, w*0.362,  h*0.118);
+        ctx.quadraticCurveTo(w*0.318,  h*0.160, w*0.410,  h*0.068);
         ctx.stroke();
-
- 
 
         // ── 9. STERN LANTERNS (red paper lanterns with candle flicker) ───
         let t    = Date.now() / 1000;
@@ -685,56 +754,8 @@ function drawNavalShips(ctx) {
             ctx.fillRect(-w*0.490-5, ly+6, 10, 2);
         });
 
-        // ── 10. BOW ANCHOR FITTING ────────────────────────────────────────
-        ctx.fillStyle = "#666"; ctx.strokeStyle = "#333"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(w*0.442, 0, 5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-        ctx.strokeStyle = "#555"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(w*0.442, 0, 9, -Math.PI*0.4, Math.PI*0.4); ctx.stroke();
-
         ctx.restore(); // end ship translate
     });
-
-    // ── BOARDING PLANKS ───────────────────────────────────────────────────
-    if (navalEnvironment.ships.length === 2) {
-        let pShip = navalEnvironment.ships.find(s => s.side === "player");
-        let eShip = navalEnvironment.ships.find(s => s.side === "enemy");
-        if (pShip && eShip) {
-           let originalStart  = eShip.y + (eShip.height/2) - 15;
-let originalEnd    = (pShip.y - (pShip.height/2)) + 15;
-
-// 1. Find midpoint between ships
-let midPoint = (originalStart + originalEnd) / 2;
-
-// 2. Double the height
-let gapHeight = (originalEnd - originalStart) * 2;
-
-// 3. Re-center so it's perfectly symmetrical
-let gapStart = midPoint - (gapHeight / 2);
-            if (gapHeight > 0) {
-                for (let i = -1.5; i <= 1.5; i++) {
-                    let px = pShip.x + (i*90) - 25;
-                    ctx.fillStyle = "#5c4033";
-                    ctx.fillRect(px, gapStart, 50, gapHeight);
-                    // Wood grain
-                    ctx.strokeStyle = "rgba(0,0,0,0.17)"; ctx.lineWidth = 1;
-                    for (let g = 14; g < gapHeight; g += 20) {
-                        ctx.beginPath();
-                        ctx.moveTo(px+4,  gapStart+g);
-                        ctx.lineTo(px+46, gapStart+g);
-                        ctx.stroke();
-                    }
-                    // Plank border
-                    ctx.strokeStyle = "#2e1a0f"; ctx.lineWidth = 3;
-                    ctx.strokeRect(px, gapStart, 50, gapHeight);
-                    // Iron nails
-                    ctx.fillStyle = "#888";
-                    [[12,12],[38,12],[12,gapHeight-16],[38,gapHeight-16]].forEach(([nx,ny]) => {
-                        ctx.beginPath(); ctx.arc(px+nx, gapStart+ny, 2.5, 0, Math.PI*2); ctx.fill();
-                    });
-                }
-            }
-        }
-    }
 
     ctx.restore(); // end sway translate
 }
@@ -814,3 +835,268 @@ function applyWaterClippingPlaceholder(ctx, unit) {
         ctx.clip();
     }
 }
+
+
+
+// ============================================================================
+// MASTER FOREGROUND LAYER: SONG DYNASTY JUNK SAILS
+// Draws directly to the main context to guarantee perfect camera synchronization
+// ============================================================================
+
+function drawNavalSailsMasterLayer(ctx) {
+    if (!window.inNavalBattle || !window.navalEnvironment.ships) return;
+
+    let time = Date.now() / 1000;
+
+    ctx.save();
+    // Critical: Apply the exact same sway as the ship hull so they move as one unit
+    ctx.translate(window.navalEnvironment.shipSwayX, window.navalEnvironment.shipSwayY);
+
+    window.navalEnvironment.ships.forEach(ship => {
+        _renderChineseJunkSails(ctx, ship, time);
+    });
+
+    ctx.restore();
+}
+
+function _renderChineseJunkSails(ctx, s, time) {
+    let w = s.width;
+    let h = s.height;
+    
+    // Determine Ship Tier for Sail Quality
+    let tier = "LIGHT";
+    if (w >= 1000 && w < 1500) tier = "MEDIUM";
+    if (w >= 1500) tier = "HEAVY";
+
+    // Mast layout along the centerline (stern at -X, bow at +X)
+    let masts = [];
+    if (s.mastCount === 1) {
+        masts = [{ x: w*0.08, sw: w*0.13, sh: h*s.sailScale*2.1, isMain: true }];}
+
+	else if (s.mastCount === 2) {
+        masts = [
+            { x:-w*0.11, sw: w*0.10, sh: h*s.sailScale*1.12, isMain: false }, // Mizzen
+            { x: w*0.16, sw: w*0.13, sh: h*s.sailScale*1.5,      isMain: true  }  // Main
+        ];
+    } else {
+        masts = [
+            { x:-w*0.22, sw: w*0.08, sh: h*s.sailScale*0.72, isMain: false }, // Mizzen
+            { x: w*0.04, sw: w*0.15, sh: h*s.sailScale*1.6,      isMain: true  }, // Main
+            { x: w*0.24, sw: w*0.10, sh: h*s.sailScale*0.84, isMain: false }  // Fore
+        ];
+    }
+
+    ctx.save();
+    ctx.translate(s.x, s.y);
+
+    masts.forEach((mast, idx) => {
+        let mx = mast.x;
+        let sw = mast.sw;
+        let sh = mast.sh;
+        
+        // Wind billow: leeward edge bows out based on a gentle sine
+        let billow = Math.sin(time * 0.55 + idx * 1.4) * (sw * 0.05) + sw * 0.045;
+
+        // --- 1. DECK SHADOW CAST BY THE SAIL ---
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        // The shadow stretches opposite the billow
+        ctx.ellipse(mx + sw*0.28 + 5, 8, sw*0.70, sh*0.36, 0.06, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+
+        // --- CLIP AREA: Keep sails inside hull perimeter ---
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w*0.47, h*0.44, 0, 0, Math.PI*2);
+        ctx.clip();
+
+        // --- 2. SAIL QUALITY & MATERIALS ---
+        let sailBase, sailEdge, battenColor, battenCount;
+
+        if (tier === "LIGHT") {
+            // Light Scout: Woven Bamboo Matting (Cheap, ragged)
+            sailBase = "#d1ba8a"; 
+            sailEdge = "#a38c5d";
+            battenColor = "#785b34";
+            battenCount = mast.isMain ? 6 : 4;
+        } else if (tier === "MEDIUM") {
+            // Medium Warship: Standard Cotton Canvas
+            sailBase = s.side === "player" ? "#c8a055" : "#b03428";
+            sailEdge = s.side === "player" ? "#9e7628" : "#881e10";
+            battenColor = "#2e1a08";
+            battenCount = mast.isMain ? 8 : 6;
+        } else {
+            // Heavy Tower Ship: Imperial Silk/Reinforced Canvas
+            sailBase = s.side === "player" ? "#d4af37" : "#8a1515"; // Richer gold/crimson
+            sailEdge = s.side === "player" ? "#a88622" : "#590b0b";
+            battenColor = "#1a0f05"; // Very dark, heavy wood
+            battenCount = mast.isMain ? 10 : 8; // Extra rigid
+        }
+
+        // Sail Shape — Near-rectangular lug sail
+        ctx.beginPath();
+        ctx.moveTo(mx - sw*0.5, -sh*0.5);
+        ctx.lineTo(mx + sw*0.5 + billow, -sh*0.5);
+        ctx.quadraticCurveTo(mx + sw*0.5 + billow*1.9, 0, mx + sw*0.5 + billow, sh*0.5);
+        ctx.lineTo(mx - sw*0.5, sh*0.5);
+        ctx.closePath();
+
+        // Horizontal gradient simulating curve and wind
+        let grad = ctx.createLinearGradient(mx - sw*0.5, 0, mx + sw*0.5 + billow, 0);
+        grad.addColorStop(0, sailEdge);
+        grad.addColorStop(0.35, sailBase);
+        grad.addColorStop(1, sailEdge);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Outer stroke
+        ctx.strokeStyle = tier === "HEAVY" ? "#000" : "#2e1a08";
+        ctx.lineWidth = tier === "HEAVY" ? 2.5 : 1.8;
+        ctx.stroke();
+
+        // --- 3. BATTENS (The signature bamboo ribs of Junk sails) ---
+        ctx.strokeStyle = battenColor;
+        ctx.lineWidth = mast.isMain ? 2.8 : 2.2;
+        ctx.lineCap = "round";
+        
+        for (let b = 0; b <= battenCount; b++) {
+            let by = -sh*0.5 + (sh / battenCount) * b;
+            let localB = billow * Math.sin((b / battenCount) * Math.PI);
+            ctx.beginPath();
+            ctx.moveTo(mx - sw*0.5, by);
+            ctx.lineTo(mx + sw*0.5 + localB, by);
+            ctx.stroke();
+        }
+
+        // Add depth to individual cloth panels between battens
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = "#000";
+        for (let b = 0; b < battenCount; b += 2) {
+            let by0 = -sh*0.5 + (sh / battenCount) * b;
+            let ph = sh / battenCount;
+            ctx.fillRect(mx - sw*0.5, by0, sw + billow, ph);
+        }
+        ctx.globalAlpha = 1.0;
+
+        ctx.restore(); // End Hull Clip
+
+        // --- 4. MAST HEAD & HALYARD ROPES ---
+        let mastR = mast.isMain ? 7 : 5;
+        
+        // Mast Drop shadow
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.beginPath(); ctx.arc(mx+3, 3, mastR+1, 0, Math.PI*2); ctx.fill();
+        
+        // Lacquered wood top
+        ctx.fillStyle = tier === "HEAVY" ? "#1a0802" : "#2c1508";
+        ctx.beginPath(); ctx.arc(mx, 0, mastR, 0, Math.PI*2); ctx.fill();
+        
+        // Wood Highlight
+        ctx.fillStyle = "#5c3018";
+        ctx.beginPath(); ctx.arc(mx-1, -1, mastR*0.5, 0, Math.PI*2); ctx.fill();
+
+ 
+    });
+
+    ctx.restore();
+}
+
+/// ─── OPTIMIZED FUSED GEOMETRIC COLLISION ──────────────────────────────────
+// Moving helpers outside for performance (no re-declaration in loop)
+const _calcBezierY = (X, x0, x1, x2, y0, y1, y2) => {
+    let A = x0 - 2 * x1 + x2, B = 2 * (x1 - x0), C = x0 - X, t;
+    if (Math.abs(A) < 0.00001) {
+        if (Math.abs(B) < 0.00001) return 0;
+        t = -C / B;
+    } else {
+        let det = Math.max(0, B * B - 4 * A * C);
+        let t1 = (-B + Math.sqrt(det)) / (2 * A);
+        let t2 = (-B - Math.sqrt(det)) / (2 * A);
+        t = (t1 >= -0.001 && t1 <= 1.001) ? t1 : t2;
+    }
+    t = Math.max(0, Math.min(1, t));
+    return Math.pow(1 - t, 2) * y0 + 2 * (1 - t) * t * y1 + Math.pow(t, 2) * y2;
+};
+
+ 
+// SHIP PROFILE TABLE: Stern "De-bulking" Revision
+const SHIP_PROFILES = {
+    "Light Scout": {
+        // Stern xRange moved from -0.51 to -0.46 | y0 (index 3) reduced from 0.35 to 0.28
+        hull: { xRange: [-0.46, 0.46], curves: [[-0.42, -0.06, 0.34, 0.28, 0.55, 0.24]], bowSlant: 0.12 },
+        deck: { xRange: [-0.40, 0.38], curves: [[-0.38, -0.02, 0.28, 0.24, 0.43, 0.18]], bowSlant: 0.10 },
+        castles: { stern: [-0.42, -0.20, 0.25], bow: [0.22, 0.42, 0.16] }
+    },
+    "Medium Junk": {
+        // STERN FIX: xRange start -0.52 -> -0.48 | hull y0 (index 3) 0.45 -> 0.38
+        // This clips the "square" corners off the back of the Junk.
+        hull: { xRange: [-0.48, 0.47], curves: [[-0.44, 0.0, 0.41, 0.38, 0.58, 0.36]], bowSlant: 0.06 },
+        deck: { xRange: [-0.44, 0.42], curves: [[-0.40, 0.0, 0.37, 0.34, 0.50, 0.32]], bowSlant: 0.06 },
+        // Castle x and y range tightened to prevent standing on air at the back
+        castles: { stern: [-0.45, -0.18, 0.38], bow: [0.25, 0.45, 0.27] }
+    },
+    "Heavy Dragon": {
+        // STERN FIX: xRange start -0.55 -> -0.50 | hull y0 (index 3) 0.48 -> 0.42
+        hull: { xRange: [-0.50, 0.52], curves: [[-0.46, 0.0, 0.46, 0.42, 0.65, 0.44]], bowSlant: 0.06 },
+        deck: { xRange: [-0.46, 0.47], curves: [[-0.42, 0.0, 0.44, 0.38, 0.60, 0.41]], bowSlant: 0.06 },
+        castles: { stern: [-0.48, -0.12, 0.42], bow: [0.30, 0.49, 0.32] }
+    }
+
+};
+window.getNavalSurfaceAt = function(worldX, worldY) {
+    if (!window.inNavalBattle || !navalEnvironment.ships) return 'WATER';
+
+    // 1. PLANK DETECTION (High Priority)
+    if (window.navalEnvironment.plankAnim && window.navalEnvironment.plankAnim.phase === 'deployed') {
+        for (let s of navalEnvironment.ships) {
+            let localX = worldX - (s.x + window.navalEnvironment.shipSwayX);
+            let localY = worldY - (s.y + window.navalEnvironment.shipSwayY);
+            if (Math.abs(localY) < 18) { // Plank width
+                if (s.side === 'player' && localX > s.width/2 && localX < s.width/2 + 120) return 'PLANK';
+                if (s.side === 'enemy' && localX < -s.width/2 && localX > -s.width/2 - 120) return 'PLANK';
+            }
+        }
+    }
+
+    // 2. SHIP HULL DETECTION
+    for (let s of navalEnvironment.ships) {
+        let localX = worldX - (s.x + window.navalEnvironment.shipSwayX);
+        let localY = worldY - (s.y + window.navalEnvironment.shipSwayY);
+
+        // Broad rejection (scaled to ship size)
+        if (Math.abs(localX) > s.width * 0.7 || Math.abs(localY) > s.height * 0.7) continue;
+
+        let X = localX / s.width;
+        let Y = Math.abs(localY) / s.height;
+        let profile = SHIP_PROFILES[s.type] || SHIP_PROFILES["Medium Junk"];
+
+        // Castle Detection (The raised platforms on ends)
+        let inStern = (X >= profile.castles.stern[0] && X <= profile.castles.stern[1] && Y <= profile.castles.stern[2]);
+        let inBow   = (X >= profile.castles.bow[0] && X <= profile.castles.bow[1] && Y <= profile.castles.bow[2]);
+
+        const getDynamicMaxY = (cfg) => {
+            if (X < cfg.xRange[0] || X > cfg.xRange[1]) return -1;
+            // Handle the flat/slanted bow/stern sections
+            if (X < cfg.curves[0][0]) return (cfg.curves[0][3] / Math.abs(cfg.curves[0][0] - cfg.xRange[0])) * (X - cfg.xRange[0]);
+            if (X <= cfg.curves[0][2]) return _calcBezierY(X, ...cfg.curves[0]);
+            // Handle the aft taper
+            return cfg.curves[0][5] - (cfg.curves[0][5] / cfg.bowSlant) * (X - cfg.curves[0][2]);
+        };
+
+        let waterBuffer = 60 / s.height; // Convert pixels to normalized space
+        let hullMaxY = getDynamicMaxY(profile.hull);
+        
+        // Final Geometry Check
+        if (hullMaxY !== -1 && Y <= hullMaxY + waterBuffer) {
+            let deckMaxY = getDynamicMaxY(profile.deck);
+            return (Y <= deckMaxY + 0.02 || inStern || inBow) ? 'DECK' : 'EDGE';
+        }
+        
+        if (inStern || inBow) return 'DECK';
+    }
+
+    return 'WATER';
+};
