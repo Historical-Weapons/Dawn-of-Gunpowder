@@ -1,6 +1,14 @@
 (function () { //customBATTLE version OF enter siege battle
-		window.launchCustomSiege = function(playerSetup, enemySetup) {
-        inSiegeBattle = true;
+window.launchCustomSiege = function(playerSetup, enemySetup, selectedMap) {
+ 
+    inBattleMode = true;    // CRITICAL: Tells the engine we are in a tactical battle
+    inSiegeBattle = true;
+    zoom = 0.1;             // Start at "Clouds" level for the zoom effect
+	
+
+    BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / 8);
+    BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / 8);
+      
         window.__SIEGE_GATE_BREACHED__ = false;
         window.__SIEGE_AUTO_RETREAT_TRIGGERED__ = false; // FIX: Hard reset the win-timer flag
 
@@ -10,14 +18,28 @@
         BATTLE_COLS = CITY_COLS;
         BATTLE_ROWS = CITY_ROWS;
 
-        // 2. Generate the visual city for the Defender's faction
+// 2. Generate the visual city for the Defender's faction (fresh, no cached data)
+        window.cityTowerPositions = []; // Clear towers so they re-register cleanly
+        delete cityDimensions[enemySetup.faction]; // Bust the cache so city rebuilds fully
         if (typeof generateCity === 'function') generateCity(enemySetup.faction);
-        
-        // 3. DEEP COPY the grid and gates so we don't permanently destroy story-mode cities
+
+        // Heal all towers for this fresh battle
+        if (window.cityTowerPositions) {
+            window.cityTowerPositions.forEach(t => {
+                t.hp = t.maxHp || 300;
+                t.fireCooldown = Math.floor(Math.random() * 200 + 80);
+            });
+        }
+
+        // 3. Copy city environment — bgCanvas MUST be the city canvas, not the field terrain
         battleEnvironment.grid = JSON.parse(JSON.stringify(cityDimensions[enemySetup.faction].grid));
         battleEnvironment.bgCanvas = cityDimensions[enemySetup.faction].bgCanvas;
-        battleEnvironment.fgCanvas = null; 
-        
+        battleEnvironment.fgCanvas = null;
+        battleEnvironment.groundColor = "#000000";
+        battleEnvironment.visualPadding = 0;
+        battleEnvironment.defenderGateDummyStartedAt = Date.now();
+        battleEnvironment.defenderGateDummyDisabled = false;
+
         battleEnvironment.cityGates = typeof overheadCityGates !== 'undefined' ? 
             JSON.parse(JSON.stringify(overheadCityGates)) : [];
             
@@ -26,7 +48,7 @@
             if (typeof updateCityGates === 'function') updateCityGates(battleEnvironment.grid); 
         }
 
-establishSiegeTopography();
+        establishSiegeTopography();
 
         // ---> ADD THIS MISSING INITIALIZATION BLOCK <---
         currentBattleData = {
@@ -51,25 +73,33 @@ establishSiegeTopography();
         spawnAttackerCamp(playerSetup.roster, playerSetup.faction, playerSetup.color, pStartY);
         spawnSiegeCommander("player", playerSetup.faction, playerSetup.color, BATTLE_WORLD_WIDTH / 2, pStartY + 80);
 
-// right after spawnSiegeCommander("player", ...)
-const playerCommander = battleEnvironment.units.find(
-    u => u.isCommander && u.side === "player"
-);
+ 
 
-if (playerCommander && typeof player !== "undefined") {
-    player.x = playerCommander.x;
-    player.y = playerCommander.y;
-    player.hp = playerCommander.hp;
-    player.maxHealth = playerCommander.maxHp || playerCommander.hp;
-}
+// 3. FIX CAMERA & PLAYER SYNC
+    const playerCommander = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+    if (playerCommander && typeof player !== "undefined") {
+        player.x = playerCommander.x;
+        player.y = playerCommander.y;
+        player.hp = playerCommander.hp;
+        player.maxHealth = playerCommander.maxHp || playerCommander.hp;
+        player.state = "idle"; // Reset global player state
+    }
 
-if (typeof camera !== "undefined" && playerCommander) {
-    camera.x = playerCommander.x - (window.innerWidth / 2 / (zoom || 1));
-    camera.y = playerCommander.y - (window.innerHeight / 2 / (zoom || 1));
-}
+    if (typeof camera !== "undefined" && playerCommander) {
+        camera.x = playerCommander.x - (window.innerWidth / 2 / zoom);
+        camera.y = playerCommander.y - (window.innerHeight / 2 / zoom);
+    }
 
-battleEnvironment.visualPadding = 0;
+    // 4. TRIGGER THE DRAMATIC ZOOM
+    if (typeof triggerEpicZoom === "function") {
+        triggerEpicZoom(0.1, 1.5, 3500); // Zoom from 0.1 to 1.5 over 3.5 seconds
+    } else {
+        zoom = 0.8;
+    }
+	window.isPaused = false;
+    if (typeof startCustomBattleMonitor === 'function') startCustomBattleMonitor(); //referee
 
+ 
         // 6. Initialize Assets & AI
         initSiegeEquipment();
 

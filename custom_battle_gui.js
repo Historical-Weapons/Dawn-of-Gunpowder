@@ -61,10 +61,13 @@ if (customBattleMode === "siege") {
     let originalLeaveBattlefield = null; 
     let preBattleStats = {}; // For the post-battle report
 
-  const MAP_TYPES = [
+const MAP_TYPES = [
         "Plains", "Forest", "Dense Forest", "Steppe", 
-        "Desert", "Highlands", "Large Mountains"
+        "Desert", "Highlands", "Large Mountains",
+        "River", "Coastal", "Ocean" // <-- ADDED NAVAL/RIVER
     ];
+    let pNavalShipSize = "MEDIUM";
+    let eNavalShipSize = "MEDIUM";
 
 
 const FactionUnitRules = {
@@ -216,37 +219,58 @@ const FactionUnitRules = {
         settingsBox.style.display = "flex";
         settingsBox.style.gap = "5px";
         settingsBox.style.alignItems = "center";
+
+// --- NEW: Filter maps based on the current mode before rendering ---
+        const validMaps = customBattleMode === "siege" 
+            ? MAP_TYPES.filter(m => !["Ocean", "Coastal", "River"].includes(m))
+            : MAP_TYPES;
+
         settingsBox.innerHTML = `
-<div>
-    <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Map</label><br>
-    <select id="cb-map-select" 
-        style="background: #3e2723; color: #fff; border: 1px solid #d4b886; padding: 5px; font-family: Georgia;"
-        ${customBattleMode === "siege" ? 'disabled' : ''}> ${MAP_TYPES.map(m => `<option value="${m}" ${m === selectedMap ? 'selected' : ''}>${m}</option>`).join('')}
-    </select>
-</div>
+        <div>
+            <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Map</label><br>
+            <select id="cb-map-select" 
+                style="background: #3e2723; color: #fff; border: 1px solid #d4b886; padding: 5px; font-family: Georgia;"> 
+                ${validMaps.map(m => `<option value="${m}" ${m === selectedMap ? 'selected' : ''}>${m}</option>`).join('')}
+            </select>
+        </div>
 
-<div>
-    <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Type</label><br>
-    <select id="cb-mode-select" style="background: #3e2723; color: #ff9800; border: 1px solid #d4b886; padding: 5px;">
-        <option value="field" ${customBattleMode === "field" ? 'selected' : ''}>Field</option>
-        <option value="siege" ${customBattleMode === "siege" ? 'selected' : ''}>Siege</option>
-    </select>
-</div>
+        <div>
+            <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Type</label><br>
+            <select id="cb-mode-select" style="background: #3e2723; color: #ff9800; border: 1px solid #d4b886; padding: 5px;">
+                <option value="field" ${customBattleMode === "field" ? 'selected' : ''}>Skirmish</option>
+                <option value="siege" ${customBattleMode === "siege" ? 'selected' : ''}>Siege</option>
+            </select>
+        </div>
 
+        <div id="cb-ship-box" style="display: none; gap: 5px;">
             <div>
-                <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Funds</label><br>
-                <input id="cb-funds-input" type="number" value="${customFunds}" min="100" max="4000" step="100"style="background: #3e2723; color: #f5d76e; border: 1px solid #d4b886; padding: 5px; width: 100px; font-family: Georgia; text-align: right;">
+                <label style="color: #4caf50; font-size: 12px; text-transform: uppercase;">P. Ship</label><br>
+                <select id="cb-pship-select" style="background: #3e2723; color: #fff; border: 1px solid #d4b886; padding: 5px;">
+                    <option value="LIGHT">Light</option>
+                    <option value="MEDIUM" selected>Medium</option>
+                    <option value="HEAVY">Heavy</option>
+                </select>
             </div>
- 
+            <div>
+                <label style="color: #f44336; font-size: 12px; text-transform: uppercase;">E. Ship</label><br>
+                <select id="cb-eship-select" style="background: #3e2723; color: #fff; border: 1px solid #d4b886; padding: 5px;">
+                    <option value="LIGHT">Light</option>
+                    <option value="MEDIUM" selected>Medium</option>
+                    <option value="HEAVY">Heavy</option>
+                </select>
             </div>
+        </div>
+
+        <div>
+            <label style="color: #a1887f; font-size: 12px; text-transform: uppercase;">Funds</label><br>
+            <input id="cb-funds-input" type="number" value="${customFunds}" min="100" max="4000" step="100"style="background: #3e2723; color: #f5d76e; border: 1px solid #d4b886; padding: 5px; width: 100px; font-family: Georgia; text-align: right;">
+        </div>
         `;
 
-        const actionBox = document.createElement("div");
+const actionBox = document.createElement("div");
         const backBtn = createCBBtn("Main Menu", () => exitCustomBattleMenu());
         const randomBtn = createCBBtn("🎲 Random Battle", () => launchRandomBattle());
-        randomBtn.style.background = "linear-gradient(to bottom, #1565c0, #0d47a1)"; // Blue tint to distinguish it
         const startBtn = createCBBtn("Start Battle", () => launchCustomBattle());
-        startBtn.style.background = "linear-gradient(to bottom, #b71c1c, #7b1a1a)";
         
         actionBox.appendChild(backBtn);
         actionBox.appendChild(randomBtn);
@@ -292,12 +316,31 @@ document.getElementById("cb-mode-select").addEventListener("change", (e) => {
     customBattleMode = e.target.value;
 
     const mapSelect = document.getElementById("cb-map-select");
-    if (mapSelect) mapSelect.disabled = (customBattleMode === "siege");
+    if (mapSelect) {
+        if (customBattleMode === "siege") {
+            // Lock the dropdown and override the text to explain why
+            mapSelect.disabled = true;
+            mapSelect.style.opacity = "0.5";
+            mapSelect.innerHTML = `<option>Defender's City</option>`;
+        } else {
+            // Unlock and restore the standard field maps
+            mapSelect.disabled = false;
+            mapSelect.style.opacity = "1";
+            mapSelect.innerHTML = MAP_TYPES.map(m => 
+                `<option value="${m}" ${m === selectedMap ? 'selected' : ''}>${m}</option>`
+            ).join('');
+        }
+        
+        // Handle the visual toggle for the naval ships box
+        const shipBox = document.getElementById("cb-ship-box");
+        if (shipBox) {
+            shipBox.style.display = (customBattleMode === "field" && ["Ocean", "Coastal"].includes(selectedMap)) ? "flex" : "none";
+        }
+    }
 
     // 🔴 SIMPLE FIX: WIPE ALL UNITS when switching mode
     playerSetup.roster = [];
     playerSetup.cost = 0;
-
     enemySetup.roster = [];
     enemySetup.cost = 0;
 
@@ -311,10 +354,27 @@ document.getElementById("cb-mode-select").addEventListener("change", (e) => {
         window.__cbPanels.enemy.updateUI();
     }
 });
-        document.getElementById("cb-map-select").addEventListener("change", (e) => {
-            selectedMap = e.target.value;
-        });
 
+
+document.getElementById("cb-map-select").addEventListener("change", (e) => {
+    selectedMap = e.target.value;
+    
+    // Show/Hide ship selectors based on map AND mode
+    const shipBox = document.getElementById("cb-ship-box");
+    if (shipBox) {
+        shipBox.style.display = (customBattleMode === "field" && (selectedMap === "Ocean" || selectedMap === "Coastal")) ? "flex" : "none";
+    }
+});
+
+
+        // Ensure it runs once on UI load to show/hide correctly
+        const shipBox = document.getElementById("cb-ship-box");
+        if (shipBox) shipBox.style.display = (selectedMap === "Ocean" || selectedMap === "Coastal") ? "flex" : "none";
+
+        // Listen for ship size changes
+        document.getElementById("cb-pship-select").addEventListener("change", (e) => pNavalShipSize = e.target.value);
+        document.getElementById("cb-eship-select").addEventListener("change", (e) => eNavalShipSize = e.target.value);
+		
         updateUI();
 
         // 4. POST BATTLE REPORT OVERLAY
@@ -662,9 +722,15 @@ if (countEl) {
         enemySetup.roster = [];
         enemySetup.cost = 0;
 
-        // 2. Randomize Map
-        selectedMap = MAP_TYPES[Math.floor(Math.random() * MAP_TYPES.length)];
-
+// 2. Randomize Map
+        if (customBattleMode === "siege") {
+            // Added "River" to the exclusion list for Siege battles
+            const landMaps = MAP_TYPES.filter(m => m !== "Ocean" && m !== "Coastal" && m !== "River");
+            selectedMap = landMaps[Math.floor(Math.random() * landMaps.length)];
+        } else {
+            selectedMap = MAP_TYPES[Math.floor(Math.random() * MAP_TYPES.length)];
+        }
+		
         // 3. Faction Selection (Excluding neutral/special factions)
         const factionNames = typeof FACTIONS !== 'undefined' ? 
             Object.keys(FACTIONS).filter(f => f !== "Bandits" && f !== "Player's Kingdom") : 
@@ -745,20 +811,30 @@ function startCustomBattleMonitor() {
     }, 250);
 }
 
-    // --- LAUNCH BATTLE ENGINE ---
+   
     function launchCustomBattle() {
-        // 🔴 SURGERY 1: Clear the slate
+        // 🔴 FIX 1: FETCH CANVAS FIRST TO PREVENT TDZ CRASH
+        const canvas = document.getElementById("gameCanvas");
+
+        // 🔴 FIX 2: RUN THE WIPE FIRST
+        if (typeof window.cleanupCustomBattleEnvironments === 'function') {
+            window.cleanupCustomBattleEnvironments();
+        }
+
+        inBattleMode = true;
+        inCityMode = false;
+        customBattleActive = false;
+		
+        // Clear the slate
         battleEnvironment.units = [];
         battleEnvironment.projectiles = [];
         unitIdCounter = 0; 
 
-        // 🔴 SURGERY 2: Generate the Map Canvas (Crucial for the Draw loop)
-        // This creates the bgCanvas that the draw() function is looking for
+        // Generate the Map Canvas
         if (typeof generateBattlefield === 'function') {
             generateBattlefield(selectedMap || "Plains");
         }
         
-        // Battle zoom
         zoom = 0.1;
 
         // Validation
@@ -771,7 +847,35 @@ function startCustomBattleMonitor() {
             return;
         }
 
-        // Start the render loop only once
+        if (typeof player !== 'undefined') {
+            player.hp = 100; 
+        }
+        
+        if (typeof window.player === "undefined" || !window.player) {
+            window.player = { 
+                x: BATTLE_WORLD_WIDTH / 2, 
+                y: BATTLE_WORLD_HEIGHT - 100, 
+                hp: 200, 
+                maxHealth: 200, 
+                baseSpeed: 7, 
+                speed: 7,     
+                faction: playerSetup.faction,
+                state: "idle",  
+                frame: 0,
+                direction: 1,
+                roster: playerSetup.roster
+            };
+        }
+
+        // 🔴 FIX 3: DEFINE CAMERA *BEFORE* DRAW IS CALLED
+        window.camera = {
+            get x() { return typeof player !== 'undefined' && canvas ? player.x - (canvas.width / 2 / (typeof zoom !== 'undefined' ? zoom : 1)) : 0; },
+            get y() { return typeof player !== 'undefined' && canvas ? player.y - (canvas.height / 2 / (typeof zoom !== 'undefined' ? zoom : 1)) : 0; },
+            get width() { return canvas ? canvas.width / (typeof zoom !== 'undefined' ? zoom : 1) : window.innerWidth; },
+            get height() { return canvas ? canvas.height / (typeof zoom !== 'undefined' ? zoom : 1) : window.innerHeight; }
+        };
+
+        // 🔴 FIX 4: START RENDER LOOP ONLY AFTER CAMERA IS SAFE
         if (!window.__battleLoopStarted) {
             window.__battleLoopStarted = true;
             draw();
@@ -784,104 +888,68 @@ function startCustomBattleMonitor() {
         const mainMenu = document.getElementById("main-menu");
         if (mainMenu) mainMenu.style.display = "none";
 
-        // 🔴 SURGICAL FIX: Hide the Overworld UI and Diplomacy button
         const overworldUI = document.getElementById("ui");
         if (overworldUI) overworldUI.style.display = "none";
         const dipContainer = document.getElementById("diplomacy-container");
         if (dipContainer) dipContainer.style.display = "none";
 
-        customBattleActive = false;
-        // Battle state
-        inBattleMode = true;
-        inCityMode = false;
-
-        // 🔴 SURGERY 3: Force global state for renderer
-        // If your draw() function relies on these being defined:
-        if (typeof player !== 'undefined') {
-            player.hp = 100; // Ensure player isn't "dead" or the battle ends immediately
-        }
-        
-if (typeof window.player === "undefined" || !window.player) {
-            window.player = { 
-                x: BATTLE_WORLD_WIDTH / 2, 
-                y: BATTLE_WORLD_HEIGHT - 100, 
-                hp: 200, 
-                maxHealth: 200, 
-                baseSpeed: 7, // ---> ADDED THIS: Stops undefined speed crashes
-                speed: 7,     // ---> ADDED THIS: Stops undefined speed crashes
-                faction: playerSetup.faction,
-                state: "idle",  // Prevents rendering animation crashes
-                frame: 0,
-                direction: 1,
-                roster: playerSetup.roster
-            };
-        }
-
-        // 🔴 SURGICAL FIX: The "Silent Culling" Bug.
-        window.camera = {
-            get x() { return typeof player !== 'undefined' ? player.x - (canvas.width / 2 / (typeof zoom !== 'undefined' ? zoom : 1)) : 0; },
-            get y() { return typeof player !== 'undefined' ? player.y - (canvas.height / 2 / (typeof zoom !== 'undefined' ? zoom : 1)) : 0; },
-            get width() { return canvas.width / (typeof zoom !== 'undefined' ? zoom : 1); },
-            get height() { return canvas.height / (typeof zoom !== 'undefined' ? zoom : 1); }
-        };
         // Hijack exit
         if (!originalLeaveBattlefield) originalLeaveBattlefield = window.leaveBattlefield;
         window.leaveBattlefield = handleCustomBattleExit;
+if (customBattleMode === "siege" && typeof window.launchCustomSiege === "function") { 
+window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
+    return; 
+}
+        else if (selectedMap === "Ocean" || selectedMap === "Coastal") {
+            window.launchCustomNavalBattle(playerSetup, enemySetup, selectedMap, pNavalShipSize, eNavalShipSize);
+            return; 
+        } else {
+            // --- EXISTING FIELD BATTLE LOGIC ---
+            BATTLE_WORLD_WIDTH = 2400;
+            BATTLE_WORLD_HEIGHT = 3600;
+            BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
+            BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
 
-// FORK: Field vs Siege
-        if (customBattleMode === "siege" && typeof window.launchCustomSiege === "function") { //siege mode
-            window.launchCustomSiege(playerSetup, enemySetup);
-        } else {  
-					
-					BATTLE_WORLD_WIDTH = 2400;
-					BATTLE_WORLD_HEIGHT = 3600;
-					BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
-					BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+            // Reset battle container
+            if (typeof battleEnvironment === "undefined" || !battleEnvironment) {
+                window.battleEnvironment = {};
+            }
+            battleEnvironment.units = [];
+            battleEnvironment.projectiles = [];
+            battleEnvironment.groundEffects = [];
 
-					// Reset battle container
-					if (typeof battleEnvironment === "undefined" || !battleEnvironment) {
-						window.battleEnvironment = {};
-					}
-					battleEnvironment.units = [];
-					battleEnvironment.projectiles = [];
-					battleEnvironment.groundEffects = [];
+            currentBattleData = {
+                playerFaction: playerSetup.faction,
+                enemyFaction: enemySetup.faction,
+                playerColor: playerSetup.color,
+                enemyColor: enemySetup.color,
+                initialCounts: {
+                    player: playerSetup.roster.length + 1,
+                    enemy: enemySetup.roster.length + 1
+                }
+            };
+            
+            // Spawn armies
+            customSpawnLoop(playerSetup.roster, "player", playerSetup.faction, playerSetup.color);
+            customSpawnLoop(enemySetup.roster, "enemy", enemySetup.faction, enemySetup.color);
 
-					// Build battlefield
-					if (typeof generateBattlefield === "function") {
-						generateBattlefield(selectedMap);
-						console.log("battle bgCanvas:", !!battleEnvironment.bgCanvas);
-						console.log("battle grid:", !!battleEnvironment.grid, battleEnvironment.grid?.length);
-						console.log("battle units:", battleEnvironment.units.length);
-					}
+// --- SURGICAL HOOK: Abyss Check ---
+            battleEnvironment.units.forEach((unit, index) => {
+                lastResort(unit, BATTLE_WORLD_WIDTH, BATTLE_WORLD_HEIGHT, unit.side, index);
+            });
+			
+            // Lazy General Auto-Charge
+            battleEnvironment.units.forEach(u => {
+                if (u.side === "player" && !u.isCommander && !u.disableAICombat) {
+                    u.selected = true;           
+                    u.hasOrders = true;          
+                    u.orderType = "seek_engage"; 
+                    u.orderTargetPoint = null;   
+                    u.formationTimer = 120;      
+                }
+            });
+        }
 
-					currentBattleData = {
-						playerFaction: playerSetup.faction,
-						enemyFaction: enemySetup.faction,
-						playerColor: playerSetup.color,
-						enemyColor: enemySetup.color,
-						initialCounts: {
-							player: playerSetup.roster.length + 1,
-							enemy: enemySetup.roster.length + 1
-						}
-					};
-					// Spawn armies
-					customSpawnLoop(playerSetup.roster, "player", playerSetup.faction, playerSetup.color);
-					customSpawnLoop(enemySetup.roster, "enemy", enemySetup.faction, enemySetup.color);
-
-					// =========================================================
-					// ---> SURGERY: LAZY GENERAL AUTO-CHARGE (CUSTOM BATTLE)
-					// =========================================================
-					battleEnvironment.units.forEach(u => {
-						if (u.side === "player" && !u.isCommander && !u.disableAICombat) {
-							u.selected = true;           // Simulates '5' (Select All)
-							u.hasOrders = true;          // Activates the command state
-							u.orderType = "seek_engage"; // Simulates 'Q' (Seek & Engage)
-							u.orderTargetPoint = null;   // Clears waypoints 
-							u.formationTimer = 120;      // Brief buffer to orient
-						}
-					});
-        // =========================================================
-		}
         // Use the player commander as the battle anchor
         const playerCommander = battleEnvironment.units.find(
             u => u.isCommander && u.side === "player"
@@ -906,8 +974,7 @@ if (typeof window.player === "undefined" || !window.player) {
             enemyMen: currentBattleData.initialCounts.enemy
         };
 
-        // Canvas sizing
-        const canvas = document.getElementById("gameCanvas");
+        // 🔴 FIX 5: Canvas is already defined at the top, just assign properties here
         if (canvas) {
             canvas.style.display = "block";
             canvas.style.visibility = "visible";
@@ -915,22 +982,17 @@ if (typeof window.player === "undefined" || !window.player) {
             canvas.height = window.innerHeight;
         }
     
-
-        // 🔴 SURGERY 1: Fix Camera Centering
-        // Instead of snapping top-left to player, center the screen on the player
+        // Fix Camera Centering
         if (playerCommander && typeof camera !== "undefined") {
-            // Adjust for zoom and screen half-width/height
             camera.x = playerCommander.x - (window.innerWidth / 2 / (zoom || 1));
             camera.y = playerCommander.y - (window.innerHeight / 2 / (zoom || 1));
         }
     
-
-        // 🔴 SURGERY 3: Fix the "Invisibility" Zoom
-        // If triggerEpicZoom isn't working, force a visible zoom immediately
+        // Fix the "Invisibility" Zoom
         if (typeof triggerEpicZoom !== 'function') {
-            zoom = 0.8; // Set to a standard visible level
+            zoom = 0.8; 
         } else {
-            triggerEpicZoom(0.1, 0.8, 3000); // Start zoom-in effect
+            triggerEpicZoom(0.1, 0.8, 3000); 
         }
         
         // Audio / cinematic
@@ -942,18 +1004,14 @@ if (typeof window.player === "undefined" || !window.player) {
             triggerEpicZoom(0.1, 1.5, 3500);
         }
 
-        // No resize reset here; it was overwriting the battle camera setup
         window.isPaused = false;
+        startCustomBattleMonitor();
         console.log("Custom Battle Launched: Units Spawned =", battleEnvironment.units.length);
-
-startCustomBattleMonitor();
-		console.log("Custom Battle Launched: Units Spawned =", battleEnvironment.units.length);
-		
     }
 
     // --- CUSTOM SPAWNER FOR THIS UI (REWRITTEN: MIRRORED COMMANDER & FALLBACK ARMOR) ---
     function customSpawnLoop(rosterArray, side, faction, color) {
-        let startY = side === 'player' ? BATTLE_WORLD_HEIGHT - 300 : 300;
+let startY = side === 'player' ? BATTLE_WORLD_HEIGHT - 40 : 600;
         let centerX = BATTLE_WORLD_WIDTH / 2;
         let rankDir = side === 'player' ? 1 : -1;
         let spacingX = 22; 
@@ -1078,7 +1136,7 @@ cmdrStats.experienceLevel = cmdrStats.experienceLevel || 5;
             renderType: "horse_archer", 
             x: centerX,
             // FIX: Change the minus (-) to a plus (+) to spawn BEHIND the army
-            y: startY + (80 * rankDir),
+            y: startY -(80 * rankDir),
             vx: 0,
             vy: 0,
             direction: rankDir, 
@@ -1142,7 +1200,7 @@ function handleCustomBattleExit() {
 
     if (window.__CUSTOM_SIEGE_RESULT__ === "victory") {
         isVictory = true;
-        resultStr = "Victory! (Gate breached)";
+        resultStr = "Gate breached!";
     } else {
         const playerWiped = pAlive <= 0;
         const enemyWiped = eAlive <= 0;
@@ -1292,12 +1350,41 @@ function handleCustomBattleExit() {
         btn.onclick = onClick;
         
         btn.onmouseenter = () => btn.style.background = "linear-gradient(to bottom, #b71c1c, #7b1a1a)";
-        btn.onmouseleave = () => btn.style.background = "linear-gradient(to bottom, #7b1a1a, #4a0a0a)";
+ btn.onmouseleave = () => btn.style.background = "linear-gradient(to bottom, #7b1a1a, #4a0a0a)";
         
         return btn;
     }
-})();
 
+    /**
+     * LAST RESORT: Prevents units from spawning in the "abyss" (beyond map bounds).
+     * Places them at the top or bottom edge with a staggered offset to prevent stacking.
+     */
+    function lastResort(unit, worldWidth, worldHeight, side, index) {
+        const PADDING = 50; 
+        const STAGGER_GAP = 30; 
+        const UNITS_PER_ROW = 20;
+
+        const isOutOfBounds = (unit.x < 0 || unit.x > worldWidth || unit.y < 0 || unit.y > worldHeight);
+
+        if (isOutOfBounds) {
+            const row = Math.floor(index / UNITS_PER_ROW);
+            const col = index % UNITS_PER_ROW;
+            
+            const offsetX = col * STAGGER_GAP;
+            const offsetY = row * STAGGER_GAP;
+
+            if (side === "player") {
+                unit.x = PADDING + offsetX;
+                unit.y = PADDING + offsetY;
+            } else {
+                unit.x = worldWidth - PADDING - offsetX;
+                unit.y = worldHeight - PADDING - offsetY;
+            }
+            
+            console.warn(`Unit ${unit.unitType} (ID: ${unit.id}) was caught in the abyss. Last Resort triggered.`);
+        }
+    }
+})(); // <- ONLY ONE of these! It closes the massive (function () { at the top.
 
 function showBattleEndText(text) {
     let el = document.createElement("div");

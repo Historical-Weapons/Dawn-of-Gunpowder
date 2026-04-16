@@ -88,8 +88,8 @@ let isTrebuchet = safeName.includes("Trebuchet") || (attacker.name && attacker.n
             totalDamage *= 3.5; 
 
             // Set the blast scale
-            let blastRadius = isTrebuchet ? 150 : 80; 
-            let maxAoEDamage = isTrebuchet ? 200 : 100;
+            let blastRadius = isTrebuchet ? 50 : 30; 
+            let maxAoEDamage = isTrebuchet ? 70 : 50;
 
             // Apply exponential AoE to all surrounding units
             if (typeof battleEnvironment !== 'undefined' && battleEnvironment.units) {
@@ -169,11 +169,16 @@ function updateBattleUnits() {
                                 }
                             }
                         }
-                    }
+					}
                 }
             });
         }
-    }
+
+        // 3. Tower auto-shooting (only fires during active siege battles)
+        if (typeof updateTowerShooting === 'function') {
+            updateTowerShooting();
+        }
+    } // <--- FIX: This bracket was placed too early! Now it properly closes the 'if (inSiegeBattle)' block.
 
     // --- END SURGERY ---
 	
@@ -190,13 +195,17 @@ function updateBattleUnits() {
     const eCount = units.filter(u => u.side === 'enemy').length;
 
 updateCasualtyMoralePressure(units, currentBattleData);
-
-    // 3. Process Each Unit
+// 3. Process Each Unit
     units.forEach(unit => {
         // Death Hook
         if (unit.hp <= 0) {
             handleUnitDeath(unit);
             return; 
+        }
+
+        // ---> STUCK PREVENTION INJECTION <---
+        if (typeof handleStuckPrevention === 'function') {
+            handleStuckPrevention(unit);
         }
 
 // Player Override (Stops AI, updates Animation State)
@@ -208,11 +217,28 @@ updateCasualtyMoralePressure(units, currentBattleData);
             return; 
         }
 
-        // Morale & Cowardice (AI Only)
+      // Morale & Cowardice (AI Only)
         if (!unit.isCommander) {
-			
-			
             const isFleeingOrWavering = AICategories.processMoraleAndFleeing(unit, pCount, eCount, currentBattleData);
+            
+            // ---> SIEGE FLEEING OVERRIDE (LEFT/RIGHT ONLY) <---
+            if (isFleeingOrWavering && typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+                // Determine the boundaries of your map
+                let mapWidth = typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : 2000;
+                
+                // Calculate distance to left and right borders
+                let distToLeft = unit.x;
+                let distToRight = mapWidth - unit.x;
+                
+                // Force their target to the closest horizontal edge, keeping their current Y level
+                unit.target = { 
+                    x: distToLeft < distToRight ? -200 : mapWidth + 200, 
+                    y: unit.y, 
+                    isDummy: true 
+                };
+            }
+            // ---> END OVERRIDE <---
+
             if (isFleeingOrWavering) return; // Skip normal targeting/combat if they are running away
         }
 		
@@ -247,12 +273,36 @@ updateCasualtyMoralePressure(units, currentBattleData);
         if (unit.cooldown > 0) unit.cooldown--;
     });
 
-    // 4. Collisions
+// 4. Collisions
     applyUnitCollisions(units);
-	applyWallGravity(units);
-	updateRiverPhysics();  
-	
-// 5. Update Projectiles & Ground Effects Cleanup (Migrated)
+    applyWallGravity(units);
+    updateRiverPhysics();  
+
+    // =========================================================
+    // ---> NEW: THE ABSOLUTE MASTER CLAMP <---
+    // Catches any unit pushed out of bounds by collision/gravity
+    // =========================================================
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+        let southGate = battleEnvironment.cityGates ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
+        let isGateBreached = window.__SIEGE_GATE_BREACHED__ || (southGate && (southGate.isOpen || southGate.gateHP <= 0));
+        
+        if (!isGateBreached) {
+            let strictWallLimit = SiegeTopography.wallPixelY - 10;
+            
+            units.forEach(u => {
+                if (u.side === "enemy" && u.hp > 0 && !u.isFalling) {
+                    if (u.y > strictWallLimit) {
+                        u.y = strictWallLimit; // Hard overwrite back to the North
+                        // If they were squeezed into the wall, kill vertical momentum
+                        if (u.vy > 0) u.vy = 0; 
+                    }
+                }
+            });
+        }
+    }
+    // =========================================================
+
+    // 5. Update Projectiles & Ground Effects Cleanup
     if (battleEnvironment.projectiles && battleEnvironment.projectiles.length > 0 || battleEnvironment.groundEffects) {
         AICategories.processProjectilesAndCleanup(battleEnvironment);
     }
@@ -357,7 +407,36 @@ function applyUnitCollisions(units) {
                     let tile2 = battleEnvironment.grid[t2x] && battleEnvironment.grid[t2x][t2y];
                     if (tile2 !== 0 && tile2 !== 8) { u2.x = x2Before; u2.y = y2Before; }
                 }
+// =========================================================
+                // --- NEW SURGERY: SIEGE DEFENDER GUARD ---
+                // =========================================================
+                // Revert ANY push that shoves a defender off the wood scaffold
+                if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && window.BATTLE_TILE_SIZE) {
+                    
+                    // Check Unit 1
+                    let st1x = Math.floor(u1.x / BATTLE_TILE_SIZE);
+                    let st1y = Math.floor(u1.y / BATTLE_TILE_SIZE);
+                    let stile1 = battleEnvironment.grid[st1x] && battleEnvironment.grid[st1x][st1y];
+                    
+                    if (u1.side === "enemy" && stile1 !== 8) {
+                        // DO NOT revert u1.x! Let them slide horizontally.
+                        // ONLY revert Y so they cannot be pushed South off the edge.
+                        u1.y = y1Before; 
+                    }
 
+                    // Check Unit 2
+                    let st2x = Math.floor(u2.x / BATTLE_TILE_SIZE);
+                    let st2y = Math.floor(u2.y / BATTLE_TILE_SIZE);
+                    let stile2 = battleEnvironment.grid[st2x] && battleEnvironment.grid[st2x][st2y];
+                    
+                    if (u2.side === "enemy" && stile2 !== 8) {
+                        // DO NOT revert u2.x!
+                        // ONLY revert Y so they cannot be pushed South off the edge.
+                        u2.y = y2Before; 
+                    }
+                }
+                // =========================================================
+				
 // AFTER — revert ANY X displacement on a climbing unit:
 if (u1.isClimbing) u1.x = oldX1;
 if (u2.isClimbing) u2.x = oldX2;
@@ -365,6 +444,7 @@ if (u2.isClimbing) u2.x = oldX2;
         }
     }
 }
+
 function applyWallGravity(units) {
     if (!inSiegeBattle || !battleEnvironment.grid) return;
 
@@ -374,6 +454,18 @@ function applyWallGravity(units) {
             return;
         }
 
+// --- DEFENDER IMMUNITY (GATE PROTECTION) ---
+        // Prevents units near the gate from being pulled through the floor by gravity glitches,
+        // but allows the rest of the wall to use standard physics.
+        if (u.side === "enemy") {
+            const gateX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : (typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH / 2 : u.x);
+            
+            if (Math.abs(u.x - gateX) < 200) {
+                u.isFalling = false; 
+                return;
+            }
+        }
+		
         let tx = Math.floor(u.x / BATTLE_TILE_SIZE);
         let ty = Math.floor(u.y / BATTLE_TILE_SIZE);
 
@@ -381,24 +473,41 @@ function applyWallGravity(units) {
 
         let currentTile = battleEnvironment.grid[tx][ty];
 
-        // Start falling if inside a wall or already falling
-        if (currentTile === 6 || currentTile === 7 || u.isFalling) {
-            u.isFalling = true;
-            
-            // Move down. Because we changed isBattleCollision, 
-            // the physics engine won't block this movement anymore.
-            u.y += 1.5; 
+        // Ground level: first fully-open row south of the wall surface
+        const _groundLevelY = typeof SiegeTopography !== 'undefined'
+            ? SiegeTopography.wallPixelY + BATTLE_TILE_SIZE
+            : (BATTLE_ROWS - 1) * BATTLE_TILE_SIZE;
 
-            // Look ahead to see if the NEXT position is soil
-            let nextTy = Math.floor((u.y + 2) / BATTLE_TILE_SIZE);
-            if (nextTy < BATTLE_ROWS) {
-                let groundTile = battleEnvironment.grid[tx][nextTy];
-                
-                // If it's ground (0, 1, or any non-wall tile)
-                if (groundTile !== 6 && groundTile !== 7) {
+        // TRIGGER A: unit is inside a solid wall tile (original behaviour)
+        const _insideSolidWall = (currentTile === 6 || currentTile === 7);
+
+        // TRIGGER B: "Footstep Seam" — unit is on a walkway tile (8/10) but
+        // their pixel-Y has drifted past the wall surface into the grey seam below.
+        const _tileBelow     = (ty + 1 < BATTLE_ROWS) ? battleEnvironment.grid[tx][ty + 1] : -1;
+        const _onWalkway     = (currentTile === 8 || currentTile === 10);
+        const _solidBelow    = (_tileBelow === 6 || _tileBelow === 7);
+        const _pastSurface   = (typeof SiegeTopography !== 'undefined') && (u.y >= SiegeTopography.wallPixelY);
+        const _inFootstepSeam = _onWalkway && _solidBelow && _pastSurface;
+
+if (_insideSolidWall || _inFootstepSeam || u.isFalling) {
+            // NEW GUARD: Do not let gravity pull defenders South of the wall!
+            if (u.side === "enemy") {
+                u.isFalling = false;
+                u.y = SiegeTopography.wallPixelY - 10; // Pop them back up safely
+                return;
+            }
+
+            u.isFalling = true;
+            u.y += 1.5;
+
+            const _nextTy = Math.floor((u.y + 2) / BATTLE_TILE_SIZE);
+            if (_nextTy < BATTLE_ROWS) {
+                const _groundTile = battleEnvironment.grid[tx][_nextTy];
+                const _isOpen = (_groundTile !== 6 && _groundTile !== 7 && _groundTile !== 8 && _groundTile !== 10);
+                if (_isOpen || u.y >= _groundLevelY) {
                     u.isFalling = false;
-                    u.y = nextTy * BATTLE_TILE_SIZE; // Snap to soil
-                    u.ignoreCollisionTicks = 20; // Stay ghosted long enough to walk away
+                    u.y = _isOpen ? (_nextTy * BATTLE_TILE_SIZE) : _groundLevelY;
+                    u.ignoreCollisionTicks = 30; // bumped from 20 — gives more time to clear the seam
                 }
             }
         }
@@ -420,8 +529,26 @@ function isBattleCollision(x, y, onWall = false, unit = null) {
     }
     
 if (inSiegeBattle) {
+        // =========================================================
+        // --- REVISED DEFENDER TERRAIN GUARD ---
+        // =========================================================
+        if (unit && unit.side === "enemy") {
+            // EXPLICITLY BLOCK: Buildings(2), Trees(3), Water(4), Stone Wall(6), Tower Base(7)
+            // This allows them to walk freely on Ground(0), Road(1), Plaza(5), and Scaffolds(8, 9, 10, 12)
+            if (tile === 2 || tile === 3 || tile === 4 || tile === 6 || tile === 7) {
+                return true; 
+            }
+        }
+        // =========================================================
+        
+        // FIX: Changed LIGHT_WALL_ID from 5 to 99. 
+        // Tile 5 is the City Plaza. If it is marked as a wall, units spawn trapped in the ground!
+        const LIGHT_WALL_ID = 99; 
+        
+        const isSolidWall = (tile === 6 || tile === 7 || tile === LIGHT_WALL_ID);
+
         // 1. MOUNT/LARGE UNIT RESTRICTIONS
-        // Prevents horses from getting onto ladders (9, 12) or walking on parapets/platforms (8, 10)
+        // 1. MOUNT/LARGE UNIT RESTRICTIONS
         if (isLarge && (tile === 9 || tile === 12 || tile === 8 || tile === 10)) return true;
 
         // 2. LADDER LOCK (No horizontal sliding while climbing)
@@ -432,38 +559,68 @@ if (inSiegeBattle) {
             
             let isOnLadder = (currentTile === 9 || currentTile === 12 || unit.isClimbing);
             
-            // If on a ladder, any X-axis change is blocked to prevent hovering off the side
             if (isOnLadder && x !== unit.x) return true;
         }
 
-        // 3. THE "GHOST FALL" SURGERY (The fix for the stuck units)
-        // If a unit is falling, we FORCE Tile 6 and 7 to be non-solid. 
-        // This allows them to pass through the "Gray Wall" until they hit soil.
+        // ---------------------------------------------------------
+        // --- SURGERY 2: THE "GHOST FALL" UPGRADE ---
+        // ---------------------------------------------------------
         if (unit && unit.isFalling) {
-            if (tile === 6 || tile === 7) return false; 
+            // A falling unit must ghost through ALL architectural tiles.
+            // If they hit the lighter wall on the way down, this ensures they pass 
+            // straight through it instead of getting stuck mid-air.
+            if (isSolidWall || tile === 8 || tile === 10) return false;
         }
 
         // 4. UNIVERSAL PASSABLE TILES
-        // Ladders, broken gate debris, and interior walkways are always passable
         if (tile === 9 || tile === 12 || tile === 13) return false;
 
-        // 5. THE SOLID WALL LOGIC
-        const isSolidWall = (tile === 6 || tile === 7);
+// ---------------------------------------------------------
+        // --- SURGERY 3: THE FLEEING EXCEPTION (WITH 5S TIMER) ---
+        // ---------------------------------------------------------
+        
+        // ---> NEW: THE STUCK GHOST BYPASS <---
+        if (unit && unit.ghostTimer > 0) {
+            return false; // Collision ignored: Let them sink through the geometry!
+        }
 
+        // We hoist this to the top of the siege logic so it manages 
+        // the transition from "blocked" to "ghosting."
+        if (unit && (unit.isFleeing || unit.state === "routing" || unit.state === "fleeing")) {
+            
+            // 1. Initialize the timer if it doesn't exist yet
+            if (unit.fleeCollisionTimer === undefined) {
+                unit.fleeCollisionTimer = 0;
+            }
+            
+            // 2. Increment every time the collision check runs
+            unit.fleeCollisionTimer++;
+
+            // 3. The 5-Second Gate (300 frames @ 60fps)
+            // If they have been panicking for MORE than 5 seconds:
+            if (unit.fleeCollisionTimer > 300) {
+                return false; // Collision ignored: They finally scramble over the railing
+            }
+            
+            // If they ARE fleeing but the timer is <= 300:
+            // We DO NOT return false here. We let the code fall through 
+            // to the 'return isSolidWall' logic below so they stay stuck.
+            
+        } else if (unit) {
+            // Safety: Reset the timer if the unit recovers or isn't fleeing
+            unit.fleeCollisionTimer = 0;
+        }
+
+        // --- Standard Siege Blocking (Active for non-fleeing or early-fleeing units) ---
         if (onWall) {
-            // While ON the wall, the stone (6, 7) acts as the boundary (parapet)
+            // Normal units and "early" fleeing units are blocked by Tiles 6, 7, and Faction Walls
             return isSolidWall;
         } else {
             // While ON the ground:
-            
-            // If they just landed or were extracted, let them walk through walls for a few frames
             if (unit && unit.ignoreCollisionTicks > 0) {
-                // They can walk through everything EXCEPT the solid stone
-                // Note: Keep this 'true' so they don't walk through the wall from the ground
                 return isSolidWall; 
             }
-
-            // Standard ground blocking: Water (2), Deep Mud (3), Props (4), and Solid Walls (6, 7)
+            // Standard ground blocking
             return tile === 2 || tile === 3 || tile === 4 || isSolidWall;
         }
     }
@@ -650,6 +807,35 @@ if (type === "javelin") {
             ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
         }
 		
+} else if (type === "scorch_wall") {
+        // Firelance / fire projectile scorch streak burned into a stone or wood surface
+        // Uses the impact angle stored in the effect's angle field
+        let sLen = 10 + rand * 12;
+        let sWid = 3 + rand * 4;
+
+        // Outer glow (hot ember fade)
+        let sg = ctx.createLinearGradient(0, 0, sLen, 0);
+        sg.addColorStop(0, "rgba(255,160,30,0.55)");
+        sg.addColorStop(0.4, "rgba(200,60,0,0.35)");
+        sg.addColorStop(1, "rgba(30,30,30,0)");
+        ctx.fillStyle = sg;
+        ctx.beginPath();
+        ctx.ellipse(sLen * 0.4, 0, sLen * 0.5, sWid * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Charred core
+        ctx.fillStyle = "rgba(10,6,0,0.80)";
+        ctx.beginPath();
+        ctx.ellipse(sLen * 0.25, 0, sLen * 0.28, sWid * 0.30, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ember flecks
+        ctx.fillStyle = "rgba(255,120,20,0.60)";
+        for (let ei = 0; ei < 3; ei++) {
+            let ex = (rand * 7 + ei * 5) % (sLen * 0.6);
+            let ey = (Math.sin(rand * 9 + ei) * sWid * 0.4);
+            ctx.beginPath(); ctx.arc(ex, ey, 0.9 + rand, 0, Math.PI * 2); ctx.fill();
+        }
     } else { // arrow
         if (rand < 0.60) {
             ctx.fillStyle = "#8d6e63"; ctx.fillRect(-6, -0.5, 8, 1); 
@@ -671,10 +857,14 @@ if (type === "javelin") {
 function leaveBattlefield(playerObj) {
 	
 	
-    console.log("Leaving battlefield. Restoring overworld state...");
+console.log("Leaving battlefield. Restoring overworld state...");
+    if (typeof cleanupSiegeRoofOverlay === 'function') cleanupSiegeRoofOverlay();
+    
+    // ADD THIS:
+    if (typeof cleanupNavalSailCanvas === 'function') cleanupNavalSailCanvas();
 
- window.pendingSallyOut = false;
-window.inParleMode = false;
+    window.pendingSallyOut = false;
+    window.inParleMode = false;
 if (typeof player !== 'undefined') player.stunTimer = 0;
 
     // --- 1. THE MODE SWITCH (CRITICAL FIX) ---
@@ -740,13 +930,22 @@ if (typeof player !== 'undefined') player.stunTimer = 0;
         createBattleSummaryUI(isFleeing ? "Retreat!" : "Victory!", playerLost, enemyLost);
     }
 
-    // --- 5. CLEANUP ---
+// --- 5. CLEANUP ---
     currentBattleData = null; 
     battleEnvironment.units = []; 
     battleEnvironment.projectiles = [];
 	// ADD THIS LINE TO CLEAR CRATERS, STUCK ARROWS, AND SCORCH MARKS
 	battleEnvironment.groundEffects = []; 
-
+    battleEnvironment.cityGates = []; // <-- FIX: Wipe gates from memory
+   // window.cityTowerPositions = [];   // <-- FIX: Wipe towers from memory
+    
+    // Safety wipe for any lingering siege engines
+    if (typeof siegeEquipment !== 'undefined') {
+        siegeEquipment.ladders = [];
+        siegeEquipment.rams = [];
+        siegeEquipment.trebuchets = [];
+        siegeEquipment.ballistas = [];
+    }
 	lastBattleTime = Date.now();
 // ---> SURGERY: Init audio and pass your MP3s to the playlist shuffler
     AudioManager.init();
@@ -921,12 +1120,12 @@ function applyCasualtyPressureToSide(units, side, casualtyPct) {
     let panicLock = false;
 
     if (casualtyPct >= 0.60) {
-        moraleMultiplier = 4.0;
+        moraleMultiplier = 3.0;
         panicLock = true;
     } else if (casualtyPct >= 0.45) {
-        moraleMultiplier = 2.5;
+        moraleMultiplier = 2.0;
     } else if (casualtyPct >= 0.30) {
-        moraleMultiplier = 1.5;
+        moraleMultiplier = 1.2;
     }
 
     units.forEach(u => {
@@ -952,6 +1151,7 @@ function applyCasualtyPressureToSide(units, side, casualtyPct) {
         }
     });
 }
+
 function updateRiverPhysics() {
     // Prevent River Physics from erasing Naval Physics
     if (window.inNavalBattle) return;
@@ -963,18 +1163,27 @@ function updateRiverPhysics() {
         let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
         let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
 
+        // Safely clamp to prevent errors at the edges of the map
+        tx = Math.max(0, Math.min(BATTLE_COLS - 1, tx));
+        ty = Math.max(0, Math.min(BATTLE_ROWS - 1, ty));
+
+        // Tile 4 is deep water. Tile 7 is mud (land speed). Tile 0 is grass (land speed).
         let inWater = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 4);
 
         if (inWater) {
             unit.overboardTimer = (unit.overboardTimer || 0) + 1;
             unit.isSwimming = true;
 
-            unit.vx *= 0.15;
-            unit.vy *= 0.15;
+            // Apply a single, balanced friction penalty for water wading
+            unit.vx *= 0.45;
+            unit.vy *= 0.45;
 
             if (!unit.drownTimer) unit.drownTimer = 0;
 
-            let drownThreshold = Math.max(150, 1500 - ((unit.stats.weightTier || 1) * 250) - (unit.stats.mass || 10));
+let drownThreshold = Math.max(150, 1500 - ((unit.stats.weightTier || 1) * 250) - (unit.stats.mass || 10));
+ 
+                drownThreshold *= 3;
+ 
             unit.drownTimer++;
 
             if (unit.drownTimer > drownThreshold) {
@@ -996,9 +1205,96 @@ function updateRiverPhysics() {
                 }
             }
         } else {
+            // Instantly restore normal movement when hitting land
             unit.overboardTimer = 0;
             unit.isSwimming = false;
             if (unit.drownTimer > 0) unit.drownTimer -= 2;
         }
     });
+}
+
+/**
+ * Call this every frame for every active unit.
+ * Assuming your game runs at roughly 60 FPS.
+ */
+function handleStuckPrevention(unit, FPS = 60) {
+    // 1. Initialize custom state properties on the unit if they don't exist
+    if (typeof unit.stuckTimer === 'undefined') unit.stuckTimer = 0;
+    if (typeof unit.ghostTimer === 'undefined') unit.ghostTimer = 0;
+    if (typeof unit.anchorX === 'undefined') unit.anchorX = unit.x;
+    if (typeof unit.anchorY === 'undefined') unit.anchorY = unit.y;
+
+    const STUCK_THRESHOLD_FRAMES = 3 * FPS; // 3 seconds
+    const GHOST_DURATION_FRAMES = 5 * FPS;  // 5 seconds
+    const MOVEMENT_RADIUS = 3;              // 3 pixels
+
+// ---------------------------------------------------------
+    // RESOLUTION BEHAVIOR (Unit is currently stuck and ghosting)
+    // ---------------------------------------------------------
+    if (unit.ghostTimer > 0) {
+        unit.ghostTimer--;
+
+        // SURGERY: Protect Defenders from the downward shove!
+        let isDefenderOnWall = typeof inSiegeBattle !== 'undefined' && inSiegeBattle && unit.side === "enemy" && unit.y < (typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000);
+
+        if (!isDefenderOnWall) {
+            // Normal behavior: Push them South
+            unit.vy += 0.5;  
+            unit.y += 1.5;   
+        } else {
+            // Defender behavior: Shake them side-to-side to unstick, DO NOT push South
+            unit.vx += (Math.random() - 0.5) * 2;
+        }
+
+        // Visual feedback (optional): make the unit semi-transparent while phasing
+        unit.alpha = 0.5;
+
+        if (unit.ghostTimer <= 0) {
+            // Ghosting complete: Reset visuals and drop a new anchor
+            unit.alpha = 1.0;
+            unit.anchorX = unit.x;
+            unit.anchorY = unit.y;
+        }
+        
+        // Return early. If they are ghosting, we don't run stuck detection.
+        return; 
+    }
+
+    // ---------------------------------------------------------
+    // DETECTION LOGIC (Checking if the unit is stuck)
+    // ---------------------------------------------------------
+    
+    // Check how far they are from their anchor point
+    let distX = Math.abs(unit.x - unit.anchorX);
+    let distY = Math.abs(unit.y - unit.anchorY);
+
+    // CRITICAL: We only want to flag them as stuck if they are SUPPOSED to be moving.
+    // If they are locked in melee or just idle, they shouldn't trigger the stuck logic.
+    let isTryingToMove = (Math.abs(unit.vx) > 0.1 || Math.abs(unit.vy) > 0.1 || unit.hasOrders);
+let fightDist = (unit.stats && unit.stats.currentStance === "statusrange") ? (unit.stats.range + 50) : 25;
+let isActivelyFighting = (unit.target && Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y) < fightDist) || unit.state === "attacking";
+    if (isTryingToMove && !isActivelyFighting) {
+        if (distX < MOVEMENT_RADIUS && distY < MOVEMENT_RADIUS) {
+            // Unit is struggling to leave the anchor radius
+            unit.stuckTimer++;
+
+            if (unit.stuckTimer >= STUCK_THRESHOLD_FRAMES) {
+                // STUCK DETECTED! Trigger Resolution.
+                unit.ghostTimer = GHOST_DURATION_FRAMES;
+                unit.stuckTimer = 0; // Reset for next time
+            }
+        } else {
+            // Unit successfully moved out of the radius. 
+            // Reset the anchor to their new position and clear the timer.
+            unit.anchorX = unit.x;
+            unit.anchorY = unit.y;
+            unit.stuckTimer = 0;
+        }
+    } else {
+        // If they are idle or fighting, keep pulling the anchor to them 
+        // so they don't instantly trigger a stuck state when they finally move.
+        unit.anchorX = unit.x;
+        unit.anchorY = unit.y;
+        unit.stuckTimer = 0;
+    }
 }

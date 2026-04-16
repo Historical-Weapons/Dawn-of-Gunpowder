@@ -539,7 +539,13 @@ if (cityPanel) {
 }
 
     inCityMode = true;
-
+// ---> NEW: HEAL ALL TOWERS FOR NEW BATTLE
+    if (window.cityTowerPositions) {
+        window.cityTowerPositions.forEach(t => {
+            t.hp = t.maxHp || 300;
+            t.fireCooldown = Math.floor(Math.random() * 200 + 80);
+        });
+    }
     // Extra safety wipe
     const panel = document.getElementById('parle-panel');
     if (panel) panel.style.display = 'none';

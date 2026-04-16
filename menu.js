@@ -152,7 +152,7 @@ function destroyMenu() {
     }, 500);
 }
 
-const playBtn = createBtn("Enter World", () => {
+const playBtn = createBtn("Sandbox Game", () => {
     
     // SURGERY: Trigger the new Skyrim-style loading screen
     if (typeof window.showLoadingScreen === 'function') {

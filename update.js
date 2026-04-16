@@ -300,7 +300,7 @@ window.onwheel = (e) => {
 	{
         if (!battleEnvironment?.grid || typeof pCmdr === 'undefined' || !pCmdr) return;
 		
-		// --- NAVAL PHYSICS HOOK ---
+// --- NAVAL PHYSICS HOOK ---
         if (typeof inNavalBattle !== 'undefined' && inNavalBattle) {
             updateNavalPhysics();
         }
@@ -308,11 +308,14 @@ window.onwheel = (e) => {
         
         player.size = 24;
 
-       // ---> SURGERY: UNIVERSAL WATER SLOWDOWN FOR PLAYER <---
-        let pTx = Math.max(0, Math.min(BATTLE_COLS - 1, Math.floor(player.x / BATTLE_TILE_SIZE)));
-        let pTy = Math.max(0, Math.min(BATTLE_ROWS - 1, Math.floor(player.y / BATTLE_TILE_SIZE)));
-        let playerTile = (battleEnvironment.grid[pTx] && battleEnvironment.grid[pTx][pTy]) ? battleEnvironment.grid[pTx][pTy] : 0;
+        // ---> SURGERY: STRICT TILE CHECK FOR PLAYER WATER SLOWDOWN <---
+        // Safely clamp coordinates to prevent out-of-bounds array checks
+        let pTx = Math.floor(player.x / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
+        let pTy = Math.floor(player.y / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
+        pTx = Math.max(0, Math.min(BATTLE_COLS - 1, pTx));
+        pTy = Math.max(0, Math.min(BATTLE_ROWS - 1, pTy));
         
+        let playerTile = (battleEnvironment.grid[pTx] && battleEnvironment.grid[pTx][pTy]) ? battleEnvironment.grid[pTx][pTy] : 0;
         let waterSpeedMulti = 1.0;
 
         // NAVAL FIX: The grid is 100% water. Rely on exact 3D deck math instead!
@@ -322,34 +325,24 @@ window.onwheel = (e) => {
                 waterSpeedMulti = 0.40;
             }
         } else {
-            // Standard field/river battles still use the underlying grid tile
+            // Standard field/river battles: ONLY slow down on raw water (4) or ocean (11)
+            // Land (0), Mud (7), and Grass (10) will retain 1.0x normal speed.
             if (playerTile === 4 || playerTile === 11) {
                 waterSpeedMulti = 0.40; 
             }
         }
 
-        // SURGERY: Battle speed reduced to 70%, multiplied by water terrain penalty
+        // Apply movement: On land, waterSpeedMulti is 1.0 so they move at normal battle speed
         calculateMovement(((player.baseSpeed / 4) * 0.70) * waterSpeedMulti, null, typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8, null, null, true);
         
         if (typeof updateBattleUnits === 'function') updateBattleUnits();
 
-        // ---> SURGERY: UNIVERSAL WATER SLOWDOWN FOR ALL TROOPS <---
-        // This dampens the AI velocity vectors so they wade slowly through the river
-        if (!window.inNavalBattle) {
-            battleEnvironment.units.forEach(unit => {
-                if (unit.hp <= 0) return;
-                let tx = Math.floor(unit.x / BATTLE_TILE_SIZE);
-                let ty = Math.floor(unit.y / BATTLE_TILE_SIZE);
-                let currentTile = (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty]) ? battleEnvironment.grid[tx][ty] : 0;
-                
-                if (currentTile === 4 || currentTile === 11) {
-                    if (typeof unit.vx !== 'undefined') unit.vx *= 0.50; // Cut momentum in half
-                    if (typeof unit.vy !== 'undefined') unit.vy *= 0.50;
-                }
-            });
-        }
+        // (NOTE: The secondary 'UNIVERSAL WATER SLOWDOWN FOR ALL TROOPS' loop has been 
+        // completely removed from here, as updateRiverPhysics handles it properly!)
         
         pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+		
+		
         if (pCmdr && player) {
             player.hp = pCmdr.hp;
             disableAICombatDefeated = (pCmdr.hp <= 0); 
@@ -624,13 +617,28 @@ function draw() {
 				ctx.drawImage(battleEnvironment.fgCanvas, -battleEnvironment.visualPadding, -battleEnvironment.visualPadding);
 			}
         
-
-        // 5. Draw Dynamic Assets (Gates & Engines)
-        if (typeof renderDynamicGates === 'function') {
-            renderDynamicGates(ctx);
+// 5. Draw Dynamic Assets (Gates & Engines)
+        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+            if (typeof renderDynamicGates === 'function') renderDynamicGates(ctx);
+            if (typeof renderSiegeEngines === 'function') renderSiegeEngines(ctx);
         }
 
+
+// 5. Draw Dynamic Assets (Gates, Engines, & Towers)
+// Logic: Draw if (Siege OR City) AND NOT Naval
+const canDrawForts = !(typeof inNavalBattle !== 'undefined' && inNavalBattle) && 
+                     ((typeof inSiegeBattle !== 'undefined' && inSiegeBattle) || (typeof inCityMode !== 'undefined' && inCityMode));
+
+if (canDrawForts) {
+    // Gates and Towers appear in both Sieges and City Exploration
+    if (typeof renderDynamicGates === 'function') renderDynamicGates(ctx);
+    if (typeof renderDynamicTowers === 'function') renderDynamicTowers(ctx);
+
+    // Siege Engines (Rams/Towers) usually only appear during active Siege Battles
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
         if (typeof renderSiegeEngines === 'function') renderSiegeEngines(ctx);
+    }
+}
 
         // 6. Draw Battle UI overlays
         const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
@@ -640,14 +648,23 @@ function draw() {
         ctx.shadowColor = "black";
         ctx.shadowBlur = 4;
 
-        if (aliveEnemies > 0) {
+if (aliveEnemies > 0) {
             ctx.font = "10px Arial";
             ctx.fillStyle = "#ffffff";
             ctx.textAlign = "center";
+            
+            // First line
             ctx.fillText(
                 `Enemies Remaining: ${aliveEnemies}`,
                 BATTLE_WORLD_WIDTH / 2,
                 canvas.height + 450
+            );
+            
+            // Second line (shifted down by 15 pixels so they don't overlap)
+            ctx.fillText(
+                "Press P to exit when the battle is over",
+                BATTLE_WORLD_WIDTH / 2,
+                canvas.height + 465 
             );
         } else {
             ctx.fillStyle = "#ffca28";
@@ -659,11 +676,17 @@ function draw() {
 
         ctx.shadowBlur = 0;
 
-    } else if (inCityMode) {
+} else if (inCityMode) {
+
+        // 1. Draw city background FIRST
         let cityData = cityDimensions[currentActiveCityFaction];
         if (cityData && cityData.bgCanvas) {
             ctx.drawImage(cityData.bgCanvas, 0, 0);
         }
+
+        // 2. Draw forts/towers ON TOP of background (correct order)
+        if (typeof renderDynamicGates === 'function') renderDynamicGates(ctx);
+        if (typeof renderDynamicTowers === 'function') renderDynamicTowers(ctx);
 
         if (typeof drawCityCosmeticNPCs === 'function') {
             drawCityCosmeticNPCs(ctx, currentActiveCityFaction, drawCaravan, zoom);

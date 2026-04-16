@@ -329,7 +329,7 @@ function _infantryWrapper(ctx, x, y, moving, frame, factionColor,
 
         // ── STAGE 0: INITIAL SPLASH PHASE (overboardTimer 1 – 119, not yet swimming)
         if (!unit.isSwimming) {
-            const subFrac   = Math.min(1, unit.overboardTimer / 420);
+            const subFrac   = Math.min(1, unit.overboardTimer / 170);
             // Progressively sink: feet disappear first, then legs, torso starts to go
             // Show from INF_HEAD_LOCAL_TOP down to (INF_HEAD_LOCAL_BOT + remaining body)
             // At subFrac=0: fully visible; at subFrac=1: head-only visible
@@ -450,7 +450,7 @@ if (!unit) {
         // submerge fraction: 0 → 30 % during stage 0, locked at 30 % during stage 1
         let subFrac;
         if (!unit.isSwimming) {
-            subFrac = Math.min(CAV_SUBMERGE_FRAC, (unit.overboardTimer / 120) * CAV_SUBMERGE_FRAC);
+            subFrac = Math.min(CAV_SUBMERGE_FRAC, (unit.overboardTimer / 190) * CAV_SUBMERGE_FRAC);
         } else {
             subFrac = CAV_SUBMERGE_FRAC;
         }

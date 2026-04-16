@@ -147,13 +147,14 @@ if (navalEnvironment.mapType === "Coastal") {
 function generateShips(pCount, eCount) {
     navalEnvironment.ships = [];
 
-    let pType = SHIP_TYPES.HEAVY;
-    if (pCount <= 30)  pType = SHIP_TYPES.LIGHT;
-    else if (pCount <= 100) pType = SHIP_TYPES.MEDIUM;
+    // --- FIX: ADDED .name SO THE COLLISION ENGINE KNOWS WHICH SHAPE TO USE ---
+    let pType = SHIP_TYPES.HEAVY; pType.name = "Heavy Dragon";
+    if (pCount <= 30) { pType = SHIP_TYPES.LIGHT; pType.name = "Light Scout"; }
+    else if (pCount <= 100) { pType = SHIP_TYPES.MEDIUM; pType.name = "Medium Junk"; }
 
-    let eType = SHIP_TYPES.HEAVY;
-    if (eCount <= 30)  eType = SHIP_TYPES.LIGHT;
-    else if (eCount <= 100) eType = SHIP_TYPES.MEDIUM;
+    let eType = SHIP_TYPES.HEAVY; eType.name = "Heavy Dragon";
+    if (eCount <= 30) { eType = SHIP_TYPES.LIGHT; eType.name = "Light Scout"; }
+    else if (eCount <= 100) { eType = SHIP_TYPES.MEDIUM; eType.name = "Medium Junk"; }
 
     let centerX = BATTLE_WORLD_WIDTH  / 2;
     let centerY = BATTLE_WORLD_HEIGHT / 2;
@@ -168,23 +169,33 @@ function generateShips(pCount, eCount) {
     let gap = 20;
 
     let pShip = {
-        side:"player", x:centerX, y:centerY + (pType.height/2) + gap,
-        width:pType.width, height:pType.height,
-        color:pType.color, deck:pType.deck,
-        mastCount:pType.mastCount, sailScale:pType.sailScale
+        side: "player", 
+        x: centerX, 
+        y: centerY + (pType.height/2) + gap,
+        width: pType.width, 
+        height: pType.height,
+        color: pType.color, 
+        deck: pType.deck,
+        mastCount: pType.mastCount, 
+        sailScale: pType.sailScale,
+        type: pType.name // <--- THE CRITICAL FIX FOR COLLISION MATH
     };
+    
     let eShip = {
-        side:"enemy",  x:centerX, y:centerY - (eType.height/2) - gap,
-        width:eType.width, height:eType.height,
-        color:eType.color, deck:eType.deck,
-        mastCount:eType.mastCount, sailScale:eType.sailScale
+        side: "enemy",  
+        x: centerX, 
+        y: centerY - (eType.height/2) - gap,
+        width: eType.width, 
+        height: eType.height,
+        color: eType.color, 
+        deck: eType.deck,
+        mastCount: eType.mastCount, 
+        sailScale: eType.sailScale,
+        type: eType.name // <--- THE CRITICAL FIX FOR COLLISION MATH
     };
 
     navalEnvironment.ships.push(pShip, eShip);
-    
-    // NO MORE GRID STAMPING HERE! The map stays pristine ocean.
 }
-
 // ============================================================================
 // SHIP LANE CLEAR — removes Coastal land tiles from ship zones and boarding gap
 // Called from initNavalBattle after generateShips so ship positions are known.
@@ -239,13 +250,23 @@ function generateCosmetics() {
             speed:0.2+Math.random()*0.4, length:30+Math.random()*50, offset:Math.random()*100
         });
     }
-    for (let i = 0; i < 40; i++) {
-        navalEnvironment.fishes.push({
-            x:Math.random()*BATTLE_WORLD_WIDTH, y:Math.random()*BATTLE_WORLD_HEIGHT,
-            angle:Math.random()*Math.PI*2, speed:0.5+Math.random(), length:15+Math.random()*15,
-            wiggleRate:2+Math.random()*3
-        });
-    }
+// Inside generateCosmetics:
+for (let i = 0; i < 40; i++) {
+    let x, y, tries = 0;
+    do {
+        x = Math.random() * BATTLE_WORLD_WIDTH;
+        y = Math.random() * BATTLE_WORLD_HEIGHT;
+        tries++;
+    } while (tries < 100 && (!_isOpenWaterAt(x, y) || _isPositionOccupiedByShip(x, y)));
+
+    navalEnvironment.fishes.push({
+        x, y,
+        angle: Math.random() * Math.PI * 2,
+        speed: 0.5 + Math.random(),
+        length: 15 + Math.random() * 15,
+        wiggleRate: 2 + Math.random() * 3
+    });
+}
     for (let i = 0; i < 15; i++) {
         navalEnvironment.seagulls.push({
             x:Math.random()*BATTLE_WORLD_WIDTH, y:Math.random()*BATTLE_WORLD_HEIGHT,
@@ -505,26 +526,76 @@ let atEdge  = (surface === 'EDGE');
 		// Drown timer ticks only during Stage C
 		if (unit.isSwimming) {
 			if (!unit.drownTimer) unit.drownTimer = 0;
-			let drownThreshold = Math.max(150, 1500 - ((unit.stats.weightTier||1)*250) - (unit.stats.mass||10));
-			unit.drownTimer++;
-			if (unit.drownTimer > drownThreshold) {
-				unit.hp = 0; unit.deathRotation = 0;
-				if (typeof logGameEvent === 'function') logGameEvent(`${unit.unitType} drowned beneath the waves!`, "danger");
-			}
-		} else {
-			if (unit.drownTimer > 0) unit.drownTimer -= 2;
-		}
+			let drownThreshold = Math.max(450, 4500 - ((unit.stats.weightTier||1)*250) - (unit.stats.mass||10));
+        unit.drownTimer++;
+        if (unit.drownTimer > drownThreshold) {
+            unit.hp = 0; unit.deathRotation = 0;
+            if (typeof logGameEvent === 'function') logGameEvent(`${unit.unitType} drowned beneath the waves!`, "danger");
+        }
+    } else {
+        if (unit.drownTimer > 0) unit.drownTimer -= 1;
+    }
 	});
 
 navalEnvironment.fishes.forEach(f => {
-    f.x += Math.cos(f.angle) * f.speed;
-    f.y += Math.sin(f.angle) * f.speed;
-    if (Math.random() > 0.98) f.angle += (Math.random() - 0.5) * 2;
-    if (f.x < 0) f.x = BATTLE_WORLD_WIDTH;  if (f.x > BATTLE_WORLD_WIDTH)  f.x = 0;
-    if (f.y < 0) f.y = BATTLE_WORLD_HEIGHT; if (f.y > BATTLE_WORLD_HEIGHT) f.y = 0;
+    const avoid = _fishAvoidanceVector(f);
+
+    // If near land or ships, steer away hard
+    if (avoid.ax !== 0 || avoid.ay !== 0) {
+        f.angle = Math.atan2(avoid.ay, avoid.ax) + (Math.random() - 0.5) * 0.25;
+    } else if (Math.random() > 0.98) {
+        f.angle += (Math.random() - 0.5) * 2;
+    }
+
+    const nx = f.x + Math.cos(f.angle) * f.speed;
+    const ny = f.y + Math.sin(f.angle) * f.speed;
+
+    // Reject moves into land or ship zones
+    let blocked = !_isOpenWaterAt(nx, ny);
+    if (!blocked) {
+        for (const s of navalEnvironment.ships) {
+            const sx = s.x + navalEnvironment.shipSwayX;
+            const sy = s.y + navalEnvironment.shipSwayY;
+            const shipRadius = Math.max(s.width, s.height) * 0.56 + 150;
+            if (Math.hypot(nx - sx, ny - sy) < shipRadius) {
+                blocked = true;
+                break;
+            }
+        }
+    }
+// Inside the navalEnvironment.fishes.forEach loop:
+if (blocked) {
+    // Find the ship that is blocking it
+    const blockingShip = navalEnvironment.ships.find(s => {
+        const sx = s.x + navalEnvironment.shipSwayX;
+        const sy = s.y + navalEnvironment.shipSwayY;
+        const shipRadius = Math.max(s.width, s.height) * 0.56 + 150;
+        return Math.hypot(f.x - sx, f.y - sy) < shipRadius;
+    });
+
+    if (blockingShip) {
+        // Forcefully push the fish OUT along the vector from the ship center
+        const pushAngle = Math.atan2(f.y - (blockingShip.y + navalEnvironment.shipSwayY), 
+                                     f.x - (blockingShip.x + navalEnvironment.shipSwayX));
+        f.angle = pushAngle + (Math.random() - 0.5) * 0.5;
+        f.x += Math.cos(pushAngle) * (f.speed * 2); // Double speed to escape
+        f.y += Math.sin(pushAngle) * (f.speed * 2);
+    } else {
+        // Standard land/grid block logic
+        f.angle += Math.PI * 0.85;
+    }
+} else {
+    f.x = nx;
+    f.y = ny;
+}
+    if (f.x < 0) f.x = BATTLE_WORLD_WIDTH;
+    if (f.x > BATTLE_WORLD_WIDTH) f.x = 0;
+    if (f.y < 0) f.y = BATTLE_WORLD_HEIGHT;
+    if (f.y > BATTLE_WORLD_HEIGHT) f.y = 0;
+
     f.currentWiggle = (Date.now() / 1000) * f.wiggleRate;
 
-    // Fish can sometimes cause blood if they touch a drowning/swimming unit
+    // Existing blood logic stays the same
     battleEnvironment.units.forEach(u => {
         if (u.hp <= 0) return;
         if (!u.isSwimming) return;
@@ -538,7 +609,6 @@ navalEnvironment.fishes.forEach(f => {
         }
     });
 });
-
     navalEnvironment.seagulls.forEach(g => {
         g.x += Math.cos(g.angle) * g.speed;
         g.y += Math.sin(g.angle) * g.speed;
@@ -554,6 +624,62 @@ navalEnvironment.fishes.forEach(f => {
 function isUnitOnShip(unit) {
     let surface = window.getNavalSurfaceAt(unit.x, unit.y);
     return surface === 'DECK' || surface === 'PLANK';
+}
+
+function _isOpenWaterAt(x, y) {
+    const tx = Math.floor(x / BATTLE_TILE_SIZE);
+    const ty = Math.floor(y / BATTLE_TILE_SIZE);
+    return !!(battleEnvironment.grid && battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 11);
+}
+
+function _fishAvoidanceVector(f) {
+    let ax = 0;
+    let ay = 0;
+
+    // Keep fish away from land
+    const tx = Math.floor(f.x / BATTLE_TILE_SIZE);
+    const ty = Math.floor(f.y / BATTLE_TILE_SIZE);
+    const scan = 7;
+    const radiusPx = scan * BATTLE_TILE_SIZE;
+
+    for (let x = tx - scan; x <= tx + scan; x++) {
+        for (let y = ty - scan; y <= ty + scan; y++) {
+            if (x < 0 || x >= BATTLE_COLS || y < 0 || y >= BATTLE_ROWS) continue;
+            const cell = battleEnvironment.grid[x] && battleEnvironment.grid[x][y];
+            if (cell === 11) continue; // water only
+
+            const cx = (x + 0.5) * BATTLE_TILE_SIZE;
+            const cy = (y + 0.5) * BATTLE_TILE_SIZE;
+            const dx = f.x - cx;
+            const dy = f.y - cy;
+            const dist = Math.hypot(dx, dy) || 0.0001;
+
+            if (dist < radiusPx) {
+                const push = (radiusPx - dist) / radiusPx;
+                ax += (dx / dist) * push * 3.0;
+                ay += (dy / dist) * push * 3.0;
+            }
+        }
+    }
+
+    // Keep fish away from ships
+    navalEnvironment.ships.forEach(s => {
+        const sx = s.x + navalEnvironment.shipSwayX;
+        const sy = s.y + navalEnvironment.shipSwayY;
+
+        const shipRadius = Math.max(s.width, s.height) * 0.56 + 180;
+        const dx = f.x - sx;
+        const dy = f.y - sy;
+        const dist = Math.hypot(dx, dy) || 0.0001;
+
+        if (dist < shipRadius) {
+            const push = (shipRadius - dist) / shipRadius;
+            ax += (dx / dist) * push * 4.0;
+            ay += (dy / dist) * push * 4.0;
+        }
+    });
+
+    return { ax, ay };
 }
 
 // ============================================================================
@@ -1077,13 +1203,29 @@ window.getNavalSurfaceAt = function(worldX, worldY) {
         let inStern = (X >= profile.castles.stern[0] && X <= profile.castles.stern[1] && Y <= profile.castles.stern[2]);
         let inBow   = (X >= profile.castles.bow[0] && X <= profile.castles.bow[1] && Y <= profile.castles.bow[2]);
 
-        const getDynamicMaxY = (cfg) => {
-            if (X < cfg.xRange[0] || X > cfg.xRange[1]) return -1;
+const getDynamicMaxY = (cfg) => {
+            // FIX: Expand the bow/stern length limits by 8% to prevent 
+            // units instantly drowning when touching the extreme tips.
+            let lengthPadding = 0.08; 
+            if (X < (cfg.xRange[0] - lengthPadding) || X > (cfg.xRange[1] + lengthPadding)) return -1;
+
+            // Clamp X to the standard bounds so the bezier curves don't break
+            let safeX = Math.max(cfg.xRange[0], Math.min(cfg.xRange[1], X));
+            let baseMaxY = 0;
+
             // Handle the flat/slanted bow/stern sections
-            if (X < cfg.curves[0][0]) return (cfg.curves[0][3] / Math.abs(cfg.curves[0][0] - cfg.xRange[0])) * (X - cfg.xRange[0]);
-            if (X <= cfg.curves[0][2]) return _calcBezierY(X, ...cfg.curves[0]);
-            // Handle the aft taper
-            return cfg.curves[0][5] - (cfg.curves[0][5] / cfg.bowSlant) * (X - cfg.curves[0][2]);
+            if (safeX < cfg.curves[0][0]) {
+                baseMaxY = (cfg.curves[0][3] / Math.abs(cfg.curves[0][0] - cfg.xRange[0])) * (safeX - cfg.xRange[0]);
+            } else if (safeX <= cfg.curves[0][2]) {
+                baseMaxY = _calcBezierY(safeX, ...cfg.curves[0]);
+            } else {
+                // Handle the aft taper
+                baseMaxY = cfg.curves[0][5] - (cfg.curves[0][5] / cfg.bowSlant) * (safeX - cfg.curves[0][2]);
+            }
+            
+            // FIX: Add generous width padding (12% wider deck hitbox).
+            // This stops units from falling off the tapered sides of light ships.
+            return baseMaxY + 0.12; 
         };
 
         let waterBuffer = 60 / s.height; // Convert pixels to normalized space
@@ -1092,7 +1234,8 @@ window.getNavalSurfaceAt = function(worldX, worldY) {
         // Final Geometry Check
         if (hullMaxY !== -1 && Y <= hullMaxY + waterBuffer) {
             let deckMaxY = getDynamicMaxY(profile.deck);
-            return (Y <= deckMaxY + 0.02 || inStern || inBow) ? 'DECK' : 'EDGE';
+            // FIX: Increased the internal tolerance from 0.02 to 0.06 
+            return (Y <= deckMaxY + 0.06 || inStern || inBow) ? 'DECK' : 'EDGE';
         }
         
         if (inStern || inBow) return 'DECK';
@@ -1100,3 +1243,13 @@ window.getNavalSurfaceAt = function(worldX, worldY) {
 
     return 'WATER';
 };
+
+function _isPositionOccupiedByShip(x, y) {
+    return navalEnvironment.ships.some(s => {
+        const sx = s.x + (navalEnvironment.shipSwayX || 0);
+        const sy = s.y + (navalEnvironment.shipSwayY || 0);
+        // Using a slightly smaller buffer for spawning than the avoidance radius
+        const spawnBuffer = Math.max(s.width, s.height) * 0.52;
+        return Math.hypot(x - sx, y - sy) < spawnBuffer;
+    });
+}

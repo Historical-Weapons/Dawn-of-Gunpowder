@@ -161,15 +161,83 @@ processMoraleAndFleeing: function(unit, pCount, eCount, currentBattleData) {
     return false; 
 },
 
-    processTargeting: function(unit, units) {
-        if (unit.disableAICombat || unit.orderType === "ladder_crew" || unit.orderType === "siege_assault") {
+processTargeting: function(unit, units) {
+if (unit.disableAICombat || unit.orderType === "siege_assault") {
             return; 
+        }
+// --- NEW GUARD: PACIFY EARLY-GAME WALL DEFENDERS (PATCHED) ---
+        let southGate = (typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates) 
+            ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
+        let isGateBreached = window.__SIEGE_GATE_BREACHED__ || (southGate && (southGate.isOpen || southGate.gateHP <= 0));
+
+        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && unit.side === "enemy") {
+            let areLaddersDeployed = typeof siegeEquipment !== 'undefined' && 
+                                     siegeEquipment.ladders && 
+                                     siegeEquipment.ladders.some(l => l.isDeployed && l.hp > 0);
+                                     
+            // Wake up if ladders hit the wall OR the gate is smashed
+            if (!unit.stats.isRanged && !areLaddersDeployed && !isGateBreached) {
+                unit.vx = 0;
+                unit.vy = 0;
+                unit.state = "idle"; 
+                unit.target = null;
+                return; 
+            }
+        }
+        // LADDER CREW: Assign the nearest undeployed ladder as target, then move to it
+        if (unit.orderType === "ladder_crew") {
+            if (typeof siegeEquipment !== 'undefined' && siegeEquipment.ladders) {
+                let undeployedLadders = siegeEquipment.ladders.filter(l => !l.isDeployed && l.hp > 0);
+                if (undeployedLadders.length > 0) {
+                    let closest = undeployedLadders.reduce((prev, curr) =>
+                        Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
+                    );
+                    unit.target = closest;
+                    unit.hasOrders = true;
+                }
+            }
+            return;
         }
  // --- NEW ANCHOR PROTECTION ---
         // Prevents the 5% random dummy reassignment from hijacking settled units
         if (unit.target && unit.target.isAnchor) {
             return;
         }
+
+// --- RAM CREW VALIDATION ---
+        // The ram requires at least one nearby ally to function. 
+        // If "abandoned," it clears its target and stops attacking.
+        if (unit.type === "ram" || unit.siegeRole === "battering_ram") {
+            const crewTouchDistance = 60; // Adjust based on your ram's sprite size
+            const hasActiveCrew = units.some(other => 
+                other.side === unit.side && 
+                other !== unit && 
+                other.hp > 0 && 
+                !other.isDummy &&
+                Math.hypot(unit.x - other.x, unit.y - other.y) < crewTouchDistance
+            );
+
+            if (!hasActiveCrew) {
+                unit.target = null;
+                unit.hasOrders = false;
+                unit.state = "idle"; // Prevents it from "ghost attacking" the gate
+                return; 
+            }
+        }
+		
+        // --- CREW REINTEGRATION (ATTACKERS & DEFENDERS) ---
+        // If an attacker or defender's siege engine is destroyed, they abandon the role and join the main line.
+        if (unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew" || unit.siegeRole === "engine_crew") {
+            let myEngine = (unit.target && (unit.target.isTrebuchet || unit.target.isBallista || unit.target.type === "trebuchet" || unit.target.type === "ballista")) ? unit.target : null;
+            
+            // If the target engine doesn't exist or is destroyed, clear their duty.
+            if (!myEngine || myEngine.hp <= 0) {
+                unit.siegeRole = "infantry";
+                unit.target = null;
+                unit.hasOrders = false;
+            }
+        }
+
         let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
 		
         //clear the gate gathering dummy
@@ -195,27 +263,16 @@ processMoraleAndFleeing: function(unit, pCount, eCount, currentBattleData) {
 		// ==========================================
         // SIEGE MACRO-TARGETING OVERHAUL
         // ==========================================
+      // ==========================================
+        // SIEGE MACRO-TARGETING OVERHAUL
+        // ==========================================
         if (inSiege) {
-            let southGate = (typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates) 
-                ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
-            let isGateBreached = !southGate || southGate.isOpen;
-            
             let gateX = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : BATTLE_WORLD_WIDTH / 2;
             let gateY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelY : BATTLE_WORLD_HEIGHT / 2;
 
-            let gateTarget = {
-                x: gateX,
-                y: gateY - 20, // Pull them slightly inside
-                hp: 9999, isDummy: true, priority: "gate_funnel"
-            };
-
-            let plazaTarget = {
-                x: gateX,
-                y: typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : BATTLE_WORLD_HEIGHT / 2,
-                hp: 9999, isDummy: true, priority: "plaza"
-            };
-
-			// ATTACKER COMMON GOAL (2-STAGE FUNNEL + HARD BREACH OVERRIDE)
+            let gateTarget = { x: gateX, y: gateY - 20, hp: 9999, isDummy: true, priority: "gate_funnel" };
+            let plazaTarget = { x: gateX, y: typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : BATTLE_WORLD_HEIGHT / 2, hp: 9999, isDummy: true, priority: "plaza" };
+			// ATTACKER COMMON GOAL (OVERHAULED FOR LADDERS & PLAZA)
 			if (unit.side === "player") {
 				const gateCentroid = southGate && southGate.pixelRect
 					? {
@@ -227,23 +284,94 @@ processMoraleAndFleeing: function(unit, pCount, eCount, currentBattleData) {
 						y: gateY
 					};
 
-if (isGateBreached) {
-    unit.onWall = false;               // clear wall state
-    unit.hasOrders = true;
-    unit.orderType = "move_to_point";  // stop ladder-assault style retargeting
-    unit.breachRush = true;            // hard lock for movement
+// Check if any ladders are successfully deployed against the walls
+                const areLaddersDeployed = typeof siegeEquipment !== 'undefined' && 
+                                           siegeEquipment.ladders && 
+                                           siegeEquipment.ladders.some(l => l.isDeployed && l.hp > 0);
 
-    unit.target = {
-        x: gateCentroid.x,
+                // PRE-DEPLOYMENT MAGNET: Pull eligible infantry toward undeployed ladders like magnets
+                const hasUndeployedLadders = typeof siegeEquipment !== 'undefined' &&
+                                              siegeEquipment.ladders &&
+                                              siegeEquipment.ladders.some(l => !l.isDeployed && l.hp > 0);
+
+                if (!areLaddersDeployed && hasUndeployedLadders && canUseSiegeEngines(unit) && !unit.isClimbing && !unit.onWall) {
+                    let undeployedLadders = siegeEquipment.ladders.filter(l => !l.isDeployed && l.hp > 0);
+                    let bestLadder = undeployedLadders.reduce((prev, curr) =>
+                        Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
+                    );
+                    unit.target = bestLadder;
+                    unit.orderType = "ladder_crew";
+                    unit.hasOrders = true;
+                    return;
+                }
+
+// Look for the "1. GATE BREACHED" block inside processTargeting
+if (isGateBreached) {
+    // Force role swap — even active ladder-climbers drop their task
+    unit.siegeRole        = "gate_charger";
+    unit.isClimbing       = false;
+    unit.onWall           = false;
+    unit.hasOrders        = true;
+    unit.orderType        = "move_to_point";
+    unit.breachRush       = true;
+    unit.priorityOverride = true; // tells processAction to skip engagement logic
+
+    // Simply move everyone to the old gate centroid to funnel through the gap
+    unit.target = { 
+        x: gateCentroid.x, 
         y: gateCentroid.y,
-        hp: 9999,
-        isDummy: true,
-        priority: "gate_breach_rush"
+        hp: 99, 
+        isDummy: true, 
+        priority: "gate_funnel" 
     };
     return;
 }
 
-				// Pre-breach behavior stays below only if the gate is still intact
+// 2. LADDERS DEPLOYED (GATE INTACT) -> STORM THE LADDERS (Two-Phase Charge)
+if (areLaddersDeployed && canUseSiegeEngines(unit)) {
+    
+    // Find the closest active ladder to use as our "Centroid"
+    let activeLadders = typeof siegeEquipment !== 'undefined' ? 
+                        siegeEquipment.ladders.filter(l => l.isDeployed && l.hp > 0) : [];
+    let bestLadder = activeLadders[0] || {x: gateCentroid.x, y: gateCentroid.y};
+    
+    if (activeLadders.length > 0) {
+        bestLadder = activeLadders.reduce((prev, curr) => 
+            Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
+        );
+    }
+
+    // Only apply this to units not already locked into climbing
+    if (!unit.isClimbing && !unit.onWall) {
+        unit.siegeRole        = "ladder_charger";
+        unit.hasOrders        = true;
+        unit.orderType        = "move_to_point";
+        unit.breachRush       = true;
+        unit.priorityOverride = true; // tells processAction to skip engagement logic
+
+        const _centroidX = bestLadder.x;
+        const _centroidY = bestLadder.y - 10; // Aim right at the ladder's base
+        const _distToCentroid = Math.hypot(unit.x - _centroidX, unit.y - _centroidY);
+
+        if (_distToCentroid > 20) {
+            // PHASE A — march directly to the ladder base
+            unit.target = { 
+                x: _centroidX, 
+                y: _centroidY,
+                hp: 9999, 
+                isDummy: true, 
+                priority: "ladder_centroid",
+                isLadderAssault: true // Hooks into the fast-track climbing physics
+            };
+        } else {
+            // PHASE B — once at the ladder, push through to the city plaza
+            unit.target = plazaTarget;
+        }
+        return;
+    }
+}
+
+				// 3. PRE-BREACH & PRE-LADDER -> RANGED FORMATIONS HOLD LINE
 				if (!canUseSiegeEngines(unit)) {
 					let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000;
 					unit.target = {
@@ -257,105 +385,96 @@ if (isGateBreached) {
 				}
 			}
 						
-			// DEFENDER COMMON GOAL
-			
-			if (unit.side === "enemy") {
-				
-				if (inSiege && unit.side === "enemy" && battleEnvironment) {
-				if (!battleEnvironment.defenderGateDummyStartedAt) {
-					battleEnvironment.defenderGateDummyStartedAt = now;
-				}
+		// ==========================================
+            // DEFENDER COMMON GOAL (PATCHED)
+            // ==========================================
+            if (unit.side === "enemy") {
+                
+                if (isGateBreached && !unit.onWall) {
+                    if (!unit.target || unit.target.priority !== "plaza") {
+                        unit.target = plazaTarget;
+                    }
+                    return;
+                }
 
-				if (!battleEnvironment.defenderGateDummyDisabled) {
-					const startedAt = battleEnvironment.defenderGateDummyStartedAt;
-					if (now - startedAt > 3000) {
-						battleEnvironment.defenderGateDummyDisabled = true;
-					}
-				}
+                // PRE-BREACH DEFENSE SPLIT: No 3-second skipping allowed.
+                if (!isGateBreached) {
+                    const duty = siegeDefenseRoll(unit);
+                    const ranged = isSiegeRangedDefender(unit);
+                    const siegeCrew = canUseSiegeEngines(unit);
+                    let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : gateY;
 
-				if (battleEnvironment.defenderGateDummyDisabled && unit.target && unit.target.isDummy) {
-					const p = unit.target.priority || "";
-					if (p === "gate_plug" || p === "gate_patrol" || p === "ranged_line" || p === "plaza") {
-						unit.target = null;
-						unit.hasOrders = false;
-						unit.state = "idle";
-						unit.vx = 0;
-						unit.vy = 0;
-					}
-				}
-			}
+                    // --- 1. ENGINE CREW ALLOCATION ---
+                    let availableEngines = [];
+                    if (typeof siegeEquipment !== 'undefined') {
+                        if (siegeEquipment.trebuchets) availableEngines.push(...siegeEquipment.trebuchets.filter(t => t.side === 'enemy' && t.hp > 0));
+                        if (siegeEquipment.ballistas) availableEngines.push(...siegeEquipment.ballistas.filter(b => b.side === 'enemy' && b.hp > 0));
+                    }
+                    if (availableEngines.length > 0 && duty < 50) { 
+                        let engine = availableEngines[duty % availableEngines.length];
+                        unit.target = engine; 
+                        unit.siegeRole = "engine_crew";
+                        unit.disableAICombat = true; 
+                        return;
+                    }
 
-				
-				
-				if (isGateBreached && !unit.onWall) {
-					if (!unit.target || unit.target.priority !== "plaza") {
-						unit.target = plazaTarget;
-					}
-					return;
-				}
+                    // Scan for real threats to establish Aggro Radius
+                    let nearestEnemy = null;
+                    let nearestDist = Infinity;
+                    units.forEach(other => {
+                        if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
+                            const d = Math.hypot(unit.x - other.x, unit.y - other.y);
+                            if (d < nearestDist) {
+                                nearestDist = d;
+                                nearestEnemy = other;
+                            }
+                        }
+                    });
 
-				// PRE-BREACH DEFENSE SPLIT:
-				// ranged shoot, only a minority of melee hold the gate, others patrol/reserve
-				if (!isGateBreached && !battleEnvironment.defenderGateDummyDisabled) {
-					const duty = siegeDefenseRoll(unit);
-					const ranged = isSiegeRangedDefender(unit);
-					const siegeCrew = canUseSiegeEngines(unit);
+                    // --- 2. RANGED LOGIC ---
+                    if (ranged) {
+                        if (nearestEnemy && nearestDist < unit.stats.range + 100) {
+                            unit.target = nearestEnemy; // Engage if in range
+                        } else {
+                            unit.target = {
+                                x: gateX + ((Math.random() - 0.5) * 1600), 
+                                y: wallY + 10,
+                                hp: 9999, isDummy: true, priority: "ranged_line"
+                            };
+                        }
+                        return;
+                    }
 
-					let nearestEnemy = null;
-					let nearestDist = Infinity;
+                    // --- 3. LADDER RUSH ---
+                    let activeLadders = typeof siegeEquipment !== 'undefined' && siegeEquipment.ladders 
+                                        ? siegeEquipment.ladders.filter(l => l.isDeployed && l.hp > 0) : [];
 
-					units.forEach(other => {
-						if (other.side !== unit.side && other.hp > 0 && !other.isDummy) {
-							const d = Math.hypot(unit.x - other.x, unit.y - other.y);
-							if (d < nearestDist) {
-								nearestDist = d;
-								nearestEnemy = other;
-							}
-						}
-					});
+                    if (activeLadders.length > 0 && !ranged && !siegeCrew) {
+                        let bestLadder = activeLadders.reduce((prev, curr) => 
+                            Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
+                        );
+                        unit.target = { x: bestLadder.x, y: wallY + 10, hp: 9999, isDummy: true, priority: "ladder_defense" };
+                        return;
+                    }
 
-					// 1) ALL ranged units prioritize real enemy targets
-					if (ranged) {
-						if (nearestEnemy) {
-							unit.target = nearestEnemy;
-						} else {
-							unit.target = {
-								x: gateX,
-								y: gateY - 140,
-								hp: 9999,
-								isDummy: true,
-								priority: "ranged_line",
-								    createdAt: now
-							};
-						}
-						return;
-					}
+                    // --- 4. MELEE FORMATION (WITH AGGRO RADIUS) ---
+                    // If an enemy gets extremely close (e.g., climbs the wall), break formation and attack!
+                    if (nearestEnemy && nearestDist < 120) {
+                        unit.target = nearestEnemy;
+                        return;
+                    }
 
-					// 2) Only some melee get strict gate duty (Reduced to 10%)
-					if (siegeCrew || duty < 10) { 
-						unit.target = {
-							x: gateX + ((duty % 2 === 0 ? -1 : 1) * 80),
-							y: gateY - 150,
-							hp: 9999, isDummy: true, priority: "gate_plug",
-							    createdAt: now
-						};
-						return;
-					}
-
-					// 3) Some melee patrol near the breach instead of stacking on it (Reduced to 30% total)
-					if (duty < 30) { 
-						unit.target = {
-							x: gateX + (((duty * 9) % 400) - 200), // Widened from 220 to 400
-							y: gateY - 210 + ((duty % 3) * 60),    // Increased depth spacing
-							hp: 9999, isDummy: true, priority: "gate_patrol",
-							    createdAt: now
-						};
-						return;
-					}
-
-					 
-				}
-			}
+                    // Otherwise, hold the line indefinitely (No more 3-second disabling!)
+                    if (siegeCrew || duty < 3) { 
+                        unit.target = { x: gateX + ((duty % 2 === 0 ? -1 : 1) * 80), y: wallY - 50, hp: 9999, isDummy: true, priority: "gate_plug" };
+                        return;
+                    }
+                    if (duty < 10) { 
+                        unit.target = { x: gateX + ((Math.random() - 0.5) * 1600), y: wallY - 50, hp: 9999, isDummy: true, priority: "gate_patrol" };
+                        return;
+                    }
+                }
+            }
         }
  
 		// ==========================================
@@ -389,7 +508,10 @@ if (isGateBreached) {
             ? Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y) 
             : Infinity;
 
-        if (!unit.target || unit.target.hp <= 0 || Math.random() < 0.01 || (unit.target.isDummy && Math.random() < 0.05)) {
+// PERFORMANCE: Only re-scan for a new target if the current one is gone, or on a low-probability random check.
+        // Skip the scan entirely if this unit has a healthy real target — saves many CPU cycles per frame.
+        const hasHealthyTarget = unit.target && unit.target.hp > 0 && !unit.target.isDummy;
+        if (!hasHealthyTarget || Math.random() < 0.008 || (unit.target.isDummy && Math.random() < 0.04)) {
             let nearestDist = Infinity;
             let nearestEnemy = null;
             units.forEach(other => {
@@ -409,9 +531,23 @@ if (isGateBreached) {
         }
     },
 
-    processAction: function(unit, battleEnv, currentBattleData, player) {
+processAction: function(unit, battleEnv, currentBattleData, player) {
 
-if (unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall && canUseSiegeEngines(unit)) {
+// PERFORMANCE: Skip heavy AI for units not visible on screen.
+        // Exception: ladder/ram pushers must always process regardless of camera position.
+        const _isActivePusher = (unit.siegeRole === "ladder_fanatic" || unit.orderType === "ladder_crew");
+        if (!_isActivePusher && typeof camera !== 'undefined' && typeof isOnScreen === 'function' && !isOnScreen(unit, camera)) {
+            if (unit.cooldown > 0) unit.cooldown--;
+            return;
+        }
+
+// ---> SURGERY: Evaluate the gate status FIRST before the ladder logic
+        let southGate = (typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates) 
+            ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
+        let isGateBreached = window.__SIEGE_GATE_BREACHED__ || (southGate && (southGate.isOpen || southGate.gateHP <= 0));
+
+if (!isGateBreached && unit.side === "player" && unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall && canUseSiegeEngines(unit)) {
+	
 
     if (!unit.onWall) { 
         const activeLadders = typeof siegeEquipment !== 'undefined' ? 
@@ -433,6 +569,14 @@ if (unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall &&
             };
             unit.state = "moving";
             unit.hasOrders = true;
+			
+		 unit.targetLadder = bestLadder;  // cache ref so X-lock always has it
+            // Snap ladder-specialists into the correct approach lane immediately
+            if (unit.siegeRole === "ladder_fanatic" || unit.siegeRole === "ladder_carrier") {
+				const _maxNudge = (unit.stats?.speed ?? 2) * 1.5; // max px per frame
+				const _rawNudge = (bestLadder.x - unit.x) * 0.20;
+				unit.x += Math.max(-_maxNudge, Math.min(_maxNudge, _rawNudge));
+            }
         }
     }
 }
@@ -475,7 +619,8 @@ if (unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall &&
 
         // SURGERY: Allow 'siege_assault' and 'move_to_point' to fight back if their target is a REAL enemy.
         // If the target is just a dummy waypoint, they skip combat and keep walking.
-        if ((unit.orderType === "siege_assault" || unit.orderType === "move_to_point") && unit.target && unit.target.isDummy) {
+        if (unit.priorityOverride || ((unit.orderType === "siege_assault" || unit.orderType === "move_to_point") && unit.target && unit.target.isDummy)) {
+
              let dx = unit.target.x - unit.x;
              let dy = unit.target.y - unit.y;
              let dist = Math.hypot(dx, dy);
@@ -529,12 +674,20 @@ if (unit.target && !unit.target.isDummy && unit.onWall !== unit.target.onWall &&
             unit.stats.updateStance(dist);
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
 
-            if (dist > effectiveRange * 0.8) {
+// RANGE HYSTERESIS: Add a buffer so they don't stutter-step on the edge of their range
+            let isAlreadyAttacking = (unit.state === "attacking" && unit.stats.currentStance === "statusrange");
+            let rangeThreshold = isAlreadyAttacking ? (effectiveRange * 0.95) : (effectiveRange * 0.8);
+
+            if (dist > rangeThreshold) {
                 this._handleMovement(unit, dx, dy, dist, battleEnv);
             } else {
+                // EXTREME STOP: For ranged units in range, kill velocity completely so the animation locks cleanly
+                if (unit.stats.currentStance === "statusrange") {
+                    unit.vx = 0;
+                    unit.vy = 0;
+                }
                 this._handleCombatExecution(unit, dx, dy, dist, battleEnv, player);
             }
-
             let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
             if (hasMoved) {
                 unit.state = "moving";
@@ -700,7 +853,9 @@ if (unit.isClimbing) {
 // ============================================================================
 if (unit.isClimbing && unit.targetLadder) {
     // 1. Force the unit's X coordinate to perfectly match the ladder's center X
-    unit.x = unit.targetLadder.x; 
+    const _ldrHalfW = (unit.targetLadder.width != null) ? unit.targetLadder.width / 2 : (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE / 2 : 8);
+    unit.x = Math.max(unit.targetLadder.x - _ldrHalfW, Math.min(unit.targetLadder.x + _ldrHalfW, unit.x));
+	
     
     // 2. Kill any horizontal velocity so physics don't fight the lock
     if (unit.vx !== undefined) {
@@ -760,10 +915,22 @@ if (unit.isClimbing && unit.targetLadder) {
                     unit.onWall = false; 
                 }
             }
-            else if (currentTile === 8 || currentTile === 10) unit.onWall = true;  
+else if (currentTile === 8 || currentTile === 10) unit.onWall = true;  
             
             if (currentTile === 4) speedMod = 0.4; 
             if (currentTile === 7) speedMod = 0.6; 
+        }
+
+        // === DEFENDER WALL DETECTION (mirrors the attacker block above for enemy units) ===
+        if (inSiege && unit.side === "enemy" && battleEnv.grid && typeof BATTLE_TILE_SIZE !== 'undefined') {
+            let defTx = Math.floor(unit.x / BATTLE_TILE_SIZE);
+            let defTy = Math.floor(unit.y / BATTLE_TILE_SIZE);
+            let defTile = (battleEnv.grid[defTx] && battleEnv.grid[defTx][defTy] !== undefined) ? battleEnv.grid[defTx][defTy] : 0;
+            if (defTile === 8 || defTile === 10) {
+                unit.onWall = true;
+            } else if (defTile === 0 || defTile === 1 || defTile === 5) {
+                unit.onWall = false;
+            }
         }
 
 		if (unit.side === "player" && !unit.hasOrders) {
@@ -844,38 +1011,31 @@ if (unit.isClimbing && unit.targetLadder) {
                 unit.stuckLog.ticks = 0;
             }
 
-            // DEFENDER COHESION
-            if (unit.side === "enemy") {
-                let southGate = battleEnvironment.cityGates ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
-                let isGateBreached = !southGate || southGate.isOpen;
-                
-                if (!isGateBreached) {
-                    // Pre-Breach: Create an organized shield wall behind the gate, not just a random 100px shift
-                    if (unit.target && unit.target.isDummy) {
-                        let gateX = southGate ? southGate.pixelRect.x + (southGate.pixelRect.w / 2) : BATTLE_WORLD_WIDTH / 2;
-                        let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000;
-                        
-                        // Funnel into a horizontal line behind the gate
-                        unit.target.x = gateX + ((Math.random() - 0.5) * 150);
+// DEFENDER COHESION
+if (unit.side === "enemy") {
+    let southGate = battleEnvironment.cityGates ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
+    let isGateBreached = !southGate || southGate.isOpen;
+    
+    if (!isGateBreached) {
+        // Pre-Breach: Form an organized shield wall. 
+        // We removed the Math.random() jitter here. They now smoothly march to the coordinates assigned in targeting!
+        if (unit.target && unit.target.isDummy) {
+            dx = unit.target.x - unit.x;
+            dy = unit.target.y - unit.y;
+            dist = Math.hypot(dx, dy);
+        }
 
-unit.target.x = gateX + ((Math.random() - 0.5) * 300);
+        if (dist < 30) shouldHold = true; 
 
-                        dx = unit.target.x - unit.x;
-                        dy = unit.target.y - unit.y;
-                        dist = Math.hypot(dx, dy);
-                    }
+        let isMelee = !unit.stats.isRanged;
+        // Defend the line - hold formation
+        if (isMelee && !unit.onWall && dist < 40) {
+            shouldHold = true;
+            unit.vx = 0; 
+            unit.vy = 0;
+        }
 
-                    if (dist < 30) shouldHold = true; 
-
-                    let isMelee = !unit.stats.isRanged;
-                    // Defend the line - hold formation
-                    if (isMelee && !unit.onWall && dist < 40) {
-                        shouldHold = true;
-                        unit.vx = 0; 
-                        unit.vy = 0;
-                    }
-
-                } else {
+    } else {
                     // Post-Breach Fallback
                     if (!unit.breachTimestamp) unit.breachTimestamp = Date.now();
                     if (Date.now() - unit.breachTimestamp < 10000) speedMod *= 1.30; 
@@ -912,21 +1072,18 @@ unit.target.x = gateX + ((Math.random() - 0.5) * 300);
                 moveVector = getSiegePathfindingVector(unit, unit.target, dx, dy, dist);
             }
 
-          // Calculate base velocity
+// ... (Inside _handleMovement, below the moveVector calculation) ...
+            
+            // Calculate base velocity
             let vx = (moveVector.dx / moveVector.dist) * (unit.stats.speed * speedMod);
             let vy = (moveVector.dy / moveVector.dist) * (unit.stats.speed * speedMod);
 
-// ---> SURGERY: LADDER PHYSICS ENGINE <---
+            // ---> SURGERY: LADDER PHYSICS ENGINE <---
             if (isOnLadderTile) {
                 if (isLargeUnit) {
-                    // 1. HARD BLOCK: Cavalry cannot move on ladder tiles
-                    vx = 0;
-                    vy = 0;
-                    unit.vx = 0;
-                    unit.vy = 0;
+                    vx = 0; vy = 0; unit.vx = 0; unit.vy = 0;
                 } else {
-                    // 2. SPEED DEBUFF & STONE TRAP FIX: Infantry moves straight up
-                    vx = 0; // Lock horizontal movement so they cannot phase into stone walls
+                    vx = 0; 
                     vy *= 0.30;
                 }
             }
@@ -944,32 +1101,143 @@ unit.target.x = gateX + ((Math.random() - 0.5) * 300);
                 }
             }
 
-            // STUCK PREVENTION: If a unit hasn't moved in 60 ticks (1 sec), override vector laterally
-            if (inSiege && unit.stuckLog && unit.stuckLog.ticks > 60) {
-                // Determine a perpendicular escape vector based on current target vector
-                let perpX = -vy;
-                let perpY = vx;
+// --- EXTREME RANDOMNESS FOR ATTACKERS NEAR THE GATE ---
+if (inSiege && unit.side === "player") {
+    let southGate = typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
+    let gateX = southGate && southGate.pixelRect ? southGate.pixelRect.x + (southGate.pixelRect.w / 2) : (typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelX : BATTLE_WORLD_WIDTH / 2);
+    let gateY = southGate && southGate.pixelRect ? southGate.pixelRect.y + (southGate.pixelRect.h / 2) : (typeof SiegeTopography !== 'undefined' ? SiegeTopography.gatePixelY : BATTLE_WORLD_HEIGHT / 2);
+    
+    let distToGate = Math.hypot(unit.x - gateX, unit.y - gateY);
+
+    // FIX: Only trigger the "Panic Shuffle" if the unit hasn't moved for at least 1 second (60 ticks)
+    if (distToGate < 50 && unit.stuckLog && unit.stuckLog.ticks > 160) {
+        // Massive, chaotic movement around the breach as a last resort
+        vx += (Math.random() - 0.5) * (unit.stats.speed * 4.5);
+        vy += (Math.random() - 0.5) * (unit.stats.speed * 4.5);
+    }
+}
+
+// --- STUCK PREVENTION OVERHAUL (STRICTER & CALIBRATED) ---
+            if (inSiege && unit.stuckLog) {
                 
-                // Add some chaotic slide to break out of geometry corners
-                vx = perpX * 1.5 + ((Math.random() - 0.5) * unit.stats.speed);
-                vy = perpY * 1.5 + ((Math.random() - 0.5) * unit.stats.speed);
-                
-                // If extremely stuck (> 180 ticks), temporarily clear target to force repathing
-                if (unit.stuckLog.ticks > 180) {
-                    unit.target = null;
-                    unit.stuckLog.ticks = 0;
+                // 1. LADDER SPECIFIC - 5 SECOND (600 TICKS) UNSTICK FALLBACK
+                // Added !unit.unstickCooldown to ensure we don't trigger while already recovering
+                if ((isOnLadderTile || unit.isClimbing || unit.onWall) && !unit.unstickCooldown) {
+                    
+                    if (unit.stuckLog.ticks > 300) { 
+                        if (!unit.unstickAttempts) unit.unstickAttempts = 0;
+                        unit.unstickAttempts++;
+
+                      // Phase 2: Only trigger after Phase 1 (the jump back) has already failed
+                        if (unit.unstickAttempts > 1) {
+                            // Panic for ~2.5 seconds (150 ticks) instead of 30 seconds
+                            unit.randomPanicTimer = 150; 
+                            unit.unstickAttempts = 0; 
+                            
+                            // Cooldown: prevent this unit from triggering any unstick logic 
+                            // for the next 10 seconds (600 ticks) to let them settle
+                            unit.unstickCooldown = 600; 
+                        } else {
+                            // Phase 1: Smooth vertical slide down (24 frames * 5px = 120px)
+                            unit.ladderSlideTimer = 24; 
+                            
+                            // Strip states immediately so they detach from the ladder logic
+                            unit.isClimbing = false;
+                            unit.onWall = false;
+                            unit.stuckLog.ticks = 0;
+                        }
+                    }
+                } 
+                // 2. STANDARD LATERAL OVERRIDE FOR GROUND UNITS (1 SEC)
+                else if (unit.stuckLog.ticks > 60 && !unit.unstickCooldown) {
+                    let perpX = -vy;
+                    let perpY = vx;
+                    vx = perpX * 1.5 + ((Math.random() - 0.5) * unit.stats.speed);
+                    vy = perpY * 1.5 + ((Math.random() - 0.5) * unit.stats.speed);
+                    
+                    if (unit.stuckLog.ticks > 180) {
+                        unit.target = null;
+                        unit.stuckLog.ticks = 0;
+                        unit.unstickCooldown = 120; // Short 2-second rest
+                    }
                 }
-            } else if (inSiege && unit.side === "player" && !unit.onWall && unit.target && unit.target.isLadderAssault) {
-                // Clean straight pathing for ladder mounts to prevent clumping
-                let climbDx = unit.target.x - unit.x;
-                let climbDy = (unit.target.y - 15) - unit.y; 
-                let climbDist = Math.hypot(climbDx, climbDy) || 1;
-                vx = (climbDx / climbDist) * (unit.stats.speed * 1.2); 
-                vy = (climbDy / climbDist) * (unit.stats.speed * 1.2);
+            } 
+
+            // Tick down the cooldown
+            if (unit.unstickCooldown > 0) {
+                unit.unstickCooldown--;
             }
 
-           let nextX = unit.x + vx;
+                       // --- LADDER approach VECTOR (Fast-Track for specialists) ---
+            if (inSiege && unit.side === "player" && !unit.onWall && unit.target && unit.target.isLadderAssault) {
+                const _isSpecialist = (unit.siegeRole === "ladder_fanatic" || unit.siegeRole === "ladder_carrier");
+                const _ldrRef  = unit.targetLadder || unit.target;
+                const _ftDx    = _ldrRef.x - unit.x;
+                const _ftDy    = (_ldrRef.y != null ? _ldrRef.y - 10 : unit.target.y - 15) - unit.y;
+                const _ftDist  = Math.hypot(_ftDx, _ftDy) || 1;
+
+                if (_isSpecialist && _ftDist < 280) {
+                    // FAST-TRACK: bypass flocking — perfectly straight line to ladder base
+                    unit.ignoreSeparation = true;
+                    vx = (_ftDx / _ftDist) * (unit.stats.speed * 1.6);
+                    vy = (_ftDy / _ftDist) * (unit.stats.speed * 1.6);
+                } else {
+                    unit.ignoreSeparation = false;
+                    vx = (_ftDx / _ftDist) * (unit.stats.speed * 1.2);
+                    vy = (_ftDy / _ftDist) * (unit.stats.speed * 1.2);
+                }
+            }
+
+
+          // --- SHORT PANIC MOVEMENT (2.5 SECONDS) ---
+            if (unit.randomPanicTimer && unit.randomPanicTimer > 0) {
+                // Reduced multiplier to 3.5x so they don't look like they are teleporting
+                vx = (Math.random() - 0.5) * (unit.stats.speed * 1.1);
+                vy = (Math.random() - 0.5) * (unit.stats.speed * 1.1);
+                unit.randomPanicTimer--;
+
+                // CRITICAL: Clear stuck ticks when panic ends so they don't immediately re-trigger
+                if (unit.randomPanicTimer <= 0) {
+                    unit.stuckLog.ticks = 0;
+                }
+            }
+
+            // --- NEW SURGERY: SMOOTH VERTICAL LADDER RECOVERY ---
+            if (unit.ladderSlideTimer && unit.ladderSlideTimer > 0) {
+                vx = 0; // Cancel normal velocity calculation
+                vy = 0; 
+                
+                // Directly edit position to bypass collision entirely (5px micro-teleports)
+                unit.x += (Math.random() - 0.5) * 0.5; // Slight visual shake side-to-side
+                unit.y += 1; // Drop straight down 5 pixels
+                
+                unit.ladderSlideTimer--;
+            }
+
+            let nextX = unit.x + vx;
             let nextY = unit.y + vy;
+// SURGERY 3: Defender Hard-Line — EXTREME MEASURE (NO EXCEPTIONS)
+            if (inSiege && unit.side === "enemy" && !unit.isFalling) {
+                let southGate = typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
+                let isGateBreached = !southGate || southGate.isOpen || southGate.gateHP <= 0 || window.__SIEGE_GATE_BREACHED__;
+                
+                // If the gate is still alive, absolutely NO defender crosses the wall boundary.
+                if (!isGateBreached) {
+                    const StrictWallY = (typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000) - 15; // 85px safety buffer
+                    
+                    if (nextY > StrictWallY) {
+                        nextY = StrictWallY; // Hard mathematical clamp
+                        vy = 0;              // Destroy forward momentum
+                        
+                        // For melee units that hit the invisible wall, force them to stop walking entirely
+                        if (!unit.stats.isRanged) {
+                            unit.vx = 0; 
+                            unit.state = "idle";
+                        }
+                    }
+                }
+            }
+
 
 			if (typeof isBattleCollision === 'function') {
                 // 1. Determine if this unit should phase through others (Ladders/Stairs)
@@ -1008,11 +1276,11 @@ unit.target.x = gateX + ((Math.random() - 0.5) * 300);
             }
         }
     },
-
-    _handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
-        if (unit.target.isDummy) {
+_handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
+        // HARD GUARD: Abort combat if target is a dummy, an engine, or lacks stats entirely
+        if (!unit.target || unit.target.isDummy || !unit.target.stats) {
             if (!unit.isCommander) unit.state = "idle";
-            if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
+            if (unit.stats && unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
             return;
         }
 
@@ -1124,11 +1392,15 @@ unit.target.x = gateX + ((Math.random() - 0.5) * 300);
             }
         });
 
-        /* 4. UPDATE PROJECTILES (PHYSICS BASED COLLISION) */
+/* 4. UPDATE PROJECTILES (PHYSICS BASED COLLISION) */
         for (let i = battleEnvironment.projectiles.length - 1; i >= 0; i--) {
             let p = battleEnvironment.projectiles[i];
 
-            // 1. Move projectile along its vector
+            // 1. Save previous position for Continuous Collision Detection
+            let prevX = p.x;
+            let prevY = p.y;
+
+            // Move projectile along its vector
             p.x += p.vx;
             p.y += p.vy;
 
@@ -1182,39 +1454,56 @@ unit.target.x = gateX + ((Math.random() - 0.5) * 300);
                 battleEnvironment.projectiles.splice(i, 1);
                 continue;
             }
-
-            // 3. Physical Hitbox Collision
+// 3. Physical Hitbox Collision (Upgraded to Raycasting)
             let hitMade = false;
 
             for (let j = 0; j < units.length; j++) {
                 let u = units[j];
 
                 // Only check living enemies
-                if (u.hp > 0 && u.side !== p.side) {
+                if (u.hp > 0 && u.side !== p.side && !u.isFalling) {
                     let hitbox = u.stats && u.stats.isLarge ? 16 : 8;
-                    let distToUnit = Math.hypot(p.x - u.x, p.y - u.y);
+                    
+                    // Raycast from the previous frame's coordinates to the current coordinates
+                    let isHit = lineIntersectsCircle(prevX, prevY, p.x, p.y, u.x, u.y, hitbox);
 
-                    if (distToUnit < hitbox) {
-                        hitMade = true;
+                    if (isHit) {
+                        // 1. Anti-Multi-Hit Guard: Prevent piercing projectiles from hitting the same unit every frame
+                        if (!p.hitList) p.hitList = new Set();
+                        if (p.hitList.has(u.id || u)) continue; // Use u.id if available, fallback to object ref
+
+                        // 2. Pass-Through (Pierce) Logic
+                        let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
+                        let pierceChance = inSiege ? 0.30 : 0.10; // 10% pierce on land, 30% in siege
+                        let doesPierce = Math.random() < pierceChance;
+
+                        // Deal Damage
                         let dmg = typeof calculateDamageReceived === 'function' ? calculateDamageReceived(p.attackerStats, u.stats, "ranged_attack") : 1;
                         u.hp -= dmg;
+                        
+                        p.hitList.add(u.id || u); // Mark unit as hit
 
-                        // Stick to Unit Bodies
-                        if (isJavelin || isBolt || isArrow || isRocket) {
-                            if (!u.stuckProjectiles) u.stuckProjectiles = [];
-                            if (u.stuckProjectiles.length < 4) {
-                                let effectType = isJavelin ? "javelin" : (isBolt ? "bolt" : (isSlinger ? "stone" : (isRocket ? "rocket" : "arrow")));
-                                u.stuckProjectiles.push({
-                                    type: effectType,
-                                    offsetX: p.x - u.x,
-                                    offsetY: p.y - u.y,
-                                    angle: Math.atan2(p.vy, p.vx),
-                                    timestamp: Date.now()
-                                });
+                        // 3. Handle Stopping vs Piercing
+                        if (!doesPierce) {
+                            hitMade = true; // Mark to destroy the projectile later
+
+                            // Stick to Unit Bodies ONLY if the projectile stops inside them
+                            if (isJavelin || isBolt || isArrow || isRocket) {
+                                if (!u.stuckProjectiles) u.stuckProjectiles = [];
+                                if (u.stuckProjectiles.length < 4) {
+                                    let effectType = isJavelin ? "javelin" : (isBolt ? "bolt" : (isSlinger ? "stone" : (isRocket ? "rocket" : "arrow")));
+                                    u.stuckProjectiles.push({
+                                        type: effectType,
+                                        offsetX: p.x - u.x,
+                                        offsetY: p.y - u.y,
+                                        angle: Math.atan2(p.vy, p.vx),
+                                        timestamp: Date.now()
+                                    });
+                                }
                             }
                         }
 
-                        // Bomb direct hits create craters directly under the unit
+                        // Bomb direct hits create craters directly under the unit (Always happens)
                         if (isBomb) {
                             if (!battleEnvironment.groundEffects) battleEnvironment.groundEffects = [];
                             battleEnvironment.groundEffects.push({
@@ -1223,7 +1512,7 @@ unit.target.x = gateX + ((Math.random() - 0.5) * 300);
                             });
                         }
 
-                        // EXP and Audio Logic
+                        // 4. EXP and Audio Logic
                         let attackerUnit = units.find(a => a.stats === p.attackerStats);
                         if (attackerUnit && attackerUnit.side === "player" && p.attackerStats.gainExperience) {
                             let baseExp = attackerUnit.isCommander ? 0.05 : 0.35;
@@ -1235,14 +1524,144 @@ unit.target.x = gateX + ((Math.random() - 0.5) * 300);
                         if (dmg > 0 && typeof AudioManager !== 'undefined') AudioManager.playSound('hit');
                         else if (typeof AudioManager !== 'undefined') AudioManager.playSound('shield_block');
 
-                        break;
+                        // If it stopped, break the loop. If it pierced, keep checking other units behind them!
+                        if (!doesPierce) {
+                            break; 
+                        }
                     }
                 }
             }
-            if (hitMade) battleEnvironment.projectiles.splice(i, 1);
+
+            // ════════════════════════════════════════════════════════════════
+            // STRUCTURE COLLISION — Walls, Towers, Walkways, Siege Engines
+            // Runs only if the projectile didn't already hit a unit.
+            // ════════════════════════════════════════════════════════════════
+            
+            let minStickDist = (isArrow || isBolt) ? 100 : 30;
+            let canHitStructure = distFlown >= minStickDist;
+
+            if (!hitMade && canHitStructure && typeof BATTLE_TILE_SIZE !== 'undefined' && battleEnvironment.grid) {
+                let ptx  = Math.floor(p.x / BATTLE_TILE_SIZE);
+                let pty  = Math.floor(p.y / BATTLE_TILE_SIZE);
+                let tile = (battleEnvironment.grid[ptx] && battleEnvironment.grid[ptx][pty] !== undefined)
+                           ? battleEnvironment.grid[ptx][pty] : -1;
+
+                let hitsWall     = (tile === 6 || tile === 7); 
+                let hitsWalkway  = (tile === 8 || tile === 12); 
+                let impactAngle = Math.atan2(p.vy, p.vx);
+
+                // ── WALL & WALKWAY collision ──────────────────────────────────
+                if (hitsWall || hitsWalkway) {
+                    let stickChance = 0;
+                    if (p.side === "enemy") {
+                        stickChance = 0.05; 
+                    } else {
+                        stickChance = hitsWall ? 0.10 : 0.20;
+                    }
+                    
+                    if (Math.random() <= stickChance) {
+                        hitMade = true;
+                        if (!battleEnvironment.groundEffects) battleEnvironment.groundEffects = [];
+
+                        if (isBomb) {
+                            if (battleEnvironment.groundEffects.length < 500) {
+                                battleEnvironment.groundEffects.push({
+                                    type: "bomb_crater", x: p.x, y: p.y, angle: 0,
+                                    stuckOnStructure: true, structureTile: tile, timestamp: Date.now()
+                                });
+                            }
+                            if (window.cityTowerPositions) {
+                                for (let twr of window.cityTowerPositions) {
+                                    let d = Math.hypot(twr.pixelX - p.x, twr.pixelY - p.y);
+                                    if (d < 90) {
+                                        if ((twr.hp ?? 300) <= 0) continue; 
+                                        twr.hp = (twr.hp ?? 300) - 70;
+                                        if (twr.hp < 0) twr.hp = 0;
+                                    }
+                                }
+                            }
+                            if (typeof AudioManager !== 'undefined') AudioManager.playSound('hit');
+
+                        } else if (p.projectileType === "firelance" || (p.projectileType && p.projectileType.includes("Firelance"))) {
+                            if (battleEnvironment.groundEffects.length < 500) {
+                                battleEnvironment.groundEffects.push({
+                                    type: "scorch_wall", x: p.x, y: p.y, angle: impactAngle,
+                                    stuckOnStructure: true, structureTile: tile, timestamp: Date.now()
+                                });
+                            }
+                        } else if (isJavelin || isBolt || isRocket || isSlinger || isArrow) {
+                            let efType = isJavelin ? "javelin" : isBolt ? "bolt" : isRocket ? "rocket" : isSlinger ? "stone" : "arrow";
+                            if (battleEnvironment.groundEffects.length < 500) {
+                                battleEnvironment.groundEffects.push({
+                                    type: efType, x: p.x, y: p.y, angle: impactAngle,
+                                    stuckOnStructure: true, structureTile: tile, timestamp: Date.now()
+                                });
+                            }
+                        }
+                    }
+                }
+
+               // ── SIEGE ENGINE collision ────────────────────────────────────
+                if (!hitMade && typeof siegeEquipment !== 'undefined') {
+                    let hitModifier = (p.side === "player") ? 0.05 : 1.0;
+
+                    if (siegeEquipment.ladders) {
+                        for (let ldr of siegeEquipment.ladders) {
+                            if (!ldr.isDeployed || ldr.hp <= 0) continue;
+                            let d = Math.hypot(p.x - ldr.x, p.y - ldr.y);
+                            if (d < 16) {
+                                let hitChance = (p.side === "player") ? 0.05 : 0.95;
+                                
+                                if (Math.random() <= hitChance) {
+                                    hitMade = true;
+                                    ldr.hp -= isBomb ? 60 : 12;
+                                    
+                                    let isStickingProjectile = isJavelin || isBolt || isArrow;
+                                    if (isStickingProjectile && battleEnvironment.groundEffects && battleEnvironment.groundEffects.length < 500) {
+                                        let efType = isJavelin ? "javelin" : isBolt ? "bolt" : "arrow";
+                                        battleEnvironment.groundEffects.push({
+                                            type: efType, x: p.x, y: p.y, angle: impactAngle,
+                                            stuckOnStructure: true, structureTile: 98, timestamp: Date.now()
+                                        });
+                                    }
+                                }
+                                break; 
+                            }
+                        }
+                    }
+                    if (!hitMade && siegeEquipment.rams) {
+                        for (let ram of siegeEquipment.rams) {
+                            if (ram.hp <= 0) continue;
+                            let d = Math.hypot(p.x - ram.x, p.y - ram.y);
+                            if (d < 20) {
+                                if (Math.random() <= (0.60 * hitModifier)) {
+                                    hitMade = true;
+                                    ram.hp -= isBomb ? 80 : 10;
+                                    if (battleEnvironment.groundEffects && battleEnvironment.groundEffects.length < 500) {
+                                        let efType = isJavelin ? "javelin" : isBolt ? "bolt" : isArrow ? "arrow" : "stone";
+                                        battleEnvironment.groundEffects.push({
+                                            type: efType, x: p.x, y: p.y, angle: impactAngle,
+                                            stuckOnStructure: true, structureTile: 98, timestamp: Date.now()
+                                        });
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            } // <--- FIX: This bracket safely closes the Structure Collision block
+
+            // ════════════════════════════════════════════════════════════════
+            // THE FIX: Deletion is now outside the structure block!
+            // ════════════════════════════════════════════════════════════════
+            if (hitMade) {
+                battleEnvironment.projectiles.splice(i, 1);
+            }
         }
     }
 };
+ // This closing brace for the AICategories object was missing!
 
 // =========================================================
 // AI PINBALL ESCAPE SYSTEM (Anti-Stuck Fallback)
@@ -1280,9 +1699,9 @@ function applyPinballEscape(unit) {
 // Replace the old isDummy block with this:
 
 if (unit.target && unit.target.isDummy) {
-    // Only abort the bounce if they are physically at their dummy destination
+    // Increased from 16 to 45 to accommodate the 40px 'shouldHold' formation radius
     let distToDummy = Math.hypot(unit.x - unit.target.x, unit.y - unit.target.y);
-    if (distToDummy < 16) { 
+    if (distToDummy < 45) { 
         unit.positionHistory = []; 
         return false; 
     }
@@ -1295,23 +1714,27 @@ if (unit.isClimbing) {
     return false;
 }
 
-            // --- NEW GUARD: DO NOT BOUNCE INTENTIONALLY IDLE UNITS OR LADDER SWARMERS! ---
-            if ( unit.state === "idle" || unit.siegeRole === "cavalry_reserve" || unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew") {
-                unit.positionHistory = []; // Clear history to prevent memory bloat
-                return; // Abort the pinball logic entirely for this unit
+// --- NEW GUARD: DO NOT BOUNCE INTENTIONALLY IDLE UNITS OR LADDER SWARMERS! ---
+if ( unit.state === "idle" || unit.state === "attacking" || unit.disableAICombat || unit.siegeRole === "cavalry_reserve" || unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew" || unit.siegeRole === "engine_crew") {
+    unit.positionHistory = []; // Clear history to prevent memory bloat
+    return false; // Abort the pinball logic entirely for this unit
+}
+// UNIT IS STUCK! INITIATE PINBALL BOUNCE!
+            let bounceAngle;
+            if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && unit.side === "enemy") {
+                // DEFENDERS BOUNCE NORTH (Between -45 and -135 degrees)
+                bounceAngle = -Math.PI/2 + ((Math.random() - 0.5) * Math.PI/2);
+            } else {
+                // EVERYONE ELSE BOUNCES SOUTH
+                bounceAngle = (Math.PI / 4) + (Math.random() * (Math.PI / 2));
             }
-            // UNIT IS STUCK! INITIATE PINBALL BOUNCE!
-// Creates an angle between 45 degrees (PI/4) and 135 degrees (3*PI/4).
-// This forces a Southward arc.
-let bounceAngle = (Math.PI / 4) + (Math.random() * (Math.PI / 2));
-let bounceForce = 2.3; 
-
+            let bounceForce = 1.3;
 unit.pinballVector = {
     x: Math.cos(bounceAngle) * bounceForce,
     y: Math.sin(bounceAngle) * bounceForce
 };
 
-unit.pinballTimer = 15; 
+unit.pinballTimer = 5; 
 unit.positionHistory = []; 
 
 return true; // Use a semicolon here, NOT a comma.
@@ -1319,4 +1742,29 @@ return true; // Use a semicolon here, NOT a comma.
     }
     
     return false; // Not stuck, proceed with normal movement
+}
+
+// Add this helper function at the bottom of the file
+function lineIntersectsCircle(x1, y1, x2, y2, cx, cy, r) {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let fx = x1 - cx;
+    let fy = y1 - cy;
+
+    let a = dx * dx + dy * dy;
+    let b = 2 * (fx * dx + fy * dy);
+    let c = (fx * fx + fy * fy) - (r * r);
+
+    let discriminant = b * b - 4 * a * c;
+    
+    // No intersection
+    if (discriminant < 0) return false;
+
+    // Ray didn't miss, check if the intersection is within the segment length
+    discriminant = Math.sqrt(discriminant);
+    let t1 = (-b - discriminant) / (2 * a);
+    let t2 = (-b + discriminant) / (2 * a);
+
+    // If either t1 or t2 is between 0 and 1, the projectile passed through the circle this frame
+    return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
 }

@@ -2,7 +2,7 @@
 // EMPIRE OF THE 13TH CENTURY - BATTLEFIELD TACTICAL ENGINE
 // ============================================================================
 let BATTLE_WORLD_WIDTH = 2400; 
-let BATTLE_WORLD_HEIGHT = 3600; 
+let BATTLE_WORLD_HEIGHT = 3600; //3600 BEFORE
 const BATTLE_TILE_SIZE = 8;
 let BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
 let BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
@@ -192,13 +192,15 @@ else if (worldTerrainType.includes("Large Mountains")) {
     
     // --- SURGERY: MOUNTAIN RANGE CLUSTERING ---
     
-// Instead of splashing/splatting...
-// Pick ONE random tile and force it to be the peak.
-grid[Math.floor(Math.random() * BATTLE_COLS)][Math.floor(Math.random() * BATTLE_ROWS)] = 8;
-
+generateBattleOrganicFeatures(
+    grid,
+    8,
+    3 + Math.floor(Math.random() * 2), // 4–6 clusters
+    1 + Math.floor(Math.random() *2)  // 1–3 spread
+);
     // 3. Exposed Rock Formations (Large Boulders/Cliffs)
     // Increased count and size to represent rocky outcrops in the snow
-    generateBattleOrganicFeatures(grid, 6, 3, 25); 
+    generateBattleOrganicFeatures(grid, 6, 23, 3); 
 
     // 4. Textured Snow Drifts
     // Using Type 7 (Mud/Brush logic) but it will render as soft shadows on white ground
@@ -234,7 +236,7 @@ else if (worldTerrainType.includes("Mountain") && !worldTerrainType.includes("La
     }
 
     // --- SURGERY: CANVAS EXPANSION ---
-    const VISUAL_PADDING = 100; // The size of the "Outer Bound" area
+    const VISUAL_PADDING = 0; // The size of the "Outer Bound" area
 	
 	// 1. Existing Background Canvas
 const canvas = document.createElement('canvas');
@@ -452,53 +454,113 @@ else if (grid[i][j] === 7) { // Mud/Brush
     }
 }
  
-else if (grid[i][j] === 8) { //1 BIG MOUNTAIN
-    // 2. CHECK: If we've already drawn a peak this frame, SKIP the rest
-    if (peakAlreadyDrawn) return; 
-
+else if (grid[i][j] === 8) { // BIG MOUNTAIN - HIMALAYAN RANGE
     const peakSeed = (i * 1337 + j * 7331);
     const rand = (n) => ((Math.abs(Math.sin(peakSeed * n)) * 1000) % 1);
-    
-    // Original width was ~9-15 tiles. Multiplying the base and the variance by 6:
-    // (BATTLE_TILE_SIZE * 9 * 6) = 54. (BATTLE_TILE_SIZE * 6 * 6) = 36.
-    const width = BATTLE_TILE_SIZE * (54 + rand(1) * 36); 
 
-    // Scaling height by 6 as well. 
-    // The previous ratio was (width * 0.12). 6x that is (width * 0.72).
-    const height = width * (0.72 + rand(2) * 0.45);
-    
     const cx = px + BATTLE_TILE_SIZE / 2;
     const cy = py + BATTLE_TILE_SIZE / 2;
 
-    ctx.save(); 
-    
-    // 3. SET FLAG: Now that we found an '8', mark it as done
-    peakAlreadyDrawn = true;
+    // Each tile becomes a mini mountain RANGE (3–4 peaks)
+    const peakCount = 3 + Math.floor(rand(1) * 2);
 
-    // --- RENDER CODE ---
-    // Note: I adjusted the Y offset (BATTLE_TILE_SIZE) to scale with the mountain 
-    // so the base stays connected at this massive size.
-    ctx.fillStyle = "#cbd5e0"; 
-    ctx.beginPath();
-    ctx.moveTo(cx - width, cy + (BATTLE_TILE_SIZE * 6));
-    ctx.quadraticCurveTo(cx - width * 0.5, cy - height * 0.2, cx, cy - height);
-    ctx.quadraticCurveTo(cx + width * 0.5, cy - height * 0.2, cx + width, cy + (BATTLE_TILE_SIZE * 6));
-    ctx.fill();
+    for (let p = 0; p < peakCount; p++) {
 
-    // Snow Cap
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - height);
-    ctx.lineTo(cx - width * 0.2, cy - height * 0.6);
-    ctx.lineTo(cx - width * 0.1, cy - height * 0.55);
-    ctx.lineTo(cx + width * 0.05, cy - height * 0.65);
-    ctx.lineTo(cx + width * 0.2, cy - height * 0.6);
-    ctx.closePath();
-    ctx.fill();
+        const xOffset = (rand(p + 2) - 0.5) * (BATTLE_TILE_SIZE * 14);
 
-    ctx.restore();
+        const baseWidth = BATTLE_TILE_SIZE * (28 + rand(p + 5) * 30);
+        const height = baseWidth * (0.9 + rand(p + 8) * 0.8);
+
+        const peakX = cx + xOffset;
+        const baseY = cy + (BATTLE_TILE_SIZE * 6);
+
+        ctx.save();
+
+        // =========================================================
+        // 1. DARK ROCK BASE (Himalayan granite tone)
+        // =========================================================
+        ctx.fillStyle = "#4b5563"; // slate rock base
+
+        ctx.beginPath();
+        ctx.moveTo(peakX - baseWidth, baseY);
+
+        // jagged left ridge
+        ctx.lineTo(
+            peakX - baseWidth * (0.7 + rand(p + 11) * 0.2),
+            cy - height * (0.2 + rand(p + 12) * 0.2)
+        );
+
+        ctx.lineTo(
+            peakX - baseWidth * (0.3 + rand(p + 13) * 0.2),
+            cy - height * (0.7 + rand(p + 14) * 0.2)
+        );
+
+        // main summit (sharp peak)
+        ctx.lineTo(peakX, cy - height);
+
+        // right ridge (also jagged)
+        ctx.lineTo(
+            peakX + baseWidth * (0.3 + rand(p + 15) * 0.2),
+            cy - height * (0.7 + rand(p + 16) * 0.2)
+        );
+
+        ctx.lineTo(
+            peakX + baseWidth * (0.7 + rand(p + 17) * 0.2),
+            cy - height * (0.2 + rand(p + 18) * 0.2)
+        );
+
+        ctx.lineTo(peakX + baseWidth, baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        // =========================================================
+        // 2. MID ROCK SHADOW (depth layer)
+        // =========================================================
+        ctx.fillStyle = "#6b7280";
+
+        ctx.beginPath();
+        ctx.moveTo(peakX - baseWidth * 0.6, baseY);
+        ctx.lineTo(peakX - baseWidth * 0.3, cy - height * 0.5);
+        ctx.lineTo(peakX, cy - height);
+        ctx.lineTo(peakX + baseWidth * 0.3, cy - height * 0.5);
+        ctx.lineTo(peakX + baseWidth * 0.6, baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        // =========================================================
+        // 3. SNOW CAP (broken Himalayan snow layering)
+        // =========================================================
+        ctx.fillStyle = "#f8fafc";
+
+        ctx.beginPath();
+        ctx.moveTo(peakX, cy - height);
+
+        ctx.lineTo(
+            peakX - baseWidth * 0.15,
+            cy - height * (0.75 + rand(p + 21) * 0.1)
+        );
+
+        ctx.lineTo(
+            peakX - baseWidth * 0.05,
+            cy - height * (0.7 + rand(p + 22) * 0.1)
+        );
+
+        ctx.lineTo(
+            peakX + baseWidth * 0.08,
+            cy - height * (0.78 + rand(p + 23) * 0.1)
+        );
+
+        ctx.lineTo(
+            peakX + baseWidth * 0.18,
+            cy - height * (0.72 + rand(p + 24) * 0.1)
+        );
+
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+    }
 }
-
 else if (grid[i][j] === 9) { // Tropical Karst Pillars (Hmong Highland Style)
     const peakSeed = (i * 1337 + j * 7331);
     const rand = (n) => ((Math.abs(Math.sin(peakSeed * n)) * 1000) % 1);
@@ -743,11 +805,27 @@ let playerTroopCount = playerObj.troops || 0;
 
     deployArmy(currentBattleData.playerFaction, playerTroopCount, "player"); 
     deployArmy(enemyNPC.faction, enemyNPC.count, "enemy");
+	
+	// =========================================================
+    // ---> SAFETY SURGERY: ABYSS SCAN (LAST RESORT)
+    // =========================================================
+    // We use separate counters so the staggering logic in lastResort() 
+    // works correctly for both sides independently.
+    let playerSafetyIndex = 0;
+    let enemySafetyIndex = 0;
+
+    battleEnvironment.units.forEach(u => {
+        if (u.side === "player") {
+            lastResort2(u, BATTLE_WORLD_WIDTH, BATTLE_WORLD_HEIGHT, "player", playerSafetyIndex++);
+        } else {
+            lastResort2(u, BATTLE_WORLD_WIDTH, BATTLE_WORLD_HEIGHT, "enemy", enemySafetyIndex++);
+        }
+    });
     // Find exactly where the army deployed the commander and move the invisible WASD player there
     let deployedCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
     if (deployedCmdr) {
         playerObj.x = deployedCmdr.x;
-        playerObj.y = deployedCmdr.y;
+        playerObj.y = deployedCmdr.y-50;
     } else {
         playerObj.x = BATTLE_WORLD_WIDTH / 2;
         playerObj.y = BATTLE_WORLD_HEIGHT - 100;
@@ -837,7 +915,7 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
     }
     
     // 2. Setup spawn coordinates
-    let spawnY = side === "player" ? BATTLE_WORLD_HEIGHT - 300 : 300;
+    let spawnY = side === "player" ? BATTLE_WORLD_HEIGHT - 30 : 600;
     let spawnXCenter = BATTLE_WORLD_WIDTH / 2;
     let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[faction]) ? FACTIONS[faction].color : "#ffffff";
     
@@ -920,15 +998,15 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
 // First, calculate the total width of all "Line" units (non-cavalry)
 // This ensures we can center the entire army perfectly.
 let totalLineWidth = 0;
-const spacingX = 18;
-const groupGap = 40; // Pixels between different unit types
+const spacingX = 8;
+const groupGap = 10; // Pixels between different unit types
 
 composition.forEach(comp => {
     let baseTemplate = UnitRoster.allUnits[comp.type];
     if (baseTemplate && !baseTemplate.role.toLowerCase().includes("cavalry") && !baseTemplate.role.toLowerCase().includes("horse")) {
         let count = Math.round(unitsToSpawn * comp.pct);
         if (count > 0) {
-            let unitsPerRow = 15;
+            let unitsPerRow = 20;
             let groupWidth = Math.min(count, unitsPerRow) * spacingX;
             totalLineWidth += groupWidth + groupGap;
         }
@@ -975,6 +1053,18 @@ for (let i = 0; i < count; i++) {
     }
 
         let finalX, finalY;
+		
+		// ---> SURGERY: Move human units South in Sieges, keep Engines at the front line <---
+        if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === 'player') {
+            const unitName = String(comp.type).toLowerCase();
+            // Identify engines to exclude them from the shift
+            const isEngine = unitName.match(/(ladder|ram|tower|trebuchet|catapult|cannon|hwacha|fire)/);
+            
+            if (!isEngine) {
+                finalY += 600; // Push regular troops 
+            }
+        }
+         
 
 // =========================================================
         // --- SURGERY: NAVAL SPAWN TIER OVERRIDE ---
@@ -989,19 +1079,28 @@ for (let i = 0; i < count; i++) {
             }
         } 
 
-//SIEGE
+//SIEGE 
         else if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && side === "enemy") {
             let southGate = typeof overheadCityGates !== 'undefined' ? overheadCityGates.find(g => g.side === "south") : null;
-            let plazaY = southGate ? (southGate.y * BATTLE_TILE_SIZE) - 450 : (BATTLE_WORLD_HEIGHT / 2);
-            const personalSpace = 12;
-            let angle = (i * 0.5) + (Math.random() * Math.PI * 2);
-            let dist = (Math.sqrt(i) * personalSpace) + (Math.random() * 20);
+            let plazaY = southGate ? (southGate.y * BATTLE_TILE_SIZE) - 900 : (BATTLE_WORLD_HEIGHT / 2);
 
-            finalX = spawnXCenter + Math.cos(angle) * dist;
-            finalY = plazaY + (Math.random() - 0.5) * 25;
-            finalX += (Math.random() - 0.5) * 15;
-            finalY += (Math.random() - 0.5) * 15;
-        } else {
+            // 1. TIGHTEN SPACING: Lower personalSpace from 12 to 6 to pack units closer together
+            const personalSpace = 6; 
+            let angle = (i * 0.5) + (Math.random() * Math.PI * 2);
+            let dist = (Math.sqrt(i) * personalSpace) + (Math.random() * 10);
+
+            // 2. HORIZONTAL COMPRESSION: Multiply the X offset by 0.5 to force them toward the center line
+            finalX = spawnXCenter + (Math.cos(angle) * dist * 0.5); 
+            finalY = plazaY + (Math.random() - 0.5) * 35; // Slight Y-variance for a more natural look
+
+            // 3. REDUCE JITTER: Lower random variance from 15 to 5 for a cleaner center cluster
+            finalX += (Math.random() - 0.5) * 5; 
+            finalY += (Math.random() - 0.5) * 10;
+        }
+		
+		
+		
+		else {
             // --- ORIGINAL GRID LOGIC ---
             if (isFlank) {
                 let internalX = (col * spacingX) - (groupWidth / 2);
@@ -1011,10 +1110,36 @@ for (let i = 0; i < count; i++) {
             }
             let gridY = row * spacingY * rankDir;
             finalY = spawnY + tacticalY + gridY;
-            finalX += (Math.random() - 0.5) * 3;
-            finalY += (Math.random() - 0.5) * 2;
+            finalX += (Math.random() - 0.5) * 9;
+            finalY += (Math.random() - 0.5) * 9;
         }
 
+// ---> SURGERY: LAND BATTLE OUT-OF-BOUNDS SAFEGUARD <---
+        // =========================================================
+        const margin = 40; // Pixel padding from the edge of the world
+        
+        let isOutOfBounds = (
+            finalX < margin || 
+            finalX > BATTLE_WORLD_WIDTH - margin ||
+            finalY < margin || 
+            finalY > BATTLE_WORLD_HEIGHT - margin
+        );
+
+        if (isOutOfBounds) {
+            // Relocate to a safe cluster behind the main center line
+            let safeRadius = 150;
+            let fallbackDir = (side === "player") ? 1 : -1; // 1 pushes player down, -1 pushes enemy up
+            
+            // Scatter them near the spawn center
+            finalX = spawnXCenter + (Math.random() - 0.5) * safeRadius * 2;
+            finalY = spawnY + (fallbackDir * (40 + Math.random() * safeRadius));
+            
+            // Hard clamp mathematically to guarantee 100% they are inside the box
+            finalX = Math.max(margin, Math.min(finalX, BATTLE_WORLD_WIDTH - margin));
+            finalY = Math.max(margin, Math.min(finalY, BATTLE_WORLD_HEIGHT - margin));
+        }
+        // =========================================================
+		
     let isCmdr = (baseTemplate.isCommander === true) || (comp.type === "Commander");
 	
 	
@@ -1123,7 +1248,7 @@ let rows = Math.ceil(spawnList.length / cols);
 if (rows < 1) rows = 1;
 
 // 2. Define strict personal space limits (keeps them tight!)
-const PERSONAL_SPACE = 22; 
+const PERSONAL_SPACE = 20; 
 
 // 3. Calculate dynamic spacing. 
 // Caps at PERSONAL_SPACE so small armies cluster. If the army is massive, 
@@ -1224,4 +1349,28 @@ function slotForIndex(i, unitRole, ship, cols, rows, startX, startY, spacingX, s
     }
     
     return { x, y };
+}
+
+function lastResort2(unit, worldWidth, worldHeight, side, index) {
+    const PADDING = 50; 
+    const STAGGER_GAP = 30; 
+    const UNITS_PER_ROW = 20;
+
+    const isOutOfBounds = (unit.x < 0 || unit.x > worldWidth || unit.y < 0 || unit.y > worldHeight);
+
+    if (isOutOfBounds) {
+        const row = Math.floor(index / UNITS_PER_ROW);
+        const col = index % UNITS_PER_ROW;
+        const offsetX = col * STAGGER_GAP;
+        const offsetY = row * STAGGER_GAP;
+
+        if (side === "player") {
+            unit.x = PADDING + offsetX;
+            unit.y = PADDING + offsetY;
+        } else {
+            // Enemy spawns near the BOTTOM (High Y)
+            unit.x = PADDING + offsetX;
+            unit.y = worldHeight - PADDING - offsetY;
+        }
+    }
 }

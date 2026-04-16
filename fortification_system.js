@@ -7,8 +7,13 @@ let cityLadders = [];         // Holds ladder positions for pathfinding
 let overheadCityGates = [];   // Single source of truth for gate data
 
 function renderDynamicGates(ctx) {
-    if (!battleEnvironment.cityGates) return;
-	battleEnvironment.cityGates.forEach(gate => {
+const gates = (battleEnvironment?.cityGates && battleEnvironment.cityGates.length)
+    ? battleEnvironment.cityGates
+    : overheadCityGates;
+
+if (!gates || !gates.length) return;
+
+gates.forEach(gate => {
         if (!gate.pixelRect) return; 
 
         // --- SURGERY: If gate is broken or open, physically move its collision box off-map
@@ -90,8 +95,12 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
  
 
     //1 let
-    let towers = [];
-    let baseColor = arch.walls[1] || arch.walls[0];
+let towers = [];
+let baseColor = arch.walls[1] || arch.walls[0];
+// Global tower registry reset each build (used by shooter & roof canvas)
+window.cityTowerPositions = [];
+
+
 
  // 2. THE HOLLOW WALL & ENCLOSED GATES (Expanded with massive inner wood structure)
     let woodThick = 7; // The inward extension of the wooden platform
@@ -138,18 +147,50 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
                 let py = y * CITY_TILE_SIZE;
                 let isHorizontalWall = (minDistToEdge === distFromTop || minDistToEdge === distFromBottom);
 
-                // --- ZONE 1: SOLID STONE WALL (Outer Bulk) ---
-                if (minDistToEdge <= wallThick - 3) {
-                    grid[x][y] = 6; // Impassable Solid Stone
-                    ctx.fillStyle = baseColor;
-                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                    
-                    // Shadow the outer parapet edge to give it depth
-                    if (minDistToEdge < 2.0) {
-                        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-                        ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-                    }
-                }
+// --- ZONE 1: SOLID STONE WALL (Outer Bulk) ---
+if (minDistToEdge <= wallThick - 3) {
+    grid[x][y] = 6; // Impassable Solid Stone
+
+    // Base wall
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+
+    // Shadow the outer parapet edge to give it depth
+    if (minDistToEdge < 2.0) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
+    }
+
+    // --- BRICKS ONLY ON INNER WALL BAND ---
+    if (minDistToEdge >= 2 && minDistToEdge <= wallThick - 3) {
+
+        const brickH = Math.max(3, Math.floor(CITY_TILE_SIZE / 4));
+        const brickW = Math.max(4, Math.floor(CITY_TILE_SIZE / 2));
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+
+        // Horizontal lines
+        for (let i = 1; i < 4; i++) {
+            const yy = py + i * brickH;
+            ctx.moveTo(px, yy);
+            ctx.lineTo(px + CITY_TILE_SIZE, yy);
+        }
+
+        // Vertical stagger (deterministic)
+        for (let i = 0; i < 4; i++) {
+            const yOffset = py + (i * brickH);
+            const stagger = ((x + y + i) % 2 === 0) ? 0 : Math.floor(brickW / 2);
+            const xx = px + stagger;
+
+            ctx.moveTo(xx, yOffset);
+            ctx.lineTo(xx, yOffset + brickH);
+        }
+
+        ctx.stroke();
+    }
+}
                 
                 // --- ZONE 2: CONTINUOUS WOODEN STAIRS (Innermost Ring) ---
                 else if (minDistToEdge === combinedThick - 1) {
@@ -250,192 +291,85 @@ let gateW = (gateRadius * 2 + 1) * CITY_TILE_SIZE;
     }
  
 
-    // 3. RENDER INNER TOWERS & BIG WALKABLE LADDER BRIDGES
+// 3. TOWER PHYSICS & REGISTRATION (Visuals moved to dynamic render)
     for (let t of towers) {
-        let towerSize = 10;
-        let overlap = 4; 
+        let towerSize = 7;   
+        let overlap   = 3;
         let rx, ry;
 
-        // Determine orientation
-        if (t.side === 'N') {
-            rx = t.x - Math.floor(towerSize / 2); ry = t.y - overlap; 
-        } else if (t.side === 'S') {
-            rx = t.x - Math.floor(towerSize / 2); ry = t.y - towerSize + overlap; 
-        } else if (t.side === 'W') {
-            rx = t.x - overlap; ry = t.y - Math.floor(towerSize / 2);
-        } else if (t.side === 'E') {
-            rx = t.x - towerSize + overlap; ry = t.y - Math.floor(towerSize / 2);
-        }
+        if      (t.side === 'N') { rx = t.x - Math.floor(towerSize/2); ry = t.y - overlap; }
+        else if (t.side === 'S') { rx = t.x - Math.floor(towerSize/2); ry = t.y - towerSize + overlap; }
+        else if (t.side === 'W') { rx = t.x - overlap;                 ry = t.y - Math.floor(towerSize/2); }
+        else if (t.side === 'E') { rx = t.x - towerSize + overlap;     ry = t.y - Math.floor(towerSize/2); }
 
-// Mark Tower Collision on grid (Hollow center, blocked outer & sides, open inner)
+        // ── GRID MARKING (Solid obstacle) ──
         for (let ix = rx; ix < rx + towerSize; ix++) {
             for (let iy = ry; iy < ry + towerSize; iy++) {
                 if (!grid[ix] || grid[ix][iy] === undefined) continue;
-
-                let isOuterEdge = false;
-                let isSideEdge = false;
-                let thickness = 1; // 1 tile thick walls
-
-                // Calculate which sides are walls based on the tower's orientation
-                if (t.side === 'N') {
-                    isOuterEdge = (iy < ry + thickness); // Top
-                    isSideEdge = (ix < rx + thickness || ix >= rx + towerSize - thickness); // Left/Right
-                } else if (t.side === 'S') {
-                    isOuterEdge = (iy >= ry + towerSize - thickness); // Bottom
-                    isSideEdge = (ix < rx + thickness || ix >= rx + towerSize - thickness); // Left/Right
-                } else if (t.side === 'W') {
-                    isOuterEdge = (ix < rx + thickness); // Left
-                    isSideEdge = (iy < ry + thickness || iy >= ry + towerSize - thickness); // Top/Bottom
-                } else if (t.side === 'E') {
-                    isOuterEdge = (ix >= rx + towerSize - thickness); // Right
-                    isSideEdge = (iy < ry + thickness || iy >= ry + towerSize - thickness); // Top/Bottom
-                }
-
-                if (isOuterEdge || isSideEdge) {
-                    grid[ix][iy] = 7; // Solid tower wall
-                } else {
-                    grid[ix][iy] = 8; // Walkable tower floor (inner access open)
-                }
+                grid[ix][iy] = 7; 
             }
         }
 
-// 1. Calculate 15% Larger Size & Centering Offset
+        // ── PIXEL COORDINATES ──
         let originalSize = towerSize * CITY_TILE_SIZE;
-        let newSize = originalSize * 1.15;
-        let offset = (newSize - originalSize) / 2;
-
+        let newSize      = originalSize * 1.10; 
+        let offset       = (newSize - originalSize) / 2;
         let tX = (rx * CITY_TILE_SIZE) - offset;
         let tY = (ry * CITY_TILE_SIZE) - offset;
 
-        // 2. Draw Outer Wall Shadow/Base
-        ctx.fillStyle = "rgba(0,0,0,0.8)"; 
-        ctx.fillRect(tX, tY, newSize, newSize);
+        // ── REGISTER IN GLOBAL TOWER LIST (Critical for Arrows) ──
+        window.cityTowerPositions.push({
+            pixelX:      tX + newSize / 2,
+            pixelY:      tY + newSize / 2,
+            tX, tY, newSize,
+            side:        t.side,
+            hp:          300,
+            maxHp:       300,
+            fireCooldown: Math.floor(Math.random() * 200 + 80),
+        });
 
-        // 3. Draw Main Wall Structure (Parapet Base)
-        ctx.fillStyle = arch.walls[0];
-        let wallThickness = 6; // How thick the defensive walls are
-        ctx.fillRect(tX + 1, tY + 1, newSize - 2, newSize - 2);
-
-        // 4. Draw Inner Wooden Floor (The Roofless Area)
-        let floorX = tX + wallThickness;
-        let floorY = tY + wallThickness;
-        let floorSize = newSize - (wallThickness * 2);
-
-        ctx.fillStyle = "#5c4033"; // Dark wood base color
-        ctx.fillRect(floorX, floorY, floorSize, floorSize);
-
-        // --- Draw Wood Slats ---
-        ctx.strokeStyle = "#3e2723"; // Darker brown for plank gaps
-        ctx.lineWidth = 1.5;
-        let slatWidth = 6; // Width of each floor plank
-
-        ctx.beginPath();
-        for (let i = floorX + slatWidth; i < floorX + floorSize; i += slatWidth) {
-            ctx.moveTo(i, floorY);
-            ctx.lineTo(i, floorY + floorSize);
-        }
-        ctx.stroke();
-
-        // 5. Inner Drop Shadow (Creates 3D depth, showing the floor is lower)
-        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-        ctx.fillRect(floorX, floorY, floorSize, 5); // Top inner shadow
-        ctx.fillRect(floorX, floorY, 5, floorSize); // Left inner shadow
-
-        // 6. Draw Crenellations (Defensive 'Teeth' on the walls)
-        let crenSize = 6;
-        let crenGap = 8;
-        ctx.fillStyle = "rgba(0,0,0,0.3)"; // Shadow under the teeth
-        
-        // Loop around the perimeter to draw the blocks
-        for (let i = tX; i < tX + newSize - crenSize; i += crenGap + crenSize) {
-            // Top and Bottom edges
-            ctx.fillRect(i, tY, crenSize, wallThickness);
-            ctx.fillRect(i, tY + newSize - wallThickness, crenSize, wallThickness);
-        }
-        for (let j = tY; j < tY + newSize - crenSize; j += crenGap + crenSize) {
-            // Left and Right edges
-            ctx.fillRect(tX, j, wallThickness, crenSize);
-            ctx.fillRect(tX + newSize - wallThickness, j, wallThickness, crenSize);
-        }
-
-        // Highlight the crenellations to match the wall color and make them pop
-        ctx.fillStyle = arch.walls[0]; 
-        for (let i = tX; i < tX + newSize - crenSize; i += crenGap + crenSize) {
-            ctx.fillRect(i + 1, tY + 1, crenSize - 2, wallThickness - 2);
-            ctx.fillRect(i + 1, tY + newSize - wallThickness + 1, crenSize - 2, wallThickness - 2);
-        }
-        for (let j = tY; j < tY + newSize - crenSize; j += crenGap + crenSize) {
-            ctx.fillRect(tX + 1, j + 1, wallThickness - 2, crenSize - 2);
-            ctx.fillRect(tX + newSize - wallThickness + 1, j + 1, wallThickness - 2, crenSize - 2);
-        }
-        
-    
-// ... (existing crenellations drawing code)
-
-        // ====================================================================
-        // 7. SURGERY: DRAW WRAP-AROUND WOODEN STAIRS (TILE 12)
-        // ====================================================================
-        const woodDark = "#4A3728";
-        const woodBase = "#A67B5B";
+        // ── WRAP-AROUND WOODEN STAIRS (tile 12) ──
+        const woodDark  = "#4A3728";
+        const woodBase  = "#A67B5B";
         const woodLight = "#D2B48C";
-        const backdrop = "#1a1a1a";
+        const backdrop  = "#1a1a1a";
 
-        // Create a 1-tile thick perimeter around the tower grid coordinates
-        let px_start = rx - 1;
-        let px_end = rx + towerSize;
-        let py_start = ry - 1;
-        let py_end = ry + towerSize;
+        let px_start = rx - 1, px_end   = rx + towerSize;
+        let py_start = ry - 1, py_end   = ry + towerSize;
 
         for (let ix = px_start; ix <= px_end; ix++) {
             for (let iy = py_start; iy <= py_end; iy++) {
-                // Skip the inside of the tower, we only want the outer ring
-                if (ix >= rx && ix < rx + towerSize && iy >= ry && iy < ry + towerSize) continue;
-                
-                // Safety bounds check
+                if (ix >= rx && ix < rx+towerSize && iy >= ry && iy < ry+towerSize) continue;
                 if (ix < 0 || ix >= CITY_COLS || iy < 0 || iy >= CITY_ROWS) continue;
-
                 let existingTile = grid[ix][iy];
-                
-                // Only place stairs over open terrain (0=Ground, 1=Road, 5=Plaza)
                 if (existingTile === 0 || existingTile === 1 || existingTile === 5 || existingTile === undefined) {
-                    grid[ix][iy] = 12; // 12 = Wooden Stairs Tile
-                    
-                    let px = ix * CITY_TILE_SIZE;
-                    let py = iy * CITY_TILE_SIZE;
-
-                    // Black backdrop cavity
-                    ctx.fillStyle = backdrop;
-                    ctx.fillRect(px, py, CITY_TILE_SIZE, CITY_TILE_SIZE);
-
-                    let isVertical = (ix === px_start || ix === px_end);
-
-                    if (isVertical) {
-                        // VERTICAL STAIRS (Left & Right sides)
+                    grid[ix][iy] = 12;
+                    let spx = ix * CITY_TILE_SIZE, spy = iy * CITY_TILE_SIZE;
+                    ctx.fillStyle = backdrop; ctx.fillRect(spx, spy, CITY_TILE_SIZE, CITY_TILE_SIZE);
+                    let isVert = (ix === px_start || ix === px_end);
+                    if (isVert) {
                         ctx.fillStyle = woodDark;
-                        ctx.fillRect(px + 1, py, 2, CITY_TILE_SIZE); 
-                        ctx.fillRect(px + CITY_TILE_SIZE - 3, py, 2, CITY_TILE_SIZE); 
-
-                        for (let step = 1; step < CITY_TILE_SIZE; step += 3) {
-                            ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(px + 2, py + step + 1, CITY_TILE_SIZE - 5, 1);
-                            ctx.fillStyle = woodBase; ctx.fillRect(px + 2, py + step, CITY_TILE_SIZE - 5, 1);
-                            ctx.fillStyle = woodLight; ctx.fillRect(px + 2, py + step, CITY_TILE_SIZE - 5, 0.5); 
+                        ctx.fillRect(spx+1, spy, 2, CITY_TILE_SIZE);
+                        ctx.fillRect(spx+CITY_TILE_SIZE-3, spy, 2, CITY_TILE_SIZE);
+                        for (let step=1; step<CITY_TILE_SIZE; step+=3) {
+                            ctx.fillStyle="rgba(0,0,0,0.5)"; ctx.fillRect(spx+2, spy+step+1, CITY_TILE_SIZE-5, 1);
+                            ctx.fillStyle=woodBase;  ctx.fillRect(spx+2, spy+step,   CITY_TILE_SIZE-5, 1);
+                            ctx.fillStyle=woodLight; ctx.fillRect(spx+2, spy+step,   CITY_TILE_SIZE-5, 0.5);
                         }
                     } else {
-                        // HORIZONTAL STAIRS (Top & Bottom sides)
                         ctx.fillStyle = woodDark;
-                        ctx.fillRect(px, py + 1, CITY_TILE_SIZE, 2); 
-                        ctx.fillRect(px, py + CITY_TILE_SIZE - 3, CITY_TILE_SIZE, 2); 
-
-                        for (let step = 1; step < CITY_TILE_SIZE; step += 3) {
-                            ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(px + step + 1, py + 2, 1, CITY_TILE_SIZE - 5);
-                            ctx.fillStyle = woodBase; ctx.fillRect(px + step, py + 2, 1, CITY_TILE_SIZE - 5);
-                            ctx.fillStyle = woodLight; ctx.fillRect(px + step, py + 2, 0.5, CITY_TILE_SIZE - 5);
+                        ctx.fillRect(spx, spy+1, CITY_TILE_SIZE, 2);
+                        ctx.fillRect(spx, spy+CITY_TILE_SIZE-3, CITY_TILE_SIZE, 2);
+                        for (let step=1; step<CITY_TILE_SIZE; step+=3) {
+                            ctx.fillStyle="rgba(0,0,0,0.5)"; ctx.fillRect(spx+step+1, spy+2, 1, CITY_TILE_SIZE-5);
+                            ctx.fillStyle=woodBase;  ctx.fillRect(spx+step,   spy+2, 1, CITY_TILE_SIZE-5);
+                            ctx.fillStyle=woodLight; ctx.fillRect(spx+step,   spy+2, 0.5, CITY_TILE_SIZE-5);
                         }
                     }
                 }
             }
         }
-	}
+    }
 	
    // 4. SPAWN TROOPS 
     if (factionName) {
@@ -792,5 +726,299 @@ function drawCityGateBlock(ctx, grid, gate, arch, midX, gateRadius, startY, endY
                 // We DRAW NOTHING here. This keeps it transparent for the dynamic gate.
             }
         }
+    }
+}
+
+
+ // ============================================================================
+// ISOMETRIC BIRD'S-EYE TOWER RENDERER (2.5D)
+// Call this in your main loop right after renderDynamicGates(ctx)
+// ============================================================================
+
+function _drawTowerRubble(ctx, tower) {
+    let { tX, tY, newSize } = tower;
+    let cx = tX + newSize / 2, cy = tY + newSize / 2;
+
+    // Ash stain
+    ctx.fillStyle = "rgba(30,20,10,0.65)";
+    ctx.beginPath(); ctx.ellipse(cx, cy, newSize*0.45, newSize*0.30, 0, 0, Math.PI*2); ctx.fill();
+
+    // Rubble chunks
+    let seed = (tower.pixelX * 7 + tower.pixelY * 13) % 97;
+    for (let i = 0; i < 12; i++) {
+        let angle = ((seed * i * 37) % 628) / 100;
+        let dist  = ((seed * i * 53) % 100) / 100 * newSize * 0.40;
+        let sz    = 3 + ((seed * i * 29) % 40) / 10;
+        ctx.fillStyle = i % 2 === 0 ? "#7b838a" : "#4a5359"; // Stone colors
+        ctx.fillRect(cx + Math.cos(angle)*dist - sz/2, cy + Math.sin(angle)*dist - sz/2, sz, sz);
+    }
+}
+
+function renderDynamicTowers(ctx) {
+    if (!window.cityTowerPositions) return;
+
+    for (let tower of window.cityTowerPositions) {
+        let { tX, tY, newSize, hp } = tower;
+
+        if (hp <= 0) {
+            _drawTowerRubble(ctx, tower);
+            continue;
+        }
+
+      // --- 3D EXTRUSION PARAMETERS ---
+        let zBase = 22; // Height of the hardwood platform
+        
+        // --- 1. HARDWOOD PLATFORM (Base) ---
+        // Top Face (shifted UP by zBase)
+        ctx.fillStyle = "#5d4037"; // Primary Hardwood
+        ctx.fillRect(tX, tY - zBase, newSize, newSize);
+        
+        // Front Face (Connects Top Face down to the ground footprint)
+        ctx.fillStyle = "#3e2723"; // Darker hardwood for depth
+        ctx.fillRect(tX, tY + newSize - zBase, newSize, zBase);
+        
+        // Parapet Floor (Inside the Top Face)
+        let pRing = 6;
+        ctx.fillStyle = "#2a1b16"; // Deep dark wood floor
+        ctx.fillRect(tX + pRing, tY - zBase + pRing, newSize - pRing*2, newSize - pRing*2);
+
+        // Crenellations around top edge (Now Hardwood)
+        ctx.fillStyle = "#5d4037";
+        let crenW = 8, crenGap = 6;
+        for (let i = 0; i < newSize; i += crenW + crenGap) {
+            ctx.fillRect(tX + i, tY - zBase - 4, crenW, 4); // Top edge
+            ctx.fillRect(tX + i, tY + newSize - zBase, crenW, 4); // Front lip
+            ctx.fillRect(tX - 4, tY - zBase + i, 4, crenW); // Left edge
+            ctx.fillRect(tX + newSize, tY - zBase + i, 4, crenW); // Right edge
+        }
+
+        // --- 2. WOODEN PAVILION ---
+        let pavSize = newSize * 0.55;
+        let pavX = tX + (newSize - pavSize) / 2;
+        let pavY = tY - zBase + (newSize - pavSize) / 2; // Base Y for pavilion
+        let pavH = 20; // Extrusion height for wood walls
+
+        // Top Face of Pavilion
+        ctx.fillStyle = "#3e2723"; // Wood roof base
+        ctx.fillRect(pavX, pavY - pavH, pavSize, pavSize);
+        
+        // Front Face of Pavilion
+        ctx.fillStyle = "#d1bfae"; // Light beige plaster walls
+        ctx.fillRect(pavX, pavY + pavSize - pavH, pavSize, pavH);
+
+        // Red Pillars and Trim
+        ctx.fillStyle = "#8b2522"; // Lacquer red
+        let pillarW = 4;
+        ctx.fillRect(pavX, pavY + pavSize - pavH, pillarW, pavH); // Left
+        ctx.fillRect(pavX + pavSize - pillarW, pavY + pavSize - pavH, pillarW, pavH); // Right
+        ctx.fillRect(pavX, pavY - pavH, pavSize, pillarW); // Top Trim
+        
+        // Dark Archway/Door
+        ctx.fillStyle = "#2a1615"; 
+        let doorW = 14, doorH = 12;
+        ctx.beginPath();
+        ctx.arc(pavX + pavSize/2, pavY + pavSize - doorH, doorW/2, Math.PI, 0);
+        ctx.lineTo(pavX + pavSize/2 + doorW/2, pavY + pavSize);
+        ctx.lineTo(pavX + pavSize/2 - doorW/2, pavY + pavSize);
+        ctx.fill();
+
+        // --- 3. FACTION-COLORED SWEEPING ROOF ---
+        let roofOv = 10; // Overhang
+        let rX = pavX - roofOv;
+        let rY = pavY - pavH - roofOv;
+        let rSize = pavSize + roofOv*2;
+        
+        let roofTopW = rSize * 0.35; // Apex width
+        let rtX = rX + (rSize - roofTopW) / 2;
+        let rtY = rY + (rSize - roofTopW) / 2;
+        
+        // Roof Drop Shadow
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(pavX - 5, pavY - pavH + 5, pavSize + 10, pavSize + 10);
+
+        // Dynamically grab faction
+        let faction = "Hong Dynasty"; 
+        if (typeof currentActiveCityFaction !== 'undefined' && currentActiveCityFaction) {
+            faction = currentActiveCityFaction;
+        } else if (typeof cityDimensions !== 'undefined' && Object.keys(cityDimensions).length > 0) {
+            faction = Object.keys(cityDimensions)[0]; 
+        }
+
+        let rColors = ["#2c5f4b", "#34725a", "#173328", "#1e4234"]; 
+        if (typeof ARCHITECTURE !== 'undefined' && ARCHITECTURE[faction] && ARCHITECTURE[faction].roofs) {
+            let archRoofs = ARCHITECTURE[faction].roofs;
+            rColors = [
+                archRoofs[0], 
+                archRoofs[1] || archRoofs[0], 
+                archRoofs[2] || archRoofs[0], 
+                archRoofs[3] || archRoofs[0] 
+            ];
+        }
+
+        // --- UNIFIED ROOF COLOUR (All sides use rColors[0]) ---
+        ctx.fillStyle = rColors[0];
+
+        // Front Slope
+        ctx.beginPath();
+        ctx.moveTo(rX, rY + rSize); ctx.lineTo(rX + rSize, rY + rSize);
+        ctx.lineTo(rtX + roofTopW, rtY + roofTopW); ctx.lineTo(rtX, rtY + roofTopW);
+        ctx.fill();
+        
+        // Back Slope
+        ctx.beginPath();
+        ctx.moveTo(rX, rY); ctx.lineTo(rtX, rtY);
+        ctx.lineTo(rtX + roofTopW, rtY); ctx.lineTo(rX + rSize, rY);
+        ctx.fill();
+
+        // Left Slope
+        ctx.beginPath();
+        ctx.moveTo(rX, rY); ctx.lineTo(rX, rY + rSize);
+        ctx.lineTo(rtX, rtY + roofTopW); ctx.lineTo(rtX, rtY);
+        ctx.fill();
+
+        // Right Slope
+        ctx.beginPath();
+        ctx.moveTo(rX + rSize, rY); ctx.lineTo(rX + rSize, rY + rSize);
+        ctx.lineTo(rtX + roofTopW, rtY + roofTopW); ctx.lineTo(rtX + roofTopW, rtY);
+        ctx.fill();
+
+        // Standard structural joints (Restored original stroke logic)
+        ctx.strokeStyle = "rgba(0,0,0,0.55)";
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = "round";
+        
+        // Corner diagonals
+        ctx.beginPath();
+        ctx.moveTo(rX, rY); ctx.lineTo(rtX, rtY);
+        ctx.moveTo(rX + rSize, rY); ctx.lineTo(rtX + roofTopW, rtY);
+        ctx.moveTo(rX, rY + rSize); ctx.lineTo(rtX, rtY + roofTopW);
+        ctx.moveTo(rX + rSize, rY + rSize); ctx.lineTo(rtX + roofTopW, rtY + roofTopW);
+        ctx.stroke();
+
+        // Top Apex Ridge
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(rtX, rtY); ctx.lineTo(rtX + roofTopW, rtY);
+	ctx.stroke();}
+}
+
+// ============================================================================
+// TOWER AUTO-SHOOTING
+// Call updateTowerShooting() from policeTroops() or your main battle update
+// tick — it fires arrows/bolts/fire/bullets/bombs from each live tower at
+// the nearest player-side unit within range.
+// Requires: battleEnvironment.projectiles, window.cityTowerPositions
+// ============================================================================
+function updateTowerShooting() {
+    if (!(typeof inSiegeBattle !== 'undefined' && inSiegeBattle)) return; // <-- HARD GUARD: Siege only!
+    if (!window.cityTowerPositions) return;
+    if (typeof battleEnvironment === 'undefined' || !battleEnvironment.units) return;
+    if (!battleEnvironment.projectiles) battleEnvironment.projectiles = [];
+
+    // Towers always defend for the "enemy" (city faction) side vs "player" attackers
+    const targets = battleEnvironment.units.filter(u => u.hp > 0 && u.side === 'player');
+    if (targets.length === 0) return;
+
+    for (let tower of window.cityTowerPositions) {
+        // Dead tower = no fire
+		if ((tower.hp ?? 300) <= 0) continue;
+
+        tower.fireCooldown = (tower.fireCooldown || 0) - 1;
+        if (tower.fireCooldown > 0) continue;
+
+// ── Find nearest target in range ────────────────────────────────
+        const RANGE = 600; // ---> SURGERY: Expanded range so towers can shoot at the siege camp
+        let nearest = null, nearestDist = Infinity;
+        for (let t of targets) {
+            let d = Math.hypot(t.x - tower.pixelX, t.y - tower.pixelY);
+            if (d < RANGE && d < nearestDist) { nearestDist = d; nearest = t; }
+        }
+
+        if (!nearest) {
+            tower.fireCooldown = 40;  // nothing in range, check again later
+            continue;
+        }
+
+        // ── Weapon selection ────────────────────────────────────────────
+        let roll = Math.random();
+        let weapon, speed;
+
+        if      (roll < 0.55) { weapon = "arrow";  speed = 12.5; }
+        else if (roll < 0.78) { weapon = "bolt";   speed = 18.5; }
+        else if (roll < 0.88) { weapon = "bullet"; speed = 21;  }
+        else if (roll < 0.95) { weapon = "fire";   speed = 4.5; }
+        else                  { weapon = "bomb";   speed = 3.8; }
+
+// ---> NEW LIMIT: Fallback to arrows if the target is outside firelance range (100px)
+        if (weapon === "bomb" && nearestDist > 150) {
+            weapon = "arrow";
+            speed = 12.5;
+        }
+		
+// ---> NEW LIMIT: Fallback to arrows if the target is outside firelance range (100px)
+        if (weapon === "fire" && nearestDist > 100) {
+            weapon = "arrow";
+            speed = 12.5;
+        }
+// ── Build direction vector with slight inaccuracy ────────────────
+        let dx   = nearest.x - tower.pixelX;
+        let dy   = nearest.y - tower.pixelY;
+        let dist = Math.hypot(dx, dy) || 1;
+        
+        // ---> SURGERY: Shift spawn to the outer edge of the tower parapet
+        let spawnRadius = tower.newSize ? (tower.newSize / 2) * 0.8 : 25; 
+        let spawnX = tower.pixelX + (dx / dist) * spawnRadius;
+        let spawnY = tower.pixelY + (dy / dist) * spawnRadius;
+
+        let spread = 0.055;
+        let vx = (dx / dist) * speed + (Math.random() - 0.5) * spread * speed * 2;
+        let vy = (dy / dist) * speed + (Math.random() - 0.5) * spread * speed * 2;
+
+        // ── Fake attacker-stats object (drives projectile visuals & damage) ─
+        let attackerStats = {
+            role:              weapon === "bolt"   ? "crossbow"
+                             : weapon === "bullet" ? "gunner"
+                             : weapon === "bomb"   ? "bomb"
+                             :                       "archer",
+            name:              weapon === "bolt"   ? "Crossbowman"
+                             : weapon === "bullet" ? "Hand Cannoneer"
+                             : weapon === "fire"   ? "Firelance"
+                             : weapon === "bomb"   ? "Bomb"
+                             :                       "Archer",
+            missileBaseDamage: weapon === "bomb"   ? 45
+                             : weapon === "bullet" ? 28
+                             : weapon === "fire"   ? 20
+                             :                       14,
+            missileAPDamage:   weapon === "bullet" ? 8 : 4,
+            armor: 0,
+            // Needed by calculateDamageReceived so it doesn't NaN
+            meleeAttack: 10, meleeDefense: 5,
+        };
+
+        // ── Push projectile ─────────────────────────────────────────────
+        battleEnvironment.projectiles.push({
+            x: spawnX, y: spawnY, // <--- Now spawns at the calculated edge
+            vx, vy,
+            side:      'enemy',          // towers defend vs player
+            startX:    spawnX, startY: spawnY, // <--- Corrected origin tracking
+            maxRange:  weapon === "fire" ? 100 : RANGE + 40, 
+            attackerStats,
+            fromTower: true,
+            // Fire-lance / bomb flags that the projectile renderer reads:
+            isFire:         weapon === "fire",
+            projectileType: weapon === "fire" ? "firelance"
+                          : weapon === "bomb" ? "bomb"
+                          : null,
+            type:           weapon === "bomb"   ? "bomb"
+                          : weapon === "rocket" ? "rocket"
+                          : null,
+        });
+
+        // ── Reload cooldown ─────────────────────────────────────────────
+        tower.fireCooldown = weapon === "bomb"   ? 400 + Math.random() * 90//disabled
+                           : weapon === "fire"   ? 200 + Math.random() * 30
+                           : weapon === "bullet" ? 130 + Math.random() * 50
+                           : weapon === "bolt"   ?  80 + Math.random() * 10
+                           :                        55 + Math.random() * 35;
     }
 }
