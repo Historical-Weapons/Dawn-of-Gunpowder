@@ -72,10 +72,16 @@ document.addEventListener("keydown", (event) => {
     const key = (typeof event.key === "string") ? event.key.toLowerCase() : null;
     if (!key) return;
 
-    // 2. REVISED CHAIN OF COMMAND CHECK
-    // We look for the unit that is BOTH a commander and on the player's side
-    const activeCommander = battleEnvironment.units.find(u => u.side === 'player' && (u.isCommander || u.disableAICombat));
-    
+// 2. REVISED CHAIN OF COMMAND CHECK
+// We look for the unit that is BOTH a commander and on the player's side
+const activeCommander = battleEnvironment.units.find(u =>
+  u.side?.toLowerCase() === 'player' &&
+  (
+    u.isCommander ||
+    ['commander', 'general', 'player', 'captain'].includes(u.unitType?.toLowerCase()) ||
+    ['commander', 'general', 'player', 'captain'].includes(u.name?.toLowerCase())
+  )
+);
     if (!activeCommander || activeCommander.hp <= 0) {
         console.log("Command failed: Player General is fallen or not found!");
         return; 
@@ -153,12 +159,12 @@ document.addEventListener("keydown", (event) => {
     const selectedUnits = playerUnits.filter(u => u.selected);
     if (selectedUnits.length === 0) return;
 
-    // =========================
-    // Z, X, C, V, B: FORMATIONS 
+   // =========================
+    // Z, X, C, V, B: FORMATIONS (ANCHORED TO GENERAL)
     // =========================
     if (["z", "x", "v", "c", "b"].includes(key)) {
         
-        stopLazyGeneral(); // Disable lazy spam if manual formation ordered
+        stopLazyGeneral(); 
          
         if (selectedUnits.length <= 1) return;
 
@@ -168,34 +174,18 @@ document.addEventListener("keydown", (event) => {
         if (key === "c") currentFormationStyle = "circle"; 
         if (key === "b") currentFormationStyle = "square"; 
         
-        // 1. Calculate the Centroid (Average position of the selected group)
-        let sumX = 0, sumY = 0;
-        selectedUnits.forEach(u => {
-            sumX += u.x;
-            sumY += u.y;
-        });
-        let centroid = { 
-            x: sumX / selectedUnits.length, 
-            y: sumY / selectedUnits.length 
-        };
+        // SURGERY: Anchor the offsets to the General instead of a static map centroid
+        calculateFormationOffsets(selectedUnits, currentFormationStyle, commander);
 
-        // 2. Calculate offsets based on the group's centroid, not the commander
-        calculateFormationOffsets(selectedUnits, currentFormationStyle, centroid);
-
-        // 3. Command the group to form up "In Place" at their centroid
+        // SURGERY: Automatically apply the "Follow" command (Mirroring 'F')
         selectedUnits.forEach(u => {
             u.hasOrders = true;
-            u.orderType = "move_to_point"; // Override follow behavior
-            
-            let rawDestX = centroid.x + (u.formationOffsetX || 0);
-            let rawDestY = centroid.y + (u.formationOffsetY || 0);
-            
-            u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
+            u.orderType = "follow"; 
+            u.orderTargetPoint = null; 
             u.formationTimer = 240; // 4 seconds at 60fps for ranged units to focus on moving
         });
         return;
     }
-
     // =========================
     // Q, E, R, F: TACTICAL ORDERS
     // =========================
@@ -251,16 +241,23 @@ document.addEventListener("keydown", (event) => {
             });
             break;
 
-        case "e": // STOP / CANCEL ORDERS
-            
-        stopLazyGeneral(); // Disable lazy spam if manual formation ordered
+case "e": // STOP / HOLD GROUND
+            stopLazyGeneral(); 
     
             selectedUnits.forEach(u => {
-                u.hasOrders = false;
-                u.orderType = null;
+                u.hasOrders = true;             
+                u.orderType = "hold_position";  
                 u.orderTargetPoint = null;
-                u.target = null; // Instantly clears target so default AI handles engagement
+                u.target = null;
                 u.formationTimer = 0;
+                
+                // SURGERY: Hard-kill momentum instantly and clamp physically to the map
+                u.vx = 0;
+                u.vy = 0;
+                let safeCoords = getSafeMapCoordinates(u.x, u.y, 15);
+                u.x = safeCoords.x;
+                u.y = safeCoords.y;
+
                 if (u.originalRange) {
                     u.stats.range = u.originalRange;
                     u.originalRange = null;
@@ -304,7 +301,14 @@ function getTacticalRole(unit) {
 function processTacticalOrders() {
     if (!inBattleMode || !battleEnvironment.units) return;
     
-    const commander = battleEnvironment.units.find(u => u.isCommander && u.side === 'player');
+const commander = battleEnvironment.units.find(u =>
+  u.side?.toLowerCase() === 'player' &&
+  (
+    u.isCommander ||
+    ['commander', 'general', 'player', 'captain'].includes(u.unitType?.toLowerCase()) ||
+    ['commander', 'general', 'player', 'captain'].includes(u.name?.toLowerCase())
+  )
+);
 
     battleEnvironment.units.forEach(unit => {
         // SURGERY 1: Protect specialized AI crews from having their targets wiped by formation logic
@@ -358,9 +362,43 @@ function processTacticalOrders() {
             return; 
         }
 
-        // 2. EXECUTE ORDERS
+      // 2. EXECUTE ORDERS
         if (unit.hasOrders) {
             
+            // ==========================
+            // SURGERY 2: HOLD POSITION (The "E" Command)
+            // ==========================
+            if (unit.orderType === "hold_position") {
+                if (nearestEnemy) {
+                    let distToEnemy = Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y);
+                    // Ranged units use max range, melee units use an emergency 70px self-defense radius
+                    let aggroLimit = isRanged ? unit.stats.range : 70;
+                    
+                    if (distToEnemy <= aggroLimit) {
+                        unit.target = nearestEnemy;
+                        return; // Locks on and executes combat
+                    }
+                }
+                
+// No one in range? Stand perfectly still.
+                let safeAnchor = typeof getSafeMapCoordinates === 'function' ? getSafeMapCoordinates(unit.x, unit.y, 15) : { x: unit.x, y: unit.y };
+                unit.target = { 
+                    x: safeAnchor.x, 
+                    y: safeAnchor.y, 
+                    hp: 9999, 
+                    isDummy: true,
+                    isAnchor: true
+                };
+                
+                // SURGERY: Bypassing normal movement skips the Iron Cage clamp. We must enforce it here!
+                unit.x = safeAnchor.x;
+                unit.y = safeAnchor.y;
+                unit.vx = 0;
+                unit.vy = 0;
+                unit.state = "idle";
+                return;
+            }
+
             // ==========================
             // SEEK & ENGAGE (The only order where they are allowed to be distracted)
             // ==========================
@@ -616,17 +654,16 @@ function processTacticalOrders() {
 
                 unit.state = "idle";
                 
-                // SURGERY: Do NOT wipe orders for follow or move_to_point.
-                if (unit.orderType === "follow" || unit.orderType === "move_to_point") {
+// SURGERY: Do NOT wipe orders for follow, move_to_point, OR retreat.
+                if (unit.orderType === "follow" || unit.orderType === "move_to_point" || unit.orderType === "retreat") {
                     return; 
                 }
- 
 
-				// Only wipe one-off move orders or retreats
-				unit.hasOrders = false;
-				unit.orderType = null;
-				unit.orderTargetPoint = null;
-				return; 
+                // Only wipe one-off move orders
+                unit.hasOrders = false;
+                unit.orderType = null;
+                unit.orderTargetPoint = null;
+                return;
 			}
             let shouldFocusOnShooting = false;
             

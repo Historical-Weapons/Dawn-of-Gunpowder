@@ -739,18 +739,86 @@ function _drawTowerRubble(ctx, tower) {
     let { tX, tY, newSize } = tower;
     let cx = tX + newSize / 2, cy = tY + newSize / 2;
 
-    // Ash stain
-    ctx.fillStyle = "rgba(30,20,10,0.65)";
-    ctx.beginPath(); ctx.ellipse(cx, cy, newSize*0.45, newSize*0.30, 0, 0, Math.PI*2); ctx.fill();
+    // --- 1. DETERMINISTIC RANDOM HELPER ---
+    // Ensures the rubble looks identical every frame, preventing visual "flickering"
+    let s = (tower.tX * 7 + tower.tY * 13);
+    function rand() { 
+        s = (s * 9301 + 49297) % 233280; 
+        return s / 233280; 
+    }
 
-    // Rubble chunks
-    let seed = (tower.pixelX * 7 + tower.pixelY * 13) % 97;
-    for (let i = 0; i < 12; i++) {
-        let angle = ((seed * i * 37) % 628) / 100;
-        let dist  = ((seed * i * 53) % 100) / 100 * newSize * 0.40;
-        let sz    = 3 + ((seed * i * 29) % 40) / 10;
-        ctx.fillStyle = i % 2 === 0 ? "#7b838a" : "#4a5359"; // Stone colors
-        ctx.fillRect(cx + Math.cos(angle)*dist - sz/2, cy + Math.sin(angle)*dist - sz/2, sz, sz);
+    // --- 2. EXTRACT FACTION ROOF COLOR ---
+    // We grab the exact roof color used by the active city to color the shattered tiles
+    let rColor = "#2c5f4b"; // Fallback color
+    let faction = "Hong Dynasty";
+    if (typeof currentActiveCityFaction !== 'undefined' && currentActiveCityFaction) {
+        faction = currentActiveCityFaction;
+    } else if (typeof cityDimensions !== 'undefined' && Object.keys(cityDimensions).length > 0) {
+        faction = Object.keys(cityDimensions)[0];
+    }
+    
+    if (typeof ARCHITECTURE !== 'undefined' && ARCHITECTURE[faction] && ARCHITECTURE[faction].roofs) {
+        rColor = ARCHITECTURE[faction].roofs[0];
+    }
+
+    // --- 3. MASSIVE SCORCH MARKS ---
+    // Deep, layered burns where the foundation collapsed
+    ctx.fillStyle = "rgba(15, 10, 5, 0.85)";
+    ctx.beginPath(); ctx.ellipse(cx, cy, newSize * 0.65, newSize * 0.50, 0, 0, Math.PI * 2); ctx.fill();
+    
+    ctx.fillStyle = "rgba(30, 15, 10, 0.65)";
+    ctx.beginPath(); 
+    ctx.ellipse(cx + (rand()-0.5)*10, cy + (rand()-0.5)*10, newSize * 0.45, newSize * 0.35, rand()*Math.PI, 0, Math.PI * 2); 
+    ctx.fill();
+
+    // --- 4. DEBRIS GENERATION ENGINE ---
+    function drawDebrisLayer(count, colors, maxDist, minW, maxW, minH, maxH) {
+        for (let i = 0; i < count; i++) {
+            let angle = rand() * Math.PI * 2;
+            // Heavily concentrate debris in the center, sparse on the edges
+            let dist = rand() * maxDist * (rand() > 0.4 ? 0.4 : 1.0); 
+            let x = cx + Math.cos(angle) * dist;
+            let y = cy + Math.sin(angle) * dist;
+            let rot = rand() * Math.PI;
+            
+            let w = minW + rand() * (maxW - minW);
+            let h = minH + rand() * (maxH - minH);
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rot);
+            ctx.fillStyle = colors[Math.floor(rand() * colors.length)];
+            ctx.fillRect(-w/2, -h/2, w, h);
+            ctx.restore();
+        }
+    }
+
+    // A. Shattered Hardwood Platform (Dark brown structural beams)
+    // 40 pieces of heavy, long wood splinters
+    drawDebrisLayer(40, ["#3e2723", "#2a1b16", "#1a0b06", "#4e342e"], newSize * 0.75, 4, 18, 2, 5);
+
+    // B. Crumbled Plaster Walls (Beige & light grey dust/chunks)
+    // 60 pieces of square-ish wall chunks
+    drawDebrisLayer(60, ["#d1bfae", "#bcaaa4", "#8d6e63", "#a1887f", "rgba(209, 191, 174, 0.5)"], newSize * 0.65, 3, 9, 3, 9);
+
+    // C. Snapped Red Lacquer Pillars (Signature architectural trim)
+    // 20 sharp, thin red splinters
+    drawDebrisLayer(20, ["#8b2522", "#5c1412", "#3a0c0b"], newSize * 0.70, 6, 15, 1.5, 3);
+
+    // D. Obliterated Roof Tiles (Matches the faction's roof color!)
+    // 120 tiny, scattered tile shards layered on top
+    drawDebrisLayer(120, [rColor, "rgba(20,20,20,0.8)", rColor, "rgba(50,50,50,0.6)"], newSize * 0.60, 2, 5, 2, 5);
+
+    // --- 5. SMOLDERING EMBERS ---
+    // Tiny glowing orange/red dots scattered near the center of the wreckage
+    for(let i = 0; i < 35; i++) {
+        let angle = rand() * Math.PI * 2;
+        let dist = rand() * newSize * 0.45;
+        let isHot = rand() > 0.6;
+        
+        ctx.fillStyle = isHot ? "rgba(255, 120, 0, 0.9)" : "rgba(200, 40, 0, 0.7)";
+        let eSize = isHot ? 1.5 : 2;
+        ctx.fillRect(cx + Math.cos(angle)*dist, cy + Math.sin(angle)*dist, eSize, eSize);
     }
 }
 

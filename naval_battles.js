@@ -1225,7 +1225,7 @@ const getDynamicMaxY = (cfg) => {
             
             // FIX: Add generous width padding (12% wider deck hitbox).
             // This stops units from falling off the tapered sides of light ships.
-            return baseMaxY + 0.12; 
+            return baseMaxY + 0.01; 
         };
 
         let waterBuffer = 60 / s.height; // Convert pixels to normalized space

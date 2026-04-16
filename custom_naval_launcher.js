@@ -1,36 +1,3 @@
-// ============================================================================
-// CUSTOM NAVAL BATTLE LAUNCHER (custom_naval_launcher.js)
-// Bridges custom_battle_gui.js with the naval_battles.js engine
-// ============================================================================
-//
-// BUG HISTORY / FIX LOG:
-//
-// FIX 1 (Previous): s0.type / s1.type not updated after ship resize →
-//   getNavalSurfaceAt used wrong hull profile → units falsely detected as WATER
-//
-// FIX 2 (Previous): _isOnDeck used getNavalSurfaceAt (profile-dependent) →
-//   replaced with campaign-proven pointInShip superellipse formula
-//
-// FIX 3 (THIS PATCH — ROOT CAUSE OF "BOTTOM RIGHT CORNER"):
-//   `player` is declared with `let` in update.js, so `window.player` is
-//   ALWAYS undefined. The condition `typeof window.player !== 'undefined'`
-//   is ALWAYS false. player.x was NEVER being set to the ship position.
-//   player.x stayed at the stale overworld map position (e.g., 300, 200).
-//   The update loop's first frame then ran `pCmdr.x = player.x`, dragging
-//   the commander off the ship to the overworld position.
-//   At zoom=1.5 ships at world-center (2400, 1770) with camera at (300, 200):
-//   screen_x = 960 + (2400-300)*1.5 = 4110px → completely off-screen right.
-//   FIX: Replace ALL `window.player` references with direct `player` access.
-//
-// FIX 4 (THIS PATCH): Zero out all water-state flags (overboardTimer,
-//   drownTimer, isSwimming) on freshly spawned units. Prevents stale state
-//   from a previous battle triggering instant drowning on frame 1.
-//
-// FIX 5 (THIS PATCH): Removed .sort() from spawnList before position
-//   calculation. sort() was scrambling index order, pushing units to grid
-//   edges where they're most likely to miss the ship hull safety check.
-//
-// ============================================================================
 
 (function() {
 

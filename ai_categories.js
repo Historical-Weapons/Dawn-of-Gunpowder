@@ -162,9 +162,10 @@ processMoraleAndFleeing: function(unit, pCount, eCount, currentBattleData) {
 },
 
 processTargeting: function(unit, units) {
-if (unit.disableAICombat || unit.orderType === "siege_assault") {
-            return; 
-        }
+    // SURGERY 1: Protect all manual field commands from the AI target scanner
+    if (unit.disableAICombat || ["siege_assault", "follow", "retreat", "move_to_point", "hold_position"].includes(unit.orderType)) {
+        return; 
+    }
 // --- NEW GUARD: PACIFY EARLY-GAME WALL DEFENDERS (PATCHED) ---
         let southGate = (typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates) 
             ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
@@ -272,118 +273,132 @@ if (unit.disableAICombat || unit.orderType === "siege_assault") {
 
             let gateTarget = { x: gateX, y: gateY - 20, hp: 9999, isDummy: true, priority: "gate_funnel" };
             let plazaTarget = { x: gateX, y: typeof SiegeTopography !== 'undefined' ? SiegeTopography.plazaPixelY : BATTLE_WORLD_HEIGHT / 2, hp: 9999, isDummy: true, priority: "plaza" };
-			// ATTACKER COMMON GOAL (OVERHAULED FOR LADDERS & PLAZA)
-			if (unit.side === "player") {
-				const gateCentroid = southGate && southGate.pixelRect
-					? {
-						x: southGate.pixelRect.x + (southGate.pixelRect.w / 2),
-						y: southGate.pixelRect.y + (southGate.pixelRect.h / 2)
-					}
-					: {
-						x: gateX,
-						y: gateY
-					};
-
-// Check if any ladders are successfully deployed against the walls
-                const areLaddersDeployed = typeof siegeEquipment !== 'undefined' && 
-                                           siegeEquipment.ladders && 
-                                           siegeEquipment.ladders.some(l => l.isDeployed && l.hp > 0);
-
-                // PRE-DEPLOYMENT MAGNET: Pull eligible infantry toward undeployed ladders like magnets
-                const hasUndeployedLadders = typeof siegeEquipment !== 'undefined' &&
-                                              siegeEquipment.ladders &&
-                                              siegeEquipment.ladders.some(l => !l.isDeployed && l.hp > 0);
-
-                if (!areLaddersDeployed && hasUndeployedLadders && canUseSiegeEngines(unit) && !unit.isClimbing && !unit.onWall) {
-                    let undeployedLadders = siegeEquipment.ladders.filter(l => !l.isDeployed && l.hp > 0);
-                    let bestLadder = undeployedLadders.reduce((prev, curr) =>
-                        Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
-                    );
-                    unit.target = bestLadder;
-                    unit.orderType = "ladder_crew";
-                    unit.hasOrders = true;
-                    return;
-                }
-
-// Look for the "1. GATE BREACHED" block inside processTargeting
-if (isGateBreached) {
-    // Force role swap — even active ladder-climbers drop their task
-    unit.siegeRole        = "gate_charger";
-    unit.isClimbing       = false;
-    unit.onWall           = false;
-    unit.hasOrders        = true;
-    unit.orderType        = "move_to_point";
-    unit.breachRush       = true;
-    unit.priorityOverride = true; // tells processAction to skip engagement logic
-
-    // Simply move everyone to the old gate centroid to funnel through the gap
-    unit.target = { 
-        x: gateCentroid.x, 
-        y: gateCentroid.y,
-        hp: 99, 
-        isDummy: true, 
-        priority: "gate_funnel" 
-    };
-    return;
-}
-
-// 2. LADDERS DEPLOYED (GATE INTACT) -> STORM THE LADDERS (Two-Phase Charge)
-if (areLaddersDeployed && canUseSiegeEngines(unit)) {
+// ATTACKER COMMON GOAL (OVERHAULED FOR LADDERS & PLAZA)
+            // ATTACKER COMMON GOAL
+if (unit.side === "player") {
     
-    // Find the closest active ladder to use as our "Centroid"
-    let activeLadders = typeof siegeEquipment !== 'undefined' ? 
-                        siegeEquipment.ladders.filter(l => l.isDeployed && l.hp > 0) : [];
-    let bestLadder = activeLadders[0] || {x: gateCentroid.x, y: gateCentroid.y};
-    
-    if (activeLadders.length > 0) {
-        bestLadder = activeLadders.reduce((prev, curr) => 
-            Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
-        );
+    // 1. Define who is "On Duty" (These units ignore your follow/retreat orders to finish the siege task)
+    const isActiveCrew = ["ram_pusher", "ladder_carrier", "battering_ram", "engine_crew"].includes(unit.siegeRole);
+
+    // 2. THE SURGERY: If I'm NOT a crew member, and I have a MANUAL command (Follow, Stop, or Retreat)
+    // we EXIT this AI block immediately so they obey you.
+    // NOTE: We do NOT include "move_to_point" here so that your "5-q" attack still uses Siege Logic.
+    const hasManualCommand = unit.hasOrders && ["follow", "retreat", "hold_position"].includes(unit.orderType);
+
+    if (!isActiveCrew && hasManualCommand) {
+        return; // Stop the Siege AI from overriding. Unit moves naturally to your target!
     }
 
-    // Only apply this to units not already locked into climbing
-    if (!unit.isClimbing && !unit.onWall) {
-        unit.siegeRole        = "ladder_charger";
-        unit.hasOrders        = true;
-        unit.orderType        = "move_to_point";
-        unit.breachRush       = true;
-        unit.priorityOverride = true; // tells processAction to skip engagement logic
+    // ---------------------------------------------------------
+    // 3. SIEGE MACRO LOGIC (Only runs if no manual command is active)
+    // ---------------------------------------------------------
+    
+    // Calculate Gate Centroid
+    const gateCentroid = southGate && southGate.pixelRect
+        ? { x: southGate.pixelRect.x + (southGate.pixelRect.w / 2), y: southGate.pixelRect.y + (southGate.pixelRect.h / 2) }
+        : { x: gateX, y: gateY };
 
-        const _centroidX = bestLadder.x;
-        const _centroidY = bestLadder.y - 10; // Aim right at the ladder's base
-        const _distToCentroid = Math.hypot(unit.x - _centroidX, unit.y - _centroidY);
+                    // Check if any ladders are successfully deployed against the walls
+                    const areLaddersDeployed = typeof siegeEquipment !== 'undefined' && 
+                                               siegeEquipment.ladders && 
+                                               siegeEquipment.ladders.some(l => l.isDeployed && l.hp > 0);
 
-        if (_distToCentroid > 20) {
-            // PHASE A — march directly to the ladder base
-            unit.target = { 
-                x: _centroidX, 
-                y: _centroidY,
-                hp: 9999, 
-                isDummy: true, 
-                priority: "ladder_centroid",
-                isLadderAssault: true // Hooks into the fast-track climbing physics
-            };
-        } else {
-            // PHASE B — once at the ladder, push through to the city plaza
-            unit.target = plazaTarget;
-        }
-        return;
-    }
-}
+                    // PRE-DEPLOYMENT MAGNET: Pull eligible infantry toward undeployed ladders like magnets
+                    const hasUndeployedLadders = typeof siegeEquipment !== 'undefined' &&
+                                                  siegeEquipment.ladders &&
+                                                  siegeEquipment.ladders.some(l => !l.isDeployed && l.hp > 0);
 
-				// 3. PRE-BREACH & PRE-LADDER -> RANGED FORMATIONS HOLD LINE
-				if (!canUseSiegeEngines(unit)) {
-					let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000;
-					unit.target = {
-						x: unit.x,
-						y: wallY + 120,
-						hp: 9999,
-						isDummy: true,
-						priority: "wall_shoot_line"
-					};
-					return;
-				}
-			}
+                    if (!areLaddersDeployed && hasUndeployedLadders && canUseSiegeEngines(unit) && !unit.isClimbing && !unit.onWall) {
+                        let undeployedLadders = siegeEquipment.ladders.filter(l => !l.isDeployed && l.hp > 0);
+                        let bestLadder = undeployedLadders.reduce((prev, curr) =>
+                            Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
+                        );
+                        unit.target = bestLadder;
+                        unit.orderType = "ladder_crew";
+                        unit.hasOrders = true;
+                        return;
+                    }
+
+                    // Look for the "1. GATE BREACHED" block inside processTargeting
+                    if (isGateBreached) {
+                        // Force role swap — even active ladder-climbers drop their task
+                        unit.siegeRole        = "gate_charger";
+                        unit.isClimbing       = false;
+                        unit.onWall           = false;
+                        unit.hasOrders        = true;
+                        unit.orderType        = "move_to_point";
+                        unit.breachRush       = true;
+                        unit.priorityOverride = true; // tells processAction to skip engagement logic
+
+                        // Simply move everyone to the old gate centroid to funnel through the gap
+                        unit.target = { 
+                            x: gateCentroid.x, 
+                            y: gateCentroid.y,
+                            hp: 99, 
+                            isDummy: true, 
+                            priority: "gate_funnel" 
+                        };
+                        return;
+                    }
+
+                    // 2. LADDERS DEPLOYED (GATE INTACT) -> STORM THE LADDERS (Two-Phase Charge)
+                    if (areLaddersDeployed && canUseSiegeEngines(unit)) {
+                        
+                        // Find the closest active ladder to use as our "Centroid"
+                        let activeLadders = typeof siegeEquipment !== 'undefined' ? 
+                                            siegeEquipment.ladders.filter(l => l.isDeployed && l.hp > 0) : [];
+                        let bestLadder = activeLadders[0] || {x: gateCentroid.x, y: gateCentroid.y};
+                        
+                        if (activeLadders.length > 0) {
+                            bestLadder = activeLadders.reduce((prev, curr) => 
+                                Math.hypot(curr.x - unit.x, curr.y - unit.y) < Math.hypot(prev.x - unit.x, prev.y - unit.y) ? curr : prev
+                            );
+                        }
+
+                        // Only apply this to units not already locked into climbing
+                        if (!unit.isClimbing && !unit.onWall) {
+                            unit.siegeRole        = "ladder_charger";
+                            unit.hasOrders        = true;
+                            unit.orderType        = "move_to_point";
+                            unit.breachRush       = true;
+                            unit.priorityOverride = true; // tells processAction to skip engagement logic
+
+                            const _centroidX = bestLadder.x;
+                            const _centroidY = bestLadder.y - 10; // Aim right at the ladder's base
+                            const _distToCentroid = Math.hypot(unit.x - _centroidX, unit.y - _centroidY);
+
+                            if (_distToCentroid > 20) {
+                                // PHASE A — march directly to the ladder base
+                                unit.target = { 
+                                    x: _centroidX, 
+                                    y: _centroidY,
+                                    hp: 9999, 
+                                    isDummy: true, 
+                                    priority: "ladder_centroid",
+                                    isLadderAssault: true // Hooks into the fast-track climbing physics
+                                };
+                            } else {
+                                // PHASE B — once at the ladder, push through to the city plaza
+                                unit.target = plazaTarget;
+                            }
+                            return;
+                        }
+                    }
+
+                    // 3. PRE-BREACH & PRE-LADDER -> RANGED FORMATIONS HOLD LINE
+                    if (!canUseSiegeEngines(unit)) {
+                        let wallY = typeof SiegeTopography !== 'undefined' ? SiegeTopography.wallPixelY : 2000;
+                        unit.target = {
+                            x: unit.x,
+                            y: wallY + 120,
+                            hp: 9999,
+                            isDummy: true,
+                            priority: "wall_shoot_line"
+                        };
+                        return;
+                    }
+               
+            }
 						
 		// ==========================================
             // DEFENDER COMMON GOAL (PATCHED)
@@ -617,9 +632,8 @@ if (!isGateBreached && unit.side === "player" && unit.target && !unit.target.isD
             return; 
         }
 
-        // SURGERY: Allow 'siege_assault' and 'move_to_point' to fight back if their target is a REAL enemy.
-        // If the target is just a dummy waypoint, they skip combat and keep walking.
-        if (unit.priorityOverride || ((unit.orderType === "siege_assault" || unit.orderType === "move_to_point") && unit.target && unit.target.isDummy)) {
+// SURGERY 2: Add 'follow' and 'retreat' so units don't drop into combat logic against their own waypoints
+        if (unit.priorityOverride || ((["siege_assault", "move_to_point", "follow", "retreat"].includes(unit.orderType)) && unit.target && unit.target.isDummy)) {
 
              let dx = unit.target.x - unit.x;
              let dy = unit.target.y - unit.y;
@@ -675,12 +689,22 @@ if (!isGateBreached && unit.side === "player" && unit.target && !unit.target.isD
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
 
 // RANGE HYSTERESIS: Add a buffer so they don't stutter-step on the edge of their range
-            let isAlreadyAttacking = (unit.state === "attacking" && unit.stats.currentStance === "statusrange");
+          let isAlreadyAttacking = (unit.state === "attacking" && unit.stats.currentStance === "statusrange");
             let rangeThreshold = isAlreadyAttacking ? (effectiveRange * 0.95) : (effectiveRange * 0.8);
 
             if (dist > rangeThreshold) {
-                this._handleMovement(unit, dx, dy, dist, battleEnv);
+                // SURGERY 3: The "E" Command Leg-Lock
+                let isMeleeSelfDefense = (!unit.stats.isRanged && dist < 70); 
+
+                if (unit.orderType === "hold_position" && !isMeleeSelfDefense) {
+                    unit.vx = 0; 
+                    unit.vy = 0;
+                    unit.state = "idle";
+                } else {
+                    this._handleMovement(unit, dx, dy, dist, battleEnv);
+                }
             } else {
+                // EXTREME STOP: For ranged units in range, kill velocity completely so the animation locks cleanly
                 // EXTREME STOP: For ranged units in range, kill velocity completely so the animation locks cleanly
                 if (unit.stats.currentStance === "statusrange") {
                     unit.vx = 0;
@@ -1148,8 +1172,9 @@ if (inSiege && unit.side === "player") {
                         }
                     }
                 } 
-                // 2. STANDARD LATERAL OVERRIDE FOR GROUND UNITS (1 SEC)
-                else if (unit.stuckLog.ticks > 60 && !unit.unstickCooldown) {
+// 2. STANDARD LATERAL OVERRIDE FOR GROUND UNITS (1 SEC)
+                // SURGERY: Ignore lateral unstick if actively retreating to stop border sliding
+                else if (unit.stuckLog.ticks > 60 && !unit.unstickCooldown && unit.orderType !== "retreat") {
                     let perpX = -vy;
                     let perpY = vx;
                     vx = perpX * 1.5 + ((Math.random() - 0.5) * unit.stats.speed);
@@ -1214,10 +1239,25 @@ if (inSiege && unit.side === "player") {
                 unit.ladderSlideTimer--;
             }
 
-            let nextX = unit.x + vx;
+         let nextX = unit.x + vx;
             let nextY = unit.y + vy;
+
+            // SURGERY: THE IRON CAGE (Universal Boundary Clamp)
+            // Mathematically forbids flocking from pushing units into the void
+            if (unit.state !== "FLEEING" && unit.state !== "retreated") {
+                const mapMargin = 15; 
+                const maxW = typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : 2400;
+                const maxH = typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600;
+
+                if (nextX < mapMargin) { nextX = mapMargin; vx = 0; }
+                if (nextX > maxW - mapMargin) { nextX = maxW - mapMargin; vx = 0; }
+                if (nextY < mapMargin) { nextY = mapMargin; vy = 0; }
+                if (nextY > maxH - mapMargin) { nextY = maxH - mapMargin; vy = 0; }
+            }
+
 // SURGERY 3: Defender Hard-Line — EXTREME MEASURE (NO EXCEPTIONS)
             if (inSiege && unit.side === "enemy" && !unit.isFalling) {
+				
                 let southGate = typeof battleEnvironment !== 'undefined' && battleEnvironment.cityGates ? battleEnvironment.cityGates.find(g => g.side === "south") : null;
                 let isGateBreached = !southGate || southGate.isOpen || southGate.gateHP <= 0 || window.__SIEGE_GATE_BREACHED__;
                 
@@ -1672,15 +1712,25 @@ function applyPinballEscape(unit) {
     if (!unit.positionHistory) unit.positionHistory = [];
     if (!unit.pinballTimer) unit.pinballTimer = 0;
 
-    // 2. Are we currently in Pinball Mode?
+// 2. Are we currently in Pinball Mode?
     if (unit.pinballTimer > 0) {
         // Violently bounce them in the saved random direction
         unit.x += unit.pinballVector.x;
         unit.y += unit.pinballVector.y;
+        
+        // SURGERY: Clamp pinball bounces so they don't blast through the map border
+        const mapMargin = 15; 
+        const maxW = typeof BATTLE_WORLD_WIDTH !== 'undefined' ? BATTLE_WORLD_WIDTH : 2400;
+        const maxH = typeof BATTLE_WORLD_HEIGHT !== 'undefined' ? BATTLE_WORLD_HEIGHT : 1600;
+        
+        if (unit.x < mapMargin) unit.x = mapMargin;
+        if (unit.x > maxW - mapMargin) unit.x = maxW - mapMargin;
+        if (unit.y < mapMargin) unit.y = mapMargin;
+        if (unit.y > maxH - mapMargin) unit.y = maxH - mapMargin;
+
         unit.pinballTimer--;
         return true; // We moved them, skip normal movement this frame!
     }
-
     // 3. Track their history (Save last 30 frames)
     unit.positionHistory.push({ x: unit.x, y: unit.y });
     if (unit.positionHistory.length > 30) {
@@ -1715,7 +1765,8 @@ if (unit.isClimbing) {
 }
 
 // --- NEW GUARD: DO NOT BOUNCE INTENTIONALLY IDLE UNITS OR LADDER SWARMERS! ---
-if ( unit.state === "idle" || unit.state === "attacking" || unit.disableAICombat || unit.siegeRole === "cavalry_reserve" || unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew" || unit.siegeRole === "engine_crew") {
+// Added "hold_position" alongside retreat to prevent units from bouncing into the abyss.
+if ( unit.state === "idle" || unit.state === "attacking" || unit.disableAICombat || unit.orderType === "retreat" || unit.orderType === "hold_position" || unit.siegeRole === "cavalry_reserve" || unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew" || unit.siegeRole === "engine_crew") {
     unit.positionHistory = []; // Clear history to prevent memory bloat
     return false; // Abort the pinball logic entirely for this unit
 }
