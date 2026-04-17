@@ -68,7 +68,8 @@ navalEnvironment.mapType = tileType;
         navalEnvironment.waterColor = "#1a3344";
         navalEnvironment.landColor  = "#000000";
     }
-
+// CRITICAL: Wipe the cached background image so old rocks don't persist
+    navalBackgroundCache = null;
     generateNavalMap();
 	generateShips(pCount, eCount);
 	clearShipLanes();
@@ -76,6 +77,27 @@ navalEnvironment.mapType = tileType;
     navalEnvironment.plankAnim = { phase: 'animating', timer: 0, duration: 80 };
 	generateCosmetics();
 	initSailCanvas();
+	
+	// ========================================================================
+    // AMMO SYNC SURGERY: Prevents "Spear Only" bug on battle start
+    // ========================================================================
+    if (typeof battleEnvironment !== 'undefined' && battleEnvironment.units) {
+        // Find the player commander unit that was just spawned
+        let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+        
+        if (pCmdr) {
+            // 1. Ensure the unit object has ammo (pull from Roster or default to 24)
+            let template = (typeof UnitRoster !== 'undefined') ? UnitRoster.allUnits[pCmdr.unitType] : null;
+            pCmdr.ammo = (template && template.ammo !== undefined) ? template.ammo : 24;
+
+            // 2. CRITICAL: Sync the global 'player' object used for animations
+            if (typeof player !== 'undefined') {
+                player.ammo = pCmdr.ammo;
+                player.weaponMode = 'ranged'; // Force away from melee/spear mode
+            }
+        }
+    }
+	
 }
 
 // ============================================================================
@@ -85,65 +107,98 @@ navalEnvironment.mapType = tileType;
 // Coastal is the only map type that modifies the base ocean grid by carving land tiles along one edge using coastSide + wave noise.
 // Therefore:
 // - Ocean = implicit “do nothing” (pure water world) - Coastal = land generation on top of the ocean base
-function generateNavalMap() {
-    const grid = Array.from({ length: BATTLE_COLS }, () => Array(BATTLE_ROWS).fill(11));
 
-if (navalEnvironment.mapType === "Coastal") {
-        // Land only appears as small island clusters strictly within the outer border band.
-        // The open ocean (where ships sit) stays pure water (tile 11) in all cases.
-        // One large island always sits on a random outer edge; 6–9 small pocket islands
-        // scatter in the border band but never overlap the ship/lane center zone.
+const NAVAL_WATER_TILES = new Set([11, 12, 13, 14, 15]); // all swimmable
 
-        const BORDER_FRAC  = 0.17;                           // islands only within 17% of any edge
-        const BORDER_COL   = Math.floor(BATTLE_COLS * BORDER_FRAC);
-        const BORDER_ROW   = Math.floor(BATTLE_ROWS * BORDER_FRAC);
-
-        // Helper: stamp a noisy island blob
-        function _stampIsland(cx, cy, r, rockBias) {
-            for (let tx = cx - r - 2; tx <= cx + r + 2; tx++) {
-                for (let ty = cy - r - 2; ty <= cy + r + 2; ty++) {
-                    if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) continue;
-                    // Organic edge noise: vary radius per angle
-                    let angle = Math.atan2(ty - cy, tx - cx);
-                    let noisyR = r * (0.70 + Math.sin(angle * 3.1 + cx) * 0.15 + Math.sin(angle * 7.3 + cy) * 0.10);
-                    let d = Math.hypot(tx - cx, ty - cy);
-                    if (d > noisyR) continue;
-                    grid[tx][ty] = 0;                         // land
-                    // Rocky centre
-                    if (d < noisyR * 0.35 && Math.random() > (1 - rockBias)) grid[tx][ty] = 6;
-                }
-            }
-        }
-
-        // 1. ONE BIG ISLAND on a random map edge (radius 14–22 tiles)
-        let bigR  = 14 + Math.floor(Math.random() * 9);
-        let bigSide = Math.floor(Math.random() * 4);
-        let bigCX, bigCY;
-        if (bigSide === 0) { bigCX = Math.floor(Math.random() * BORDER_COL);               bigCY = Math.floor(BATTLE_ROWS * (0.2 + Math.random() * 0.6)); }
-        else if (bigSide === 1) { bigCX = BATTLE_COLS - 1 - Math.floor(Math.random() * BORDER_COL); bigCY = Math.floor(BATTLE_ROWS * (0.2 + Math.random() * 0.6)); }
-        else if (bigSide === 2) { bigCX = Math.floor(BATTLE_COLS * (0.2 + Math.random() * 0.6));   bigCY = Math.floor(Math.random() * BORDER_ROW); }
-        else                    { bigCX = Math.floor(BATTLE_COLS * (0.2 + Math.random() * 0.6));   bigCY = BATTLE_ROWS - 1 - Math.floor(Math.random() * BORDER_ROW); }
-        _stampIsland(bigCX, bigCY, bigR, 0.55);
-
-        // 2. 6–9 MINI ISLANDS anywhere inside the border band (radius 3–7 tiles)
-        const miniCount = 6 + Math.floor(Math.random() * 4);
-        for (let m = 0; m < miniCount; m++) {
-            let r = 3 + Math.floor(Math.random() * 5);
-            // Pick a random border zone each mini island
-            let edge = Math.floor(Math.random() * 4);
-            let cx, cy;
-            if (edge === 0)      { cx = Math.floor(Math.random() * BORDER_COL);               cy = Math.floor(Math.random() * BATTLE_ROWS); }
-            else if (edge === 1) { cx = BATTLE_COLS - 1 - Math.floor(Math.random() * BORDER_COL); cy = Math.floor(Math.random() * BATTLE_ROWS); }
-            else if (edge === 2) { cx = Math.floor(Math.random() * BATTLE_COLS);               cy = Math.floor(Math.random() * BORDER_ROW); }
-            else                 { cx = Math.floor(Math.random() * BATTLE_COLS);               cy = BATTLE_ROWS - 1 - Math.floor(Math.random() * BORDER_ROW); }
-            _stampIsland(cx, cy, r, 0.30);
-        }
-    }
-
-    battleEnvironment.grid        = grid;
-    battleEnvironment.groundColor = navalEnvironment.waterColor;
+function _makeSeededRng(seed) {
+    let s = (seed >>> 0) || 1;
+    return function () {
+        s |= 0;
+        s = (s + 0x6D2B79F5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
 }
 
+function _hash2D(x, y, seed) {
+    let n = Math.imul(x + 0x9E3779B9, 374761393) ^ Math.imul(y + 0x85EBCA6B, 668265263) ^ seed;
+    n = (n ^ (n >>> 13)) >>> 0;
+    n = Math.imul(n, 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+
+function _stampCoastalPatch(grid, cx, cy, r, seed) {
+    for (let tx = cx - r - 1; tx <= cx + r + 1; tx++) {
+        for (let ty = cy - r - 1; ty <= cy + r + 1; ty++) {
+            if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) continue;
+
+            const d = Math.hypot(tx - cx, ty - cy);
+            const jitter = _hash2D(tx, ty, seed) * 0.85;
+            if (d > r + jitter) continue;
+
+            const n = _hash2D(tx * 13 + 7, ty * 17 + 3, seed ^ 0xC0FFEE);
+
+            if (n < 0.28) grid[tx][ty] = 13;      // small rocks
+            else if (n < 0.56) grid[tx][ty] = 14; // seaweed / kelp
+            else if (n < 0.84) grid[tx][ty] = 12; // shallow reef / shelf
+            else grid[tx][ty] = 15;              // deeper water pocket
+        }
+    }
+}
+function _noise2D(x, y, seed) {
+    let ix = Math.floor(x), iy = Math.floor(y);
+    let fx = x - ix, fy = y - iy;
+    // Smoothstep for non-linear interpolation
+    let sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy); 
+    
+    let n00 = _hash2D(ix, iy, seed), n10 = _hash2D(ix + 1, iy, seed);
+    let n01 = _hash2D(ix, iy + 1, seed), n11 = _hash2D(ix + 1, iy + 1, seed);
+    
+    let nx0 = n00 + sx * (n10 - n00);
+    let nx1 = n01 + sx * (n11 - n01);
+    return nx0 + sy * (nx1 - nx0);
+}
+
+function _fbm(x, y, seed, octaves = 3) {
+    let v = 0, amp = 0.5, freq = 0.08;
+    for (let i = 0; i < octaves; i++) {
+        v += _noise2D(x * freq, y * freq, seed + i * 10) * amp;
+        amp *= 0.5;
+        freq *= 2.0;
+    }
+    return v;
+}
+function generateNavalMap() {
+    const seed = (battleEnvironment.mapSeed ?? navalEnvironment.mapSeed ?? (Date.now() & 0xffffffff)) >>> 0;
+    navalEnvironment.mapSeed = seed;
+
+    // 1. Initialize the entire grid as Standard Open Water (11)
+    const grid = Array.from({ length: BATTLE_COLS }, () => Array(BATTLE_ROWS).fill(11));
+
+    // 2. STRICTOR CHECK: Only run topography noise if it is NOT "Ocean"
+    if (navalEnvironment.mapType === "Coastal") {
+        navalEnvironment.coastSide = Math.floor(_hash2D(0, 0, seed) * 4);
+
+        for (let x = 0; x < BATTLE_COLS; x++) {
+            for (let y = 0; y < BATTLE_ROWS; y++) {
+                let n = _fbm(x, y, seed);
+                let elevation = n;
+
+                // Topography only for Coastal maps
+                if (elevation > 0.80) grid[x][y] = 13;      // Rocks
+                else if (elevation > 0.70) grid[x][y] = 12; // Reefs
+                else if (elevation > 0.58) grid[x][y] = 14; // Algae
+                else if (elevation < 0.25) grid[x][y] = 15; // Dark water
+                else grid[x][y] = 11; 
+            }
+        }
+    } 
+    // If mapType is "Ocean", the logic skips the loop above entirely.
+    
+    battleEnvironment.grid = grid;
+    battleEnvironment.groundColor = navalEnvironment.waterColor;
+}
 function generateShips(pCount, eCount) {
     navalEnvironment.ships = [];
 
@@ -196,42 +251,25 @@ function generateShips(pCount, eCount) {
 
     navalEnvironment.ships.push(pShip, eShip);
 }
-// ============================================================================
-// SHIP LANE CLEAR — removes Coastal land tiles from ship zones and boarding gap
-// Called from initNavalBattle after generateShips so ship positions are known.
-// ============================================================================
+
 function clearShipLanes() {
-    const BUFFER_TILES = 15;  // clear this many tiles beyond each ship's bounding box
+    // REMOVED: The perfect elliptical terrain cut-out around the hulls that was leaving
+    // a weird cookie-cutter shadow/ellipse in the water features.
 
-    navalEnvironment.ships.forEach(s => {
-        let minTX = Math.max(0, Math.floor((s.x - s.width  * 0.56) / BATTLE_TILE_SIZE) - BUFFER_TILES);
-        let maxTX = Math.min(BATTLE_COLS - 1, Math.floor((s.x + s.width  * 0.56) / BATTLE_TILE_SIZE) + BUFFER_TILES);
-        let minTY = Math.max(0, Math.floor((s.y - s.height * 0.57) / BATTLE_TILE_SIZE) - BUFFER_TILES);
-        let maxTY = Math.min(BATTLE_ROWS - 1, Math.floor((s.y + s.height * 0.57) / BATTLE_TILE_SIZE) + BUFFER_TILES);
-
-        for (let tx = minTX; tx <= maxTX; tx++) {
-            for (let ty = minTY; ty <= maxTY; ty++) {
-                let cell = battleEnvironment.grid[tx][ty];
-                // Leave deck (0) and hull boundary (8) alone; convert any
-                // land or non-water tile in the ship zone back to open ocean.
-                if (cell !== 0 && cell !== 8) battleEnvironment.grid[tx][ty] = 11;
-            }
-        }
-    });
-
-    // Also clear the boarding lane between the two ships
+    // We ONLY clear the narrow boarding plank lane between the two ships
+    // so units don't get snagged on rocks while crossing.
     if (navalEnvironment.ships.length === 2) {
         let s1 = navalEnvironment.ships[0];
         let s2 = navalEnvironment.ships[1];
-        // Lane is the column of water between their facing edges
- let laneMinX = Math.floor((Math.min(s1.x, s2.x) - 140) / BATTLE_TILE_SIZE);
-    let laneMaxX = Math.floor((Math.max(s1.x, s2.x) + 140) / BATTLE_TILE_SIZE);
-        // Between the near edges of the two hulls
-        let laneMinY = Math.floor((Math.min(s1.y + s1.height * 0.5, s2.y + s2.height * 0.5)) / BATTLE_TILE_SIZE);
-        let laneMaxY = Math.floor((Math.max(s1.y - s1.height * 0.5, s2.y - s2.height * 0.5)) / BATTLE_TILE_SIZE);
+        
+        let minX = Math.floor(Math.min(s1.x, s2.x) / BATTLE_TILE_SIZE);
+        let maxX = Math.ceil(Math.max(s1.x, s2.x) / BATTLE_TILE_SIZE);
+        let cy = (s1.y + s2.y) / 2 / BATTLE_TILE_SIZE;
+        
+        let laneWidthT = 3; // Tightened from the full hull height to just the plank area
 
-        for (let tx = laneMinX; tx <= laneMaxX; tx++) {
-            for (let ty = Math.min(laneMinY, laneMaxY); ty <= Math.max(laneMinY, laneMaxY); ty++) {
+        for (let tx = minX; tx <= maxX; tx++) {
+            for (let ty = Math.floor(cy - laneWidthT); ty <= Math.ceil(cy + laneWidthT); ty++) {
                 if (tx < 0 || tx >= BATTLE_COLS || ty < 0 || ty >= BATTLE_ROWS) continue;
                 let cell = battleEnvironment.grid[tx][ty];
                 if (cell !== 0 && cell !== 8) battleEnvironment.grid[tx][ty] = 11;
@@ -239,7 +277,6 @@ function clearShipLanes() {
         }
     }
 }
-
 
 function generateCosmetics() {
     navalEnvironment.waves = []; navalEnvironment.fishes = []; navalEnvironment.seagulls = [];
@@ -629,14 +666,14 @@ function isUnitOnShip(unit) {
 function _isOpenWaterAt(x, y) {
     const tx = Math.floor(x / BATTLE_TILE_SIZE);
     const ty = Math.floor(y / BATTLE_TILE_SIZE);
-    return !!(battleEnvironment.grid && battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 11);
+    const cell = battleEnvironment.grid && battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty];
+    return NAVAL_WATER_TILES.has(cell);
 }
 
 function _fishAvoidanceVector(f) {
     let ax = 0;
     let ay = 0;
 
-    // Keep fish away from land
     const tx = Math.floor(f.x / BATTLE_TILE_SIZE);
     const ty = Math.floor(f.y / BATTLE_TILE_SIZE);
     const scan = 7;
@@ -645,8 +682,9 @@ function _fishAvoidanceVector(f) {
     for (let x = tx - scan; x <= tx + scan; x++) {
         for (let y = ty - scan; y <= ty + scan; y++) {
             if (x < 0 || x >= BATTLE_COLS || y < 0 || y >= BATTLE_ROWS) continue;
+
             const cell = battleEnvironment.grid[x] && battleEnvironment.grid[x][y];
-            if (cell === 11) continue; // water only
+            if (cell !== 12 && cell !== 13) continue; // only reefs and rocks repel fish
 
             const cx = (x + 0.5) * BATTLE_TILE_SIZE;
             const cy = (y + 0.5) * BATTLE_TILE_SIZE;
@@ -662,11 +700,9 @@ function _fishAvoidanceVector(f) {
         }
     }
 
-    // Keep fish away from ships
     navalEnvironment.ships.forEach(s => {
         const sx = s.x + navalEnvironment.shipSwayX;
         const sy = s.y + navalEnvironment.shipSwayY;
-
         const shipRadius = Math.max(s.width, s.height) * 0.56 + 180;
         const dx = f.x - sx;
         const dy = f.y - sy;
@@ -682,30 +718,109 @@ function _fishAvoidanceVector(f) {
     return { ax, ay };
 }
 
-// ============================================================================
-// BACKGROUND DRAW
-// ============================================================================
+// Add this global variable near the top of naval_battles.js
+let navalBackgroundCache = null;
+
+// Replace your drawNavalBackground with this cached version
 function drawNavalBackground(ctx) {
-    if (!inNavalBattle) return;
-    if (navalEnvironment.mapType !== "Ocean") {
-        ctx.fillStyle = navalEnvironment.landColor;
+    if (!inNavalBattle || !battleEnvironment.grid) return;
+
+    // 1. Build the cache ONLY ONCE (or if the map changes)
+    if (!navalBackgroundCache) {
+        // Create an invisible canvas in memory
+        navalBackgroundCache = document.createElement('canvas');
+        navalBackgroundCache.width = BATTLE_COLS * BATTLE_TILE_SIZE;
+        navalBackgroundCache.height = BATTLE_ROWS * BATTLE_TILE_SIZE;
+        const cacheCtx = navalBackgroundCache.getContext('2d');
+
+        // Render the expensive graphics onto the cache canvas
         for (let x = 0; x < BATTLE_COLS; x++) {
             for (let y = 0; y < BATTLE_ROWS; y++) {
-                if (battleEnvironment.grid[x][y] !== 11) {
+                const cell = battleEnvironment.grid[x][y];
+                if (cell === 11) continue; // Skip plain water
+
+                const px = x * BATTLE_TILE_SIZE;
+                const py = y * BATTLE_TILE_SIZE;
+                const cx = px + BATTLE_TILE_SIZE * 0.5;
+                const cy = py + BATTLE_TILE_SIZE * 0.5;
+                const seed = navalEnvironment.mapSeed || 1;
+
+                cacheCtx.save();
+
+                if (cell === 12) {
+                    // REEFS (Paste your previous reef drawing logic here, but use cacheCtx instead of ctx)
+                    const n = _hash2D(x * 11, y * 17, seed);
+                    const drawRadius = BATTLE_TILE_SIZE * (1.2 + n * 0.6); 
+                    const grad = cacheCtx.createRadialGradient(cx, cy, BATTLE_TILE_SIZE * 0.1, cx, cy, drawRadius);
+                    grad.addColorStop(0, "rgba(218, 212, 168, 0.35)");
+                    grad.addColorStop(0.4, "rgba(186, 191, 150, 0.20)");
+                    grad.addColorStop(1, "rgba(150, 168, 150, 0.0)");
                     
-                    // --- MODIFIED LINE ---
-                    // Added +1 to the width and height to overlap the tile seams
-                    ctx.fillRect(
-                        x * BATTLE_TILE_SIZE, 
-                        y * BATTLE_TILE_SIZE, 
-                        BATTLE_TILE_SIZE + 1, 
-                        BATTLE_TILE_SIZE + 1
-                    );
+                    cacheCtx.fillStyle = grad;
+                    cacheCtx.beginPath();
+                    cacheCtx.ellipse(cx + (n - 0.5) * BATTLE_TILE_SIZE, cy + (_hash2D(x + 3, y + 7, seed) - 0.5) * BATTLE_TILE_SIZE, drawRadius, drawRadius * 0.7, n * Math.PI * 2, 0, Math.PI * 2);
+                    cacheCtx.fill();
+
+                } else if (cell === 13) {
+                    // ROCKS (Paste your previous rock drawing logic here, using cacheCtx)
+                    const n = _hash2D(x * 7, y * 31, seed);
+                    cacheCtx.fillStyle = "rgba(0, 0, 0, 0.25)";
+                    cacheCtx.beginPath();
+                    cacheCtx.ellipse(cx + 8, cy + 10, BATTLE_TILE_SIZE * 0.4, BATTLE_TILE_SIZE * 0.2, 0.2, 0, Math.PI * 2);
+                    cacheCtx.fill();
+
+                    cacheCtx.fillStyle = "rgba(42, 50, 57, 0.85)";
+                    const stoneCount = 3 + Math.floor(n * 4);
+                    for (let i = 0; i < stoneCount; i++) {
+                        const ox = (_hash2D(x + 11 * i, y + 17 * i, seed) - 0.5) * BATTLE_TILE_SIZE * 1.6;
+                        const oy = (_hash2D(x + 19 * i, y + 23 * i, seed) - 0.5) * BATTLE_TILE_SIZE * 1.6;
+                        const rx = BATTLE_TILE_SIZE * (0.10 + _hash2D(x + 5 + i, y + 9 + i, seed) * 0.12);
+                        const ry = BATTLE_TILE_SIZE * (0.08 + _hash2D(x + 13 + i, y + 15 + i, seed) * 0.10);
+                        cacheCtx.beginPath();
+                        cacheCtx.ellipse(cx + ox, cy + oy, rx, ry, _hash2D(x + 31 + i, y + 37 + i, seed) * Math.PI, 0, Math.PI * 2);
+                        cacheCtx.fill();
+                    }
+
+                } else if (cell === 14) {
+                    // KELP (Paste your previous kelp drawing logic here, using cacheCtx)
+                    const n = _hash2D(x * 13, y * 29, seed);
+                    const strands = 4 + Math.floor(n * 5);
+                    for (let i = 0; i < strands; i++) {
+                        const startX = cx + (_hash2D(x + i * 17, y + i * 11, seed) - 0.5) * BATTLE_TILE_SIZE * 1.2;
+                        const startY = cy + (_hash2D(x + i * 13, y + i * 19, seed) - 0.5) * BATTLE_TILE_SIZE * 1.2;
+                        const reachX = BATTLE_TILE_SIZE * (1.5 + _hash2D(x + 61 + i, y + 71 + i, seed) * 2);
+                        const reachY = -BATTLE_TILE_SIZE * (1.0 + _hash2D(x + 23 + i, y + 41 + i, seed) * 1.5);
+
+                        cacheCtx.strokeStyle = i % 2 === 0 ? "rgba(92, 145, 92, 0.45)" : "rgba(64, 104, 66, 0.35)";
+                        cacheCtx.lineWidth = 1.8 + _hash2D(x + 91 + i, y + 33 + i, seed) * 1.5;
+                        cacheCtx.lineCap = "round";
+                        cacheCtx.beginPath();
+                        cacheCtx.moveTo(startX, startY);
+                        cacheCtx.quadraticCurveTo(startX + reachX * 0.6, startY + reachY * 0.2, startX + reachX, startY + reachY);
+                        cacheCtx.stroke();
+                    }
                     
+                } else if (cell === 15) {
+                    // TRENCHES (Paste your previous trench drawing logic here, using cacheCtx)
+                    const n = _hash2D(x * 5, y * 41, seed);
+                    const drawRadius = BATTLE_TILE_SIZE * (1.0 + n * 0.5);
+                    const grad = cacheCtx.createRadialGradient(cx, cy, BATTLE_TILE_SIZE * 0.1, cx, cy, drawRadius);
+                    grad.addColorStop(0, "rgba(4, 20, 33, 0.35)");
+                    grad.addColorStop(1, "rgba(10, 34, 52, 0.0)");
+                    cacheCtx.fillStyle = grad;
+                    cacheCtx.beginPath();
+                    cacheCtx.arc(cx, cy, drawRadius, 0, Math.PI * 2);
+                    cacheCtx.fill();
                 }
+
+                cacheCtx.restore();
             }
         }
     }
+
+    // 2. The magic: Just paste the pre-rendered image every frame!
+    // This turns thousands of calculations into a single, instant draw call.
+    ctx.drawImage(navalBackgroundCache, 0, 0);
 }
 
 // ============================================================================
@@ -889,20 +1004,49 @@ function drawNavalShips(ctx) {
 // ============================================================================
 // WAVES & COSMETICS DRAW
 // ============================================================================
-
 function drawCosmeticWaves(ctx) {
     if (!inNavalBattle) return;
     let time = Date.now() / 1000;
 
-    ctx.strokeStyle = "rgba(255,255,255,0.13)"; ctx.lineWidth = 2;
+    ctx.lineWidth = 2;
+    
     navalEnvironment.waves.forEach(w => {
-        let wx = w.x + Math.sin(time * w.speed + w.offset) * 20;
-        let tx = Math.floor(wx / BATTLE_TILE_SIZE);
-        let ty = Math.floor(w.y / BATTLE_TILE_SIZE);
-        if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 11) {
-            ctx.beginPath();
-            ctx.quadraticCurveTo(wx + w.length/2, w.y - 5, wx + w.length, w.y);
-            ctx.stroke();
+        let wavePhase = time * w.speed + w.offset;
+        let wx = w.x + Math.sin(wavePhase) * 20;
+        
+        // Opacity fades in and out rhythmically to simulate cresting
+        let waveAlpha = (Math.sin(wavePhase * 0.8) + 1) / 2 * 0.22; 
+
+        // Only draw if wave is visible and on open water tiles
+        if (waveAlpha > 0.01 && _isOpenWaterAt(wx, w.y)) {
+            
+            // Check to ensure the wave is far enough from ships
+            let clearOfShips = true;
+            for (let s of navalEnvironment.ships) {
+                let sx = s.x + navalEnvironment.shipSwayX;
+                let sy = s.y + navalEnvironment.shipSwayY;
+                
+                // Elliptical boundary check (0.55 acts as a 5% buffer outside the hull)
+                let dx = (wx - sx) / (s.width * 0.55);
+                let dy = (w.y - sy) / (s.height * 0.55);
+                if ((dx * dx + dy * dy) <= 1.0) {
+                    clearOfShips = false;
+                    break;
+                }
+            }
+
+            if (clearOfShips) {
+                ctx.strokeStyle = `rgba(255, 255, 255, ${waveAlpha.toFixed(3)})`;
+                
+                // Add vertical bobbing and dynamic crest height for realism
+                let bobY = w.y + Math.cos(wavePhase) * 3;
+                let crest = 4 + Math.sin(wavePhase * 1.5) * 2;
+                
+                ctx.beginPath();
+                ctx.moveTo(wx, bobY);
+                ctx.quadraticCurveTo(wx + w.length/2, bobY - crest, wx + w.length, bobY);
+                ctx.stroke();
+            }
         }
     });
 
@@ -911,7 +1055,7 @@ function drawCosmeticWaves(ctx) {
     navalEnvironment.fishes.forEach(f => {
         let tx = Math.floor(f.x / BATTLE_TILE_SIZE);
         let ty = Math.floor(f.y / BATTLE_TILE_SIZE);
-        if (battleEnvironment.grid[tx] && battleEnvironment.grid[tx][ty] === 11) {
+        if (_isOpenWaterAt(f.x, f.y)){
             ctx.save();
             ctx.translate(f.x, f.y);
             ctx.rotate(f.angle + Math.sin(f.currentWiggle||0) * 0.2);
@@ -943,7 +1087,6 @@ function drawCosmeticWaves(ctx) {
         ctx.restore();
     });
 }
-
 // ============================================================================
 // SWIMMING / DROWNING VISUAL
 // ============================================================================
@@ -1231,11 +1374,11 @@ const getDynamicMaxY = (cfg) => {
         let waterBuffer = 60 / s.height; // Convert pixels to normalized space
         let hullMaxY = getDynamicMaxY(profile.hull);
         
-        // Final Geometry Check
+// Final Geometry Check
         if (hullMaxY !== -1 && Y <= hullMaxY + waterBuffer) {
-            let deckMaxY = getDynamicMaxY(profile.deck);
-            // FIX: Increased the internal tolerance from 0.02 to 0.06 
-            return (Y <= deckMaxY + 0.06 || inStern || inBow) ? 'DECK' : 'EDGE';
+            // SURGERY: Treat the entire hull, including the dark edges, as safe.
+            // We ignore deckMaxY entirely so the unit only drowns outside the hull.
+            return 'DECK'; 
         }
         
         if (inStern || inBow) return 'DECK';

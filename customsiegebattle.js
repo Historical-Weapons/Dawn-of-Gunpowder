@@ -76,14 +76,15 @@ window.launchCustomSiege = function(playerSetup, enemySetup, selectedMap) {
  
 
 // 3. FIX CAMERA & PLAYER SYNC
-    const playerCommander = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
-    if (playerCommander && typeof player !== "undefined") {
-        player.x = playerCommander.x;
-        player.y = playerCommander.y;
-        player.hp = playerCommander.hp;
-        player.maxHealth = playerCommander.maxHp || playerCommander.hp;
-        player.state = "idle"; // Reset global player state
-    }
+        const playerCommander = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+        if (playerCommander && typeof player !== "undefined") {
+            player.x = playerCommander.x;
+            player.y = playerCommander.y;
+            player.hp = playerCommander.hp;
+            player.maxHealth = playerCommander.maxHp || playerCommander.hp;
+            player.ammo = playerCommander.ammo; // <--- SURGERY: SYNC SIEGE AMMO
+            player.state = "idle"; // Reset global player state
+        }
 
     if (typeof camera !== "undefined" && playerCommander) {
         camera.x = playerCommander.x - (window.innerWidth / 2 / zoom);

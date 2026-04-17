@@ -77,7 +77,7 @@ function prettyValue(key, value) {
     return { mode: unit?.mounted ? "cavalry" : "infantry", type: unit?.renderType || (unit?.mounted ? "lancer" : "peasant"), ammo, zoom: unit?.mounted ? 1.6 : 2.0, xBias: 0.5, yBias: 0.75 };
   }
 
-  function renderPortrait(canvas, unit) {
+function renderPortrait(canvas, unit) {
     if (!canvas || !unit) return;
     const ctx = canvas.getContext("2d");
     const cssW = canvas.clientWidth || 400;
@@ -90,17 +90,16 @@ function prettyValue(key, value) {
     ctx.clearRect(0, 0, cssW, cssH);
 
     const spec = resolvePreviewSpec(unit);
-    const factionColor = "#b71c1c"; // Give them a cool red faction color for the loading screen
+    const factionColor = "#b71c1c"; 
 
-    const baseX = cssW * spec.xBias-50;
+    // FIXED: Removed the -50 offset so the unit is perfectly centered
+    const baseX = cssW * spec.xBias; 
     const baseY = cssH * spec.yBias;
 
     ctx.save();
     ctx.translate(baseX, baseY);
     ctx.scale(spec.zoom, spec.zoom);
 
-    // Give it a slow, Skyrim-esque rotation or idle bob if we hooked into an animation loop, 
-    // but a static heroic pose works perfectly for a loading screen.
     try {
       if (spec.mode === "cavalry" && typeof drawCavalryUnit === "function") {
         drawCavalryUnit(ctx, 0, 0, false, 0, factionColor, false, spec.type, "player", unit.name, false, 0, spec.ammo, { id: unit.name, lastAttackTime: 0, stats: unit.stats || {} }, 0);
@@ -117,61 +116,56 @@ function prettyValue(key, value) {
     const existing = document.getElementById("loading-screen-wrapper");
     if (existing) return existing;
 
-const wrapper = create("div", {
-  position: "fixed",
-  top: "0",
-  left: "0",
-  width: "100%",
-  height: "100vh",   // leaves bottom 20% visible
-  display: "none",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  paddingTop: "2vh",
-paddingBottom: "2vh",
-  background: "#0c0a0a",
-zIndex: "10000",
-  color: "#fff",
-  fontFamily: "Georgia, serif",
-  overflow: "hidden" // prevents spill
-});
+    const wrapper = create("div", {
+      position: "fixed",
+      top: "0",
+      left: "0",
+      width: "100%",
+      height: "100vh",
+      display: "none",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "flex-start", // Start from top
+      paddingTop: "5vh",
+      background: "#0c0a0a",
+      zIndex: "10000",
+      color: "#fff",
+      fontFamily: "Georgia, serif",
+      overflow: "hidden"
+    });
     wrapper.id = "loading-screen-wrapper";
 
-    // GIANT LOADING TEXT
     const header = create("div", {
-      fontSize: "2.8rem", fontWeight: "700", color: "#f5d76e", letterSpacing: "15px",
-      marginBottom: "40px", textShadow: "0 0 20px rgba(245, 215, 110, 0.5)", textAlign: "center"
+      fontSize: "2.5rem", fontWeight: "700", color: "#f5d76e", letterSpacing: "12px",
+      marginBottom: "10px", textShadow: "0 0 15px rgba(245, 215, 110, 0.4)", textAlign: "center"
     });
     header.textContent = "  LOADING...";
 
-// MAIN CONTENT BOX (Skyrim style: Model left, Text Right)
     const content = create("div", {
       display: "flex", 
-      flexDirection: "row", 
-      gap: "40px", 
-      width: "clamp(320px, 70vw, 900px)",
-      justifyContent: "center",
+      flexDirection: "column", // Vertical stack
       alignItems: "center",
-      // --- ADD THIS LINE ---
-      transform: "translateX(-200px)" 
+      width: "clamp(300px, 80vw, 600px)",
+      transform: "none" // FIXED: Removed the -200px shift
     });
 
-    // LEFT: PORTRAIT
+    // 1. Portrait first (Right under Loading text)
     const canvasContainer = create("div", {
-      flex: "1", height: "400px", background: "radial-gradient(circle, rgba(60,60,60,0.5) 0%, rgba(12,10,10,0) 70%)",
-      display: "flex", justifyContent: "center", alignItems: "center"
+      width: "100%", 
+      height: "350px", 
+      display: "flex", 
+      justifyContent: "center", 
+      alignItems: "center",
+      marginBottom: "10px"
     });
     const canvas = create("canvas", { width: "100%", height: "100%", display: "block" });
     canvasContainer.appendChild(canvas);
 
-    // RIGHT: STATS & LORE
-    const infoPanel = create("div", { flex: "1", display: "flex", flexDirection: "column", gap: "15px" });
-    
-    const unitName = create("div", { fontSize: "2.5rem", color: "#ffffff", borderBottom: "2px solid #7b1a1a", paddingBottom: "10px" });
-const unitDesc = create("div", { fontSize: "0.95rem", color: "#d4b886", lineHeight: "1.3", fontStyle: "italic" });
-    const statsGrid = create("div", {
-      display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "20px"
-    });
+    // 2. Info second
+    const infoPanel = create("div", { width: "100%", textAlign: "center" });
+    const unitName = create("div", { fontSize: "2rem", color: "#fff", borderBottom: "1px solid #7b1a1a", paddingBottom: "5px", marginBottom: "10px" });
+    const unitDesc = create("div", { fontSize: "0.9rem", color: "#d4b886", fontStyle: "italic", marginBottom: "15px" });
+    const statsGrid = create("div", { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" });
 
     infoPanel.appendChild(unitName);
     infoPanel.appendChild(unitDesc);
@@ -181,8 +175,17 @@ const unitDesc = create("div", { fontSize: "0.95rem", color: "#d4b886", lineHeig
     content.appendChild(infoPanel);
 
     wrapper.appendChild(header);
-wrapper.appendChild(content);
+    wrapper.appendChild(content);
     document.body.appendChild(wrapper);
+
+    // --- RE-PATCH WINDOW TO PREVENT MOBILE_UI INTERFERENCE ---
+    window.addEventListener('resize', () => {
+        wrapper.style.flexDirection = "column";
+        content.style.flexDirection = "column";
+        content.style.transform = "none";
+    });
+
+    // ... show/hide logic ...
 
     // API to show a random unit
     window.showLoadingScreen = function () {

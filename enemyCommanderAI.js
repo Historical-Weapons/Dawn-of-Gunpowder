@@ -1,15 +1,112 @@
-
- // ============================================================================
-// ENEMY COMMANDER SKIRMISH AI (20s PHASE THEN MELEE RUSH)
+// ============================================================================
+// ENEMY COMMANDER SKIRMISH AI (STAYS BEHIND TROOPS, THEN 60s SKIRMISH, THEN MELEE)
 // ============================================================================
 function processEnemyCommanderAI(cmdr) {
     if (cmdr.hp <= 0 || cmdr.state === "FLEEING") return;
 
+    // --- PHASE 0: COMMANDER / TACTICAL COWARD PHASE ---
+    // The commander will stay behind his living units and will NOT attack
+    // until his entire army is dead.
+    let allies = [];
+    let enemies = [];
+    for (let u of battleEnvironment.units) {
+        if (u.hp > 0 && !u.isDummy && u !== cmdr) {
+            if (u.side === cmdr.side) allies.push(u);
+            else enemies.push(u);
+        }
+    }
+
+if (allies.length > 0) {
+        cmdr.target = null;
+        
+        let aCx = 0, aCy = 0;
+        for (let a of allies) { aCx += a.x; aCy += a.y; }
+        aCx /= allies.length;
+        aCy /= allies.length;
+
+        let eCx = 0, eCy = 0;
+        if (enemies.length > 0) {
+            for (let e of enemies) { eCx += e.x; eCy += e.y; }
+            eCx /= enemies.length;
+            eCy /= enemies.length;
+        } else {
+            eCx = aCx; 
+            eCy = aCy + 100; // Default orientation if no enemies visible
+        }
+
+        // Calculate vector pushing AWAY from the enemy centroid, through the ally centroid
+        let dx = aCx - eCx;
+        let dy = aCy - eCy;
+        let dist = Math.hypot(dx, dy) || 1;
+        
+        // Target position is 200px safely behind his own front line
+        let targetX = aCx + (dx / dist) * 200;
+        let targetY = aCy + (dy / dist) * 200;
+        
+        let mdx = targetX - cmdr.x;
+        let mdy = targetY - cmdr.y;
+        let mDist = Math.hypot(mdx, mdy);
+        let speed = (cmdr.stats && cmdr.stats.speed) ? cmdr.stats.speed : 1.0;
+        
+        if (mDist > 30) {
+            cmdr.state = "moving";
+            cmdr.isMoving = true;
+            cmdr.targetVx = (mdx / mDist) * speed;
+            cmdr.targetVy = (mdy / mDist) * speed;
+            cmdr.direction = cmdr.targetVx > 0 ? 1 : -1;
+        } else {
+            cmdr.state = "idle";
+            cmdr.isMoving = false;
+            cmdr.targetVx = 0;
+            cmdr.targetVy = 0;
+        }
+
+        // Find the closest enemy for fleeing OR shooting
+        let closestDist = Infinity;
+        let closestE = null;
+        for (let e of enemies) {
+            let d = Math.hypot(e.x - cmdr.x, e.y - cmdr.y);
+            if (d < closestDist) { closestDist = d; closestE = e; }
+        }
+        
+        if (closestE && closestDist < 250) {
+            // Self-Preservation Override: Run away directly if a player unit flanks him!
+            let fdx = cmdr.x - closestE.x;
+            let fdy = cmdr.y - closestE.y;
+            let fdist = Math.hypot(fdx, fdy) || 1;
+            cmdr.targetVx = (fdx / fdist) * speed * 1.3; // Sprint speed bonus to escape
+            cmdr.targetVy = (fdy / fdist) * speed * 1.3;
+            cmdr.state = "moving";
+            cmdr.isMoving = true;
+            cmdr.direction = cmdr.targetVx > 0 ? 1 : -1;
+        } else if (closestE && closestDist <= (cmdr.stats.range || 650)) {
+            // NEW: Sit behind troops and SHOOT if an enemy is in range!
+            if ((cmdr.cooldown || 0) <= 0 && (cmdr.ammo || 0) > 0) {
+                let shootDx = closestE.x - cmdr.x;
+                let shootDy = closestE.y - cmdr.y;
+                let angle = Math.atan2(shootDy, shootDx);
+                cmdr.direction = shootDx > 0 ? 1 : -1;
+                cmdr.state = "attacking"; // Briefly set state for animations
+                fireCommanderProjectile(cmdr, angle);
+            }
+        }
+
+        // Make sure cooldown ticks down during Phase 0 so he can fire more than once
+        if (cmdr.cooldown > 0) cmdr.cooldown--;
+
+        applySkirmishPhysics(cmdr);
+        return; // SKIP last-stand logic while troops are alive
+    }
+
+    // ========================================================================
+    // ALLIES ARE DEAD: INITIATE LAST STAND AI
+    // ========================================================================
+
     // --- 0. THE 60-SECOND TIMER ---
-    // Mark the exact millisecond the commander charge
+    // Mark the exact millisecond the commander charges (only sets once troops die)
     cmdr.skirmishStartTime = cmdr.skirmishStartTime || Date.now();
     let elapsed = Date.now() - cmdr.skirmishStartTime;
-    let isSkirmishPhase = elapsed < 60000; // 60 seconds
+    let isSkirmishPhase = elapsed < 20000; // 20 seconds
 
     // --- 1. DECISION THROTTLING ---
     cmdr.aiTick = (cmdr.aiTick || 0) + 1;
@@ -56,8 +153,7 @@ function processEnemyCommanderAI(cmdr) {
     let angle = Math.atan2(dy, dx);
     cmdr.direction = dx > 0 ? 1 : -1;
 
-// --- 3. PHASE LOGIC ---
-    // Added safety check to ensure we also look at cmdr.stats.ammo
+    // --- 3. PHASE LOGIC ---
     if (!isSkirmishPhase || (cmdr.ammo || 0) <= 0 || (cmdr.stats && cmdr.stats.ammo <= 0)) {
         // ==========================================
         // PHASE 2: MELEE RUSH (No more arrows!)
@@ -81,18 +177,18 @@ function processEnemyCommanderAI(cmdr) {
             // CHARGE!
             cmdr.state = "moving";
             cmdr.isMoving = true;
-const worldH = (typeof BATTLE_WORLD_HEIGHT !== "undefined") ? BATTLE_WORLD_HEIGHT : 2600;
-const siegeYCap = worldH * 0.45;
+            const worldH = (typeof BATTLE_WORLD_HEIGHT !== "undefined") ? BATTLE_WORLD_HEIGHT : 2600;
+            const siegeYCap = worldH * 0.45;
 
-cmdr.targetVx = Math.cos(angle) * chargeSpeed;
-cmdr.targetVy = Math.sin(angle) * chargeSpeed;
+            cmdr.targetVx = Math.cos(angle) * chargeSpeed;
+            cmdr.targetVy = Math.sin(angle) * chargeSpeed;
 
-// 🔴 Prevent downward charge in siege
-if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
-    if (cmdr.y >= siegeYCap && cmdr.targetVy > 0) {
-        cmdr.targetVy = 0;
-    }
-}
+            // Prevent downward charge in siege
+            if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
+                if (cmdr.y >= siegeYCap && cmdr.targetVy > 0) {
+                    cmdr.targetVy = 0;
+                }
+            }
         } else {
             // STRIKE!
             cmdr.state = "attacking"; 
@@ -102,7 +198,7 @@ if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
         }
     } else {
         // ==========================================
-        // PHASE 1: ANNOYING SKIRMISH (First 20s)
+        // PHASE 1: ANNOYING SKIRMISH (First 60s)
         // ==========================================
         const IDEAL_MIN = 200; 
         const IDEAL_MAX = 500; 
@@ -132,8 +228,7 @@ if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
     applySkirmishPhysics(cmdr);
 
     // --- 4. COMBAT EXECUTION ---
-    // The ultimate safeguard: He is ONLY allowed to shoot if the 20-second
-    // phase is active AND he actually has ammo.
+    // The ultimate safeguard: He is ONLY allowed to shoot if the phase is active AND he actually has ammo.
     if (isSkirmishPhase && cmdr.state === "attacking" && cmdr.cooldown <= 0 && (cmdr.ammo || 0) > 0) {
         fireCommanderProjectile(cmdr, angle);
     }
@@ -166,6 +261,7 @@ function applySkirmishPhysics(cmdr) {
         cmdr.y = Math.max(margin, Math.min(worldH - margin, cmdr.y));
     }
 }
+
 function fireCommanderProjectile(cmdr, angle) {
     let projSpeed = 12;
     battleEnvironment.projectiles.push({

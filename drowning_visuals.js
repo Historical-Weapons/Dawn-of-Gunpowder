@@ -299,8 +299,8 @@ function _infantryWrapper(ctx, x, y, moving, frame, factionColor,
                               type, isAttacking, side, unitName,
                               isFleeing, cooldown, unitAmmo, unit, reloadProgress) {
 
-        // Not a naval battle, or no unit object — pass through untouched
-        // Pass through if no unit object
+// Non-naval/river battles and missing unit objects — pass through untouched
+        if (!window.inNavalBattle && !window.inRiverBattle) return _origInfantry.apply(this, arguments);
         if (!unit) {
             return _origInfantry.apply(this, arguments);
         }
@@ -409,7 +409,9 @@ function _cavalryWrapper(ctx, x, y, moving, frame, factionColor,
                              isAttacking, type, side, unitName,
                              isFleeing, cooldown, unitAmmo, unit, reloadProgress) {
 
-if (!unit) {
+// Non-naval/river battles and missing unit objects — pass through untouched
+        if (!window.inNavalBattle && !window.inRiverBattle) return _origCavalry.apply(this, arguments);
+        if (!unit) {
             return _origCavalry.apply(this, arguments);
         }
 
@@ -418,13 +420,15 @@ if (!unit) {
             return _origCavalry.apply(this, arguments);
         }
         
-        // ── TILE SAFETY CHECK: never show drowning on ship deck or land ──
-        if (window.battleEnvironment && window.BATTLE_TILE_SIZE) {
-            const _tx   = Math.floor(x / BATTLE_TILE_SIZE);
-            const _ty   = Math.floor(y / BATTLE_TILE_SIZE);
-            const _tile = battleEnvironment.grid[_tx] && battleEnvironment.grid[_tx][_ty];
-           // tile 8 = hull boundary (Stage B) — cavalry at the rail shows partial submersion
-            if (_tile !== 4 && _tile !== 8 && _tile !== 11) return _origCavalry.apply(this, arguments);
+        // ── GEOMETRIC SAFETY CHECK: mirrors the infantry wrapper exactly ──────
+        // Uses the same canvas-path hit test as physics (via drowning_detector.js
+        // or the original getNavalSurfaceAt). Replaces the old tile-number check
+        // which used tile values 4 and 8 that don't exist in naval maps.
+        if (window.getNavalSurfaceAt) {
+            const surface = window.getNavalSurfaceAt(x, y);
+            if (surface === 'DECK' || surface === 'PLANK') {
+                return _origCavalry.apply(this, arguments);
+            }
         }
 
         // ---> SURGERY: Move these definitions UP so they exist before we calculate _cavScale <---
@@ -445,14 +449,17 @@ if (!unit) {
 
         const spriteH = localBot - CAV_SPRITE_TOP;   // total sprite height
 
-        // ... (The rest of the function remains exactly the same from here down) ...
+      
 
-        // submerge fraction: 0 → 30 % during stage 0, locked at 30 % during stage 1
+// SURGERY: 10% less drowning for Horses and Camels so they can breathe
+        const targetSubmergeFrac = isElephant ? 0.30 : 0.20; 
+
+        // submerge fraction: 0 → Target % during stage 0, locked at Target % during stage 1
         let subFrac;
         if (!unit.isSwimming) {
-            subFrac = Math.min(CAV_SUBMERGE_FRAC, (unit.overboardTimer / 190) * CAV_SUBMERGE_FRAC);
+            subFrac = Math.min(targetSubmergeFrac, (unit.overboardTimer / 190) * targetSubmergeFrac);
         } else {
-            subFrac = CAV_SUBMERGE_FRAC;
+            subFrac = targetSubmergeFrac;
         }
 
         // World-space clip bottom = y + localBot − submergePixels
@@ -541,10 +548,32 @@ if (!unit) {
                     delete u._wasSwimmingPrePhysics;
                 });
             }
-        };
+};
         window.updateNavalPhysics._drowningPatched = true;
-    }
 
+        // SURGERY: Do the exact same patch for the newly created River Physics
+        if (typeof window.updateRiverPhysics === 'function' && !window.updateRiverPhysics._drowningPatched) {
+            const _origRiverPhysics = window.updateRiverPhysics;
+            window.updateRiverPhysics = function () {
+                if (window.battleEnvironment && battleEnvironment.units) {
+                    battleEnvironment.units.forEach(u => {
+                        if (u.isSwimming && u.hp > 0) u._wasSwimmingPrePhysics = true;
+                    });
+                }
+                _origRiverPhysics.apply(this, arguments);
+                if (window.battleEnvironment && battleEnvironment.units) {
+                    battleEnvironment.units.forEach(u => {
+                       if (u._wasSwimmingPrePhysics && u.hp <= 0 && !u._drownedSilently) {
+                            u._drownedSilently = true;
+                            u.deathRotation = 0;
+                        }
+                        delete u._wasSwimmingPrePhysics;
+                    });
+                }
+            };
+            window.updateRiverPhysics._drowningPatched = true;
+        }
+    }
     // Patch naval physics after load (it may not be defined yet)
     window.addEventListener('load', _patchNavalPhysics);
     if (document.readyState === 'complete') _patchNavalPhysics();

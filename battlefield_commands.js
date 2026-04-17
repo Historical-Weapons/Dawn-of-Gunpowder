@@ -182,8 +182,11 @@ const activeCommander = battleEnvironment.units.find(u =>
             u.hasOrders = true;
             u.orderType = "follow"; 
             u.orderTargetPoint = null; 
-            u.formationTimer = 240; // 4 seconds at 60fps for ranged units to focus on moving
+            u.formationTimer = 240; 
+			//u.reactionDelay = Math.floor(Math.random() * 15) + 5; // Add this line
         });
+		
+ 
         return;
     }
     // =========================
@@ -191,19 +194,21 @@ const activeCommander = battleEnvironment.units.find(u =>
     // =========================
     switch (key) {
 
-        case "f": // FOLLOW COMMANDER
-            
-        stopLazyGeneral(); // Disable lazy spam if manual formation ordered
-    
-            if (!commander) break;
-            selectedUnits.forEach(u => {
-                u.hasOrders = true;
-                u.orderType = "follow";
-                u.orderTargetPoint = null;
-                u.formationTimer = 240; // 4 seconds before shooting focus
-            });
-            calculateFormationOffsets(selectedUnits, currentFormationStyle, commander);
-            break;
+case "f": // FOLLOW COMMANDER
+    stopLazyGeneral(); 
+    if (!commander) break;
+    selectedUnits.forEach(u => {
+        u.hasOrders = true;
+        u.orderType = "follow";
+        u.orderTargetPoint = null;
+        u.formationTimer = 240; 
+        
+        // --- ADD HESITATION HERE ---
+     //   u.reactionDelay = Math.floor(Math.random() * 22); // ~0.4 second max delay
+    });
+	 
+    calculateFormationOffsets(selectedUnits, currentFormationStyle, commander);
+    break;
 
         case "q": // SEEK & ENGAGE or SMART SIEGE ASSAULT
 
@@ -216,7 +221,8 @@ const activeCommander = battleEnvironment.units.find(u =>
                     u.hasOrders = true;
                     u.orderType = "seek_engage"; 
                     u.orderTargetPoint = null;   
-                    u.formationTimer = 120;      
+                    u.formationTimer = 120;    
+ 				
                 });
             }
             startLazyGeneral();//reactivate
@@ -238,6 +244,7 @@ const activeCommander = battleEnvironment.units.find(u =>
                 u.orderTargetPoint = getSafeMapCoordinates(targetX, targetY);
  
                 u.formationTimer = 240;
+		 
             });
             break;
 
@@ -262,6 +269,7 @@ case "e": // STOP / HOLD GROUND
                     u.stats.range = u.originalRange;
                     u.originalRange = null;
                 }
+		 
             });
             break;
     }
@@ -335,9 +343,11 @@ const commander = battleEnvironment.units.find(u =>
             return;
         }
 
-        const tacticalRole = getTacticalRole(unit);
-        const isRanged = (tacticalRole === "RANGED" || tacticalRole === "GUNPOWDER");
-        let emergencyThreshold = 100; 
+const tacticalRole = getTacticalRole(unit);
+        // SURGERY: Ensure Horse Archers/Mounted Gunners are recognized as ranged units
+        // even though they are grouped as CAVALRY tactically.
+        const isRanged = (tacticalRole === "RANGED" || tacticalRole === "GUNPOWDER" || isRangedType(unit) || unit.stats?.isRanged);
+        let emergencyThreshold = 100;
 		const isStrictCommand = unit.hasOrders && ["retreat", "follow", "move_to_point"].includes(unit.orderType);
         // ====================================================================
         // SURVIVAL OVERRIDE: 100px Emergency Self-Defense
@@ -365,10 +375,13 @@ const commander = battleEnvironment.units.find(u =>
       // 2. EXECUTE ORDERS
         if (unit.hasOrders) {
             
-            // ==========================
-            // SURGERY 2: HOLD POSITION (The "E" Command)
-            // ==========================
-            if (unit.orderType === "hold_position") {
+			if (unit.orderType === "hold_position") {
+                // SURGERY: Force range restoration so they evaluate max defined range immediately!
+                if (unit.originalRange) {
+                    unit.stats.range = unit.originalRange;
+                    unit.originalRange = null;
+                }
+
                 if (nearestEnemy) {
                     let distToEnemy = Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y);
                     // Ranged units use max range, melee units use an emergency 70px self-defense radius
@@ -380,8 +393,9 @@ const commander = battleEnvironment.units.find(u =>
                     }
                 }
                 
-// No one in range? Stand perfectly still.
+                // No one in range? Stand perfectly still.
                 let safeAnchor = typeof getSafeMapCoordinates === 'function' ? getSafeMapCoordinates(unit.x, unit.y, 15) : { x: unit.x, y: unit.y };
+				
                 unit.target = { 
                     x: safeAnchor.x, 
                     y: safeAnchor.y, 
@@ -614,9 +628,25 @@ const commander = battleEnvironment.units.find(u =>
             let rawDestX = unit.x;
             let rawDestY = unit.y;
 
-            if (unit.orderType === "follow" && commander) {
-                rawDestX = commander.x + (unit.formationOffsetX || 0);
-                rawDestY = commander.y + (unit.formationOffsetY || 0);
+if (unit.orderType === "follow" && commander) {
+                // Initialize the brain delay timer 
+                if (unit.followDelayTimer === undefined) unit.followDelayTimer = 0;
+
+                let distToCmdr = Math.hypot(unit.x - commander.x, unit.y - commander.y);
+
+                // Update waypoint only if timer runs out, OR if they get way too far away (safety catch)
+                if (unit.followDelayTimer <= 0 || distToCmdr > 250) {
+                    unit.cachedFollowX = commander.x + (unit.formationOffsetX || 0);
+                    unit.cachedFollowY = commander.y + (unit.formationOffsetY || 0);
+                    
+                    // Add random variation (120 to 180 ticks = 2 to 3 seconds) so they don't all march at the exact same frame
+                    unit.followDelayTimer = 50 + Math.floor(Math.random() * 60); 
+                } else {
+                    unit.followDelayTimer--;
+                }
+
+                rawDestX = unit.cachedFollowX;
+                rawDestY = unit.cachedFollowY;
             } else if (unit.orderTargetPoint) {
                 rawDestX = unit.orderTargetPoint.x;
                 rawDestY = unit.orderTargetPoint.y;
@@ -625,50 +655,74 @@ const commander = battleEnvironment.units.find(u =>
             let destX3 = safeDest.x;
             let destY3 = safeDest.y;
 
-            let distToDest = Math.hypot(unit.x - destX3, unit.y - destY3);
+          
 
-          // 2. UPDATE THE SETTLE LOGIC (Near the bottom of the function)
-			const settleDistance = isMountedOrBeast(unit) ? 35 : 18;
 
-                if (distToDest <= settleDistance) {
+
+			let distToDest = Math.hypot(unit.x - destX3, unit.y - destY3);
+
+// ====================================================================
+            // HYSTERESIS BUFFER (The Flicker Fix) - UPGRADED TO DUAL-THRESHOLD
+            // ====================================================================
+            // 1. Identify if it's a horse/cavalry
+            const isCavalry = tacticalRole === "CAVALRY" || (unit.stats && unit.stats.role === "horse_archer");
+            
+            // 2. Set TWO boundaries: A tight one to stop, a loose one to wake up
+            const stopDistance = isCavalry ? 35 : 18;
+            const wakeDistance = isCavalry ? 75 : 30; // The unit must fall this far behind to start running again
+
+            // 3. State toggle (The Rubber Band)
+            if (distToDest <= stopDistance) unit.isSettled = true;
+            if (distToDest > wakeDistance) unit.isSettled = false;
+
+            if (unit.isSettled) {
+                // Restore range if they were previously "marching"
                 if (unit.originalRange) {
                     unit.stats.range = unit.originalRange;
                     unit.originalRange = null;
                 }
 
-                // --- NEW ANCHOR LOGIC ---
-                // Only apply this fake stabilization in open land battles
-                if (typeof inSiegeBattle === 'undefined' || !inSiegeBattle) {
-                    unit.target = {
-                        x: unit.x, // Lock exactly to their current sub-pixel
-                        y: unit.y,
-                        hp: 9999,
-                        isDummy: true,
-                        isAnchor: true // Custom flag to prevent AI tampering
-                    };
-                    unit.vx = 0; // Hard stop momentum
-                    unit.vy = 0;
-                } else {
-                    unit.target = null; // Preserve old logic for sieges
+                // ENABLE SHOOTING WHILE SETTLED
+                let engagedEnemy = false;
+                if (isRanged && nearestEnemy) {
+                    let actualRange = unit.stats.range;
+                    let distToEnemy = Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y);
+                    if (distToEnemy <= actualRange) {
+                        unit.target = nearestEnemy;
+                        engagedEnemy = true;
+                    }
                 }
 
-                unit.state = "idle";
-                
-// SURGERY: Do NOT wipe orders for follow, move_to_point, OR retreat.
+                if (!engagedEnemy) {
+                    // Force the unit to stay at its current position and stop moving
+                    unit.target = { x: unit.x, y: unit.y, hp: 9999, isDummy: true, isAnchor: true };
+                    unit.vx *= 0.5; // Smoothly damp velocity instead of a jarring 0
+                    unit.vy *= 0.5;
+                    
+                    // IF WITHIN THE BUFFER: FORCE IDLE ANIMATION
+                    unit.state = "idle"; 
+                }
+
+                // If they are following you or retreating, don't clear the order, just stay in idle/shooting state
                 if (unit.orderType === "follow" || unit.orderType === "move_to_point" || unit.orderType === "retreat") {
                     return; 
                 }
 
-                // Only wipe one-off move orders
                 unit.hasOrders = false;
                 unit.orderType = null;
                 unit.orderTargetPoint = null;
                 return;
-			}
+            }
+			
+			
+			
+			
+			
             let shouldFocusOnShooting = false;
-            
-            if (distToDest > 20) {
-                if (isRanged && unit.formationTimer <= 0) {
+			if (distToDest > 20) {
+			// SURGERY: Ranged units MUST NOT shoot while actively trying to reach the Commander during a Follow command.
+							let canShootWhileMoving = isRanged && unit.formationTimer <= 0 && unit.orderType !== "follow";
+			if (canShootWhileMoving) {
                     if (unit.originalRange) {
                         unit.stats.range = unit.originalRange;
                         unit.originalRange = null;
@@ -676,8 +730,25 @@ const commander = battleEnvironment.units.find(u =>
                     if (nearestEnemy) {
                         let distToEnemy = Math.hypot(unit.x - nearestEnemy.x, unit.y - nearestEnemy.y);
                         if (distToEnemy <= unit.stats.range) {
-                            unit.target = nearestEnemy;
-                            shouldFocusOnShooting = true; 
+                            
+// ---> SURGERY: UNIFIED RELOAD-WALK LOGIC FOR ALL RANGED UNITS <---
+                            let isReloading = unit.cooldown && unit.cooldown > 0;
+
+                            // ALL ranged units (foot and horse) MUST keep walking if they are reloading
+                            if (isReloading && unit.orderType === "follow") {
+                                // Do NOT focus on shooting. Skip so they default to moving to dummy waypoint.
+                            } else {
+                                unit.target = nearestEnemy;
+                                shouldFocusOnShooting = true; 
+                                
+                                if (unit.orderType === "follow") {
+                                    // ALL ranged units lock their feet to fire properly
+                                    unit.vx = 0; 
+                                    unit.vy = 0;
+                                }
+                            }
+                            // -----------------------------------------------------------------
+                            
                         }
                     }
                 }
@@ -688,7 +759,10 @@ const commander = battleEnvironment.units.find(u =>
                     }
                     unit.stats.range = 10; 
                 }
-          } else {
+          } 
+		  
+		  
+		  else {
                 if (unit.originalRange) {
                     unit.stats.range = unit.originalRange;
                     unit.originalRange = null; 
@@ -1037,7 +1111,9 @@ document.addEventListener('contextmenu', (e) => {
     playerUnits.forEach(u => {
         u.hasOrders = true;
         u.orderType = "move_to_point";
-        
+        // --- BRAIN PROCESSING DELAY ---
+        u.reactionDelay = Math.floor(Math.random() * 161) + 3;
+ 
         let offX = u.formationOffsetX || 0;
         let offY = u.formationOffsetY || 0;
 

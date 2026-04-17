@@ -858,6 +858,8 @@ function leaveBattlefield(playerObj) {
 	
 	
 console.log("Leaving battlefield. Restoring overworld state...");
+// --- ADD THIS LINE TO SHUT DOWN THE ENEMY GENERAL ---
+    if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.stop();
     if (typeof cleanupSiegeRoofOverlay === 'function') cleanupSiegeRoofOverlay();
     
     // ADD THIS:
@@ -1119,11 +1121,11 @@ function applyCasualtyPressureToSide(units, side, casualtyPct) {
     let moraleMultiplier = 1;
     let panicLock = false;
 
-    if (casualtyPct >= 0.60) {
-        moraleMultiplier = 3.0;
+    if (casualtyPct >= 0.80) {
+        moraleMultiplier = 13.0;
         panicLock = true;
-    } else if (casualtyPct >= 0.45) {
-        moraleMultiplier = 2.0;
+    } else if (casualtyPct >= 0.55) {
+        moraleMultiplier = 5.0;
     } else if (casualtyPct >= 0.30) {
         moraleMultiplier = 1.2;
     }

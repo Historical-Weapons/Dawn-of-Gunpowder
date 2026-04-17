@@ -662,10 +662,17 @@ else if (grid[i][j] === 10) { // GRASS TEXTURE
 function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     if (inCityMode) return; 
 
-// ---> FIX 1: FLUSH THE NAVAL FLAG <---
-    // This stops the previous naval battle from leaking into your land battles!
+// ---> FIX 1: FLUSH FLAGS & RESET BOUNDS <---
     window.inNavalBattle = false;
-	
+    window.inRiverBattle = (currentWorldMapTile && currentWorldMapTile.name === "River");
+
+    // If it's a river battle, ensure world bounds are set to the land engine's 
+    // expected size so the "Abyss Fix" doesn't kick in unnecessarily.
+    if (window.inRiverBattle) {
+        BATTLE_WORLD_WIDTH = 2400; 
+        BATTLE_WORLD_HEIGHT = 3600; 
+    }
+    window.inRiverBattle = (currentWorldMapTile && currentWorldMapTile.name === "River");
 // --- NAVAL BATTLE HOOK ---
     const tileName = currentWorldMapTile.name || "Plains";
     
@@ -729,9 +736,10 @@ function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     }
     AudioManager.playSound("charge"); 
     if (typeof triggerEpicZoom === 'function') {
-        triggerEpicZoom(0.1, 1.5, 3500);
+        triggerEpicZoom(0.05, 1.5, 3500);
     }
-    
+    // --- ADD THIS LINE TO WAKE UP THE ENEMY GENERAL ---
+    if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.start();
     return; // Stop the regular land/siege battle generator from running!
 }
 // --- END NAVAL BATTLE HOOK ---
@@ -807,7 +815,7 @@ let playerTroopCount = playerObj.troops || 0;
     deployArmy(enemyNPC.faction, enemyNPC.count, "enemy");
 	
 	// =========================================================
-    // ---> SAFETY SURGERY: ABYSS SCAN (LAST RESORT)
+    // ---> SAFETY SURGERY: ABYSS SCAN 
     // =========================================================
     // We use separate counters so the staggering logic in lastResort() 
     // works correctly for both sides independently.
@@ -857,7 +865,7 @@ let playerTroopCount = playerObj.troops || 0;
     AudioManager.playSound("charge"); // Warcry SFX on spawn
 	// Trigger the Epic Zoom: Starts at 0.3x (high up), lands at 1.5x (tactical view) over 1.5 seconds
     if (typeof triggerEpicZoom === 'function') {
-        triggerEpicZoom(0.1, 1.5, 3500);
+        triggerEpicZoom(0.05, 1.5, 3500);
     }
 	
  
@@ -1224,9 +1232,8 @@ function deployNavalArmy(faction, totalTroops, side, uniqueType) {
     const visualScale = window.GLOBAL_BATTLE_SCALE || 1;
     const unitsToSpawn = Math.max(1, Math.round(totalTroops / visualScale));
 
-// Expand composition into a flat spawn list so every unit gets its own deck slot.
-    const spawnList = [];
-    if (side === "player") spawnList.push("Commander"); // SURGERY: Force commander onto the deck
+const spawnList = [];
+    if (side === "player") spawnList.push("General"); // SURGERY: Use valid roster key commander onto the deck
     let allocated = 0;
     composition.forEach((comp, idx) => {
         let count = Math.round(unitsToSpawn * comp.pct);
@@ -1271,7 +1278,7 @@ spawnList.forEach((type, i) => {
     // Notice the updated parameters passed to slotForIndex
     const safePos = slotForIndex(i, baseTemplate.role, ship, cols, rows, startX, startY, spacingX, spacingY, side);
 
-    const isCmdr = (baseTemplate.isCommander === true) || (type === "Commander");
+const isCmdr = (baseTemplate.isCommander === true) || (type === "General");
     const unitStats = Object.assign(
         new Troop(baseTemplate.name, baseTemplate.role, baseTemplate.isLarge, faction),
         baseTemplate
@@ -1358,19 +1365,20 @@ function lastResort2(unit, worldWidth, worldHeight, side, index) {
 
     const isOutOfBounds = (unit.x < 0 || unit.x > worldWidth || unit.y < 0 || unit.y > worldHeight);
 
-    if (isOutOfBounds) {
+   if (isOutOfBounds) {
         const row = Math.floor(index / UNITS_PER_ROW);
         const col = index % UNITS_PER_ROW;
         const offsetX = col * STAGGER_GAP;
         const offsetY = row * STAGGER_GAP;
 
         if (side === "player") {
-            unit.x = PADDING + offsetX;
-            unit.y = PADDING + offsetY;
-        } else {
-            // Enemy spawns near the BOTTOM (High Y)
-            unit.x = PADDING + offsetX;
+            unit.x = (worldWidth / 2) - (UNITS_PER_ROW * STAGGER_GAP / 2) + offsetX;
+            // SURGERY: Anchor to bottom of map (2000 for river, 3600 for land)
             unit.y = worldHeight - PADDING - offsetY;
+        } else {
+            unit.x = (worldWidth / 2) - (UNITS_PER_ROW * STAGGER_GAP / 2) + offsetX;
+            // SURGERY: Anchor to top of map
+            unit.y = PADDING + offsetY;
         }
     }
 }

@@ -318,6 +318,7 @@ document.getElementById("cb-mode-select").addEventListener("change", (e) => {
     const mapSelect = document.getElementById("cb-map-select");
     if (mapSelect) {
         if (customBattleMode === "siege") {
+			selectedMap = "Siege City"; // <--- ADD THIS LINE
             // Lock the dropdown and override the text to explain why
             mapSelect.disabled = true;
             mapSelect.style.opacity = "0.5";
@@ -812,7 +813,9 @@ function startCustomBattleMonitor() {
 }
 
    
-    function launchCustomBattle() {
+function launchCustomBattle() {
+	// Hide old errors immediately
+
         // 🔴 FIX 1: FETCH CANVAS FIRST TO PREVENT TDZ CRASH
         const canvas = document.getElementById("gameCanvas");
 
@@ -824,24 +827,52 @@ function startCustomBattleMonitor() {
         inBattleMode = true;
         inCityMode = false;
         customBattleActive = false;
-		
+        
+        // ---> SURGERY: WAKE UP THE RIVER ENGINE <---
+        window.inNavalBattle = false;
+        window.inRiverBattle = (selectedMap === "River");
         // Clear the slate
         battleEnvironment.units = [];
         battleEnvironment.projectiles = [];
         unitIdCounter = 0; 
-
-        // Generate the Map Canvas
-        if (typeof generateBattlefield === 'function') {
-            generateBattlefield(selectedMap || "Plains");
-        }
+// ==========================================================
+        // ENHANCED PRE-FLIGHT VALIDATION (Siege, Coastal, Ocean)
+        // ==========================================================
         
-        zoom = 0.1;
+        // Clear any old errors first
+        const errorEl = document.getElementById("battle-validation-error");
+        if (errorEl) errorEl.innerText = "";
 
-        // Validation
-        if (playerSetup.roster.length === 0 || enemySetup.roster.length === 0) {
-            alert("Both sides must have at least 1 unit!");
+        const playerCount = playerSetup.roster.length;
+        const enemyCount = enemySetup.roster.length;
+
+        // 1. Hard Minimum for any battle
+        if (playerCount === 0 || enemyCount === 0) {
+            displayBattleError("Error: Both sides NEED units!");
             return;
         }
+
+        // 2. Siege Requirement (10 units)
+        if (customBattleMode === "siege") {
+            if (playerCount < 10 || enemyCount < 10) {
+                displayBattleError("Siege Requirement: At least 10 units needed to man equipment.");
+                return;
+            }
+        }
+
+        // 3. Coastal & Ocean Requirement (5 units)
+        // Checks if the selected map name contains coastal or ocean keywords
+        const mapType = selectedMap.toLowerCase();
+        if (mapType.includes("coastal") || mapType.includes("ocean") || mapType.includes("sea")) {
+            if (playerCount < 5 || enemyCount < 5) {
+                displayBattleError("Naval Requirement: 5+ units needed to fill transport ships.");
+                return;
+            }
+        }
+        
+        // ==========================================================
+		
+		
         if (playerSetup.cost > customFunds || enemySetup.cost > customFunds) {
             alert("Funds exceeded! Please remove some units.");
             return;
@@ -855,10 +886,10 @@ function startCustomBattleMonitor() {
             window.player = { 
                 x: BATTLE_WORLD_WIDTH / 2, 
                 y: BATTLE_WORLD_HEIGHT - 100, 
-                hp: 200, 
-                maxHealth: 200, 
-                baseSpeed: 7, 
-                speed: 7,     
+                hp: 150, 
+                maxHealth: 150, 
+                baseSpeed: 2, 
+                speed: 2,     
                 faction: playerSetup.faction,
                 state: "idle",  
                 frame: 0,
@@ -902,13 +933,21 @@ window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
 }
         else if (selectedMap === "Ocean" || selectedMap === "Coastal") {
             window.launchCustomNavalBattle(playerSetup, enemySetup, selectedMap, pNavalShipSize, eNavalShipSize);
-            return; 
-        } else {
+		return; }
+       else {
             // --- EXISTING FIELD BATTLE LOGIC ---
+            // FIX: Set dimensions BEFORE generation so the canvas and arrays are built correctly!
             BATTLE_WORLD_WIDTH = 2400;
             BATTLE_WORLD_HEIGHT = 3600;
-            BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
-            BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
+            BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
+            BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
+
+            // Generate the Map Canvas NOW, using the correct dimensions
+            if (typeof generateBattlefield === 'function') {
+                generateBattlefield(selectedMap || "Plains");
+            }
+            
+            zoom = 0.1;
 
             // Reset battle container
             if (typeof battleEnvironment === "undefined" || !battleEnvironment) {
@@ -950,7 +989,7 @@ window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
             });
         }
 
-        // Use the player commander as the battle anchor
+// Use the player commander as the battle anchor
         const playerCommander = battleEnvironment.units.find(
             u => u.isCommander && u.side === "player"
         );
@@ -960,6 +999,7 @@ window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
             player.y = playerCommander.y;
             player.hp = playerCommander.hp;
             player.maxHealth = playerCommander.maxHp || playerCommander.hp;
+            player.ammo = playerCommander.ammo; // <--- SURGERY: SYNC AMMO TO GLOBAL PLAYER
         }
 
         // Record initial stats
@@ -1013,6 +1053,12 @@ window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
     function customSpawnLoop(rosterArray, side, faction, color) {
 let startY = side === 'player' ? BATTLE_WORLD_HEIGHT - 40 : 600;
         let centerX = BATTLE_WORLD_WIDTH / 2;
+        
+        // FIX: Prevent River Drowning by shifting armies to opposite banks
+        if (typeof window.inRiverBattle !== 'undefined' && window.inRiverBattle) {
+            centerX = side === 'player' ? BATTLE_WORLD_WIDTH * 0.25 : BATTLE_WORLD_WIDTH * 0.75;
+        }
+        
         let rankDir = side === 'player' ? 1 : -1;
         let spacingX = 22; 
         let spacingY = 18;
@@ -1114,7 +1160,7 @@ cmdrStats.accuracy = cmdrStats.accuracy || 72;
 cmdrStats.range = cmdrStats.range || 700;
 cmdrStats.ammo = cmdrStats.ammo || 24;
 cmdrStats.morale = cmdrStats.morale || 95;
-cmdrStats.speed = cmdrStats.speed || 1.2;
+cmdrStats.speed = cmdrStats.speed || 2.0;
 cmdrStats.experienceLevel = cmdrStats.experienceLevel || 5;
         // Dynamically pull the health and ammo values from the template
         let finalMaxHp = cmdrStats.health || 200;
@@ -1150,10 +1196,11 @@ cmdrStats.experienceLevel = cmdrStats.experienceLevel || 5;
             hasOrders: false
         });
 
-        // Final global sync for player health so UI matches the General's HP
+// Final global sync for player health so UI matches the General's HP
         if (disableAICombatSide && typeof player !== 'undefined') {
             player.hp = finalMaxHp;
             player.maxHealth = finalMaxHp;
+            player.ammo = finalAmmo; // <--- SURGERY: SYNC AMMO ON SPAWN
         }
     }
 
@@ -1173,6 +1220,13 @@ function handleCustomBattleExit() {
     let pAlive = 0, pHP = 0;
     let eAlive = 0, eHP = 0;
 
+if (customBattleMode === "siege") {
+        // SURGERY: Force the map state back to Siege City so the UI matches the mode
+selectedMap = "Siege City"; // <--- ADD THIS LINE
+}else {
+    selectedMap = "Plains"; // This handles the switch-back!
+     
+}
     // If siege breach already decided the result, use the snapshot.
     if (window.__CUSTOM_SIEGE_RESULT__ === "victory" && window.__CUSTOM_SIEGE_COUNTS__) {
         pAlive = window.__CUSTOM_SIEGE_COUNTS__.pAlive || 0;
@@ -1355,35 +1409,34 @@ function handleCustomBattleExit() {
         return btn;
     }
 
-    /**
-     * LAST RESORT: Prevents units from spawning in the "abyss" (beyond map bounds).
-     * Places them at the top or bottom edge with a staggered offset to prevent stacking.
-     */
-    function lastResort(unit, worldWidth, worldHeight, side, index) {
-        const PADDING = 50; 
-        const STAGGER_GAP = 30; 
-        const UNITS_PER_ROW = 20;
+function lastResort(unit, worldWidth, worldHeight, side, index) {
+    const PADDING = 100; // Increased padding for safety
+    const STAGGER_GAP = 35;
+    const UNITS_PER_ROW = 10;
 
-        const isOutOfBounds = (unit.x < 0 || unit.x > worldWidth || unit.y < 0 || unit.y > worldHeight);
+    // Use the worldHeight passed in (which is 2000 for rivers)
+    const isOutOfBounds = (unit.x < 0 || unit.x > worldWidth || unit.y < 0 || unit.y > worldHeight);
 
-        if (isOutOfBounds) {
-            const row = Math.floor(index / UNITS_PER_ROW);
-            const col = index % UNITS_PER_ROW;
-            
-            const offsetX = col * STAGGER_GAP;
-            const offsetY = row * STAGGER_GAP;
+    if (isOutOfBounds) {
+        const row = Math.floor(index / UNITS_PER_ROW);
+        const col = index % UNITS_PER_ROW;
+        
+        const offsetX = col * STAGGER_GAP;
+        const offsetY = row * STAGGER_GAP;
 
-            if (side === "player") {
-                unit.x = PADDING + offsetX;
-                unit.y = PADDING + offsetY;
-            } else {
-                unit.x = worldWidth - PADDING - offsetX;
-                unit.y = worldHeight - PADDING - offsetY;
-            }
-            
-            console.warn(`Unit ${unit.unitType} (ID: ${unit.id}) was caught in the abyss. Last Resort triggered.`);
+        if (side === "player") {
+            unit.x = PADDING + offsetX;
+            // SURGERY: Always spawn relative to the ACTUAL map bottom
+            unit.y = worldHeight - PADDING - offsetY; 
+        } else {
+            unit.x = worldWidth - PADDING - offsetX;
+            // SURGERY: Always spawn relative to the ACTUAL map top
+            unit.y = PADDING + offsetY; 
         }
+        
+        console.warn(`Abyss Fix: Relocated ${unit.unitType} to Y:${unit.y} (Map Height: ${worldHeight})`);
     }
+}
 })(); // <- ONLY ONE of these! It closes the massive (function () { at the top.
 
 function showBattleEndText(text) {
@@ -1405,4 +1458,39 @@ function showBattleEndText(text) {
     el.style.textAlign = "center";
 
     document.body.appendChild(el);
+}
+
+// --- SURGERY: REVISED UI ERROR MESSAGE HELPER ---
+function displayBattleError(message) {
+    let errorEl = document.getElementById("battle-validation-error");
+    if (!errorEl) {
+        errorEl = document.createElement("div");
+        errorEl.id = "battle-validation-error";
+        // Styling to ensure it floats ABOVE the menu (z-index 12000 > 11000)
+        errorEl.style.position = "fixed";
+        errorEl.style.bottom = "50px";
+        errorEl.style.left = "50%";
+        errorEl.style.transform = "translateX(-50%)";
+        errorEl.style.backgroundColor = "rgba(220, 53, 69, 0.95)"; // Solid warning red
+        errorEl.style.color = "white";
+        errorEl.style.padding = "12px 25px";
+        errorEl.style.borderRadius = "8px";
+        errorEl.style.boxShadow = "0 4px 15px rgba(0,0,0,0.5)";
+        errorEl.style.zIndex = "12000"; 
+        errorEl.style.fontWeight = "bold";
+        errorEl.style.fontSize = "16px";
+        errorEl.style.border = "1px solid #ffc107";
+        errorEl.style.textAlign = "center";
+        errorEl.style.pointerEvents = "none"; // Player can click through it
+        
+        document.body.appendChild(errorEl);
+    }
+    
+    errorEl.innerText = message;
+    errorEl.style.display = "block";
+    
+    // Auto-clear after 5 seconds
+    setTimeout(() => { 
+        if (errorEl) errorEl.style.display = "none"; 
+    }, 5000);
 }

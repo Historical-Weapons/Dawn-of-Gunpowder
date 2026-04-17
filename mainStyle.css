@@ -108,3 +108,91 @@ h1 { margin: 0; font-size: 1.4rem; color: #f5d76e; text-shadow: 1px 1px 2px #000
   #units-guide-left { width: 100% !important; height: 35% !important; border-right: none !important; border-bottom: 1px solid rgba(212,184,134,0.28) !important; }
   #units-guide-right { width: 100% !important; height: 65% !important; }
 }
+
+/* ──────────────────────────────────────────
+   REVISED DIPLOMACY PANEL (Mobile-Scaled)
+   ────────────────────────────────────────── */
+#diplomacy-panel {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    
+    /* HALF THE SIZE: 50% of screen height, 90% of width */
+    width: 90vw !important;
+    max-width: 500px !important;
+    height: 50vh !important;
+    max-height: 450px !important;
+
+    background: rgba(26, 13, 13, 0.98) !important;
+    border: 2px solid #d4b886 !important;
+    border-radius: 8px !important;
+    padding: 10px !important;
+    box-sizing: border-box !important;
+    display: none; /* Controlled by JS */
+    flex-direction: column !important;
+    z-index: 10001 !important;
+    box-shadow: 0 0 30px rgba(0,0,0,0.9) !important;
+}
+
+#dip-panel-header {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-bottom: 8px !important;
+    border-bottom: 1px solid rgba(212, 184, 134, 0.3) !important;
+    padding-bottom: 5px !important;
+}
+
+#dip-panel-header h2 {
+    font-size: clamp(14px, 4vw, 18px) !important;
+    margin: 0 !important;
+    color: #f5d76e !important;
+}
+
+/* TABLE CONTAINER: Handles the scrolling */
+#diplomacy-table-container {
+    flex: 1 !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    background: rgba(0,0,0,0.2) !important;
+}
+
+/* THE TABLE COSMETICS */
+.dip-table {
+    width: 100% !important;
+    min-width: max-content !important; /* Prevents text squishing */
+    border-collapse: collapse !important;
+    font-size: clamp(10px, 3vw, 12px) !important; /* Scaled font for iPhone */
+}
+
+.dip-table th, .dip-table td {
+    padding: 6px 4px !important; /* Tighter padding for mobile */
+    text-align: center !important;
+    border: 1px solid rgba(212, 184, 134, 0.1) !important;
+}
+
+/* STICKY FACTION NAMES: Keeps labels visible while scrolling */
+.dip-row-label {
+    position: sticky !important;
+    left: 0 !important;
+    background: #1a0d0d !important;
+    z-index: 5 !important;
+    font-weight: bold !important;
+    white-space: nowrap !important;
+    padding-right: 10px !important;
+    color: #ffca28 !important;
+}
+
+/* MOBILE SCROLLBAR */
+#diplomacy-table-container::-webkit-scrollbar {
+    height: 5px !important;
+    width: 5px !important;
+}
+#diplomacy-table-container::-webkit-scrollbar-thumb {
+    background: #d4b886 !important;
+    border-radius: 3px !important;
+}
+

@@ -396,6 +396,8 @@ clickAction = `onclick="troopGUI.recruitDirectly('${uniqueUnit}', ${recruitCost}
         </div>`;
 
     this.menuDiv.innerHTML = html;
+	// In troopGUI.js — end of renderMenu():
+if (typeof window.mobileUI !== 'undefined') window.mobileUI.patchTroopGUI();
 }}
 // Now this sits in the global scope where it belongs
 window.addEventListener('load', () => {

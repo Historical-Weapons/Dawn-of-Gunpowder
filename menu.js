@@ -159,14 +159,14 @@ const playBtn = createBtn("Sandbox Game", () => {
         window.showLoadingScreen();
     }
  
-    if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen().then(() => {
+  //  if (document.documentElement.requestFullscreen) {
+ //       document.documentElement.requestFullscreen().then(() => {
             // FIX ZOOM: Force the game to recalculate size after entering fullscreen
-            setTimeout(() => {
-                window.dispatchEvent(new Event('resize'));
-            }, 150);
-        }).catch(err => console.warn(err));
-    }
+            //setTimeout(() => {
+              //  window.dispatchEvent(new Event('resize'));
+          //  }, 150);
+   //     }).catch(err => console.warn(err));
+  //  }
 
     if (typeof AudioManager !== 'undefined') {
         AudioManager.init();
@@ -275,15 +275,26 @@ manualModal.style.maxHeight = "90vh";
             <h2 style="text-align: center; border-bottom: 2px solid #7b1a1a; padding-bottom: 15px; margin-top: 0; letter-spacing: 2px;">
                 DAWN OF GUNPOWDER:<br><span style="font-size: 0.7em; color: #d4b886;">EMPIRE OF THE 13TH CENTURY</span>
             </h2>
-            <h3 style="color: #fff; margin-top: 25px;">COMMANDS:</h3>
+       <h3 style="color: #fff; margin-top: 25px;">PC Controls</h3>
             <ul style="line-height: 1.8; font-size: 1.1rem; list-style-type: square; color: #d4b886;">
-                <li><strong style="color: #f5d76e;">WASD to Travel</li>
-                <li><strong style="color: #f5d76e;">SCROLL to Zoom Map</li>
-			    <li><strong style="color: #f5d76e;">12345 or click to Select Unit Type in Battlefield</li>
-			    <li><strong style="color: #f5d76e;">Press Q,E,R,F to Order Selected in Battlefield</li>
-							    <li><strong style="color: #f5d76e;">Press Z,X,C,V,B to set Unit Formation</li>
-                <li><strong style="color: #f5d76e;">Press P to Return to Overworld after Battle</li>
-				                <li><strong style="color: #f5d76e;">Press T to view Troops & EXP in Overworld</li>
+                <li><strong style="color: #f5d76e;">WASD</strong> to Travel</li>
+                <li><strong style="color: #f5d76e;">SCROLL</strong> to Zoom Map</li>
+                <li><strong style="color: #f5d76e;">1-5 or Click</strong> to Select Unit Type</li>
+                <li><strong style="color: #f5d76e;">Q, E, R, F</strong> to Issue Orders</li>
+                <li><strong style="color: #f5d76e;">Z, X, C, V, B</strong> to Set Formation</li>
+                <li><strong style="color: #f5d76e;">P</strong> to Return to Overworld</li>
+                <li><strong style="color: #f5d76e;">T</strong> to View Troops & EXP</li>
+            </ul>
+
+      <h3 style="color: #fff; margin-top: 25px;">Mobile Controls</h3>
+            <ul style="line-height: 1.8; font-size: 1.1rem; list-style-type: square; color: #d4b886;">
+                <li><strong style="color: #f5d76e;">Virtual Joystick (Bottom Left)</strong> to Travel & Move</li>
+                <li><strong style="color: #f5d76e;">Pinch Gesture</strong> to Zoom Map</li>
+                <li><strong style="color: #f5d76e;">Tap Unit Cards</strong> to Select/Deselect Units</li>
+                <li><strong style="color: #f5d76e;">Floating Group Buttons</strong> to Issue Orders & Formations</li>
+                <li><strong style="color: #f5d76e;">Long Press Unit Card</strong> to View Detailed Unit Stats</li>
+                <li><strong style="color: #f5d76e;">≡ DETAIL Button (Top Right)</strong> to View Troops & EXP</li>
+                <li><strong style="color: #f5d76e;">Back Button</strong> to Return to Overworld after Battle</li>
             </ul>
 <p style="line-height: 1.6; font-size: 1.1rem; margin-top: 25px;">
     Dawn of Gunpowder is a tactical strategy experience set in a historically inspired 13th-century world shaped by conquest, innovation, and shifting alliances. Though its factions are fictional, each draws heavily from real medieval cultures, technologies, and battlefield traditions of mostly East Asia before the age of Mongol conquest and during the early gunpowder era. Across sweeping steppes, fortified river valleys, dense forests, deserts, and mountain frontiers, rival powers struggle to dominate trade routes, secure borders, and expand their influence. Among them are mobile steppe confederations inspired by the Mongol war machine, disciplined dynastic armies influenced by Song-era gunpowder warfare, and armored cavalry kingdoms modeled after the Central Asian military traditions. Smaller regional powers, influenced by Korean, Vietnamese, Tibetan, and Japanese warfare, defend their homelands with unique tactics shaped by terrain, culture, and centuries of conflict.

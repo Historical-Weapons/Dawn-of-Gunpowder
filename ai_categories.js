@@ -688,30 +688,42 @@ if (!isGateBreached && unit.side === "player" && unit.target && !unit.target.isD
             unit.stats.updateStance(dist);
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
 
-// RANGE HYSTERESIS: Add a buffer so they don't stutter-step on the edge of their range
-          let isAlreadyAttacking = (unit.state === "attacking" && unit.stats.currentStance === "statusrange");
+			let isAlreadyAttacking = (unit.state === "attacking" && unit.stats.currentStance === "statusrange");
             let rangeThreshold = isAlreadyAttacking ? (effectiveRange * 0.95) : (effectiveRange * 0.8);
 
-            if (dist > rangeThreshold) {
+            // ---> SURGERY: HOLD & FOLLOW CAN ENGAGE AT 100% MAXIMUM DEFINED RANGE <---
+            if ((unit.orderType === "hold_position" || unit.orderType === "follow") && unit.stats.currentStance === "statusrange") {
+                rangeThreshold = effectiveRange;
+            }
+
+			if (dist > rangeThreshold) {
                 // SURGERY 3: The "E" Command Leg-Lock
                 let isMeleeSelfDefense = (!unit.stats.isRanged && dist < 70); 
 
-                if (unit.orderType === "hold_position" && !isMeleeSelfDefense) {
+             if (unit.orderType === "hold_position" && !isMeleeSelfDefense) {
                     unit.vx = 0; 
                     unit.vy = 0;
                     unit.state = "idle";
                 } else {
+                    // ---> SURGERY: STANDARD MOVEMENT FOR ALL <---
                     this._handleMovement(unit, dx, dy, dist, battleEnv);
                 }
-            } else {
-                // EXTREME STOP: For ranged units in range, kill velocity completely so the animation locks cleanly
-                // EXTREME STOP: For ranged units in range, kill velocity completely so the animation locks cleanly
+			} else {
+// EXTREME STOP: For ranged units in range, kill velocity completely so the animation locks cleanly
                 if (unit.stats.currentStance === "statusrange") {
+                    
+                    // ---> SURGERY: ALL ARCHERS STOP DEAD TO SHOOT <---
                     unit.vx = 0;
                     unit.vy = 0;
+                    // Force state to prevent the engine from jittering the animation if residual velocity exists
+                    unit.state = "attacking"; 
+                    // -----------------------------------------
+                    
                 }
                 this._handleCombatExecution(unit, dx, dy, dist, battleEnv, player);
             }
+			
+			
             let hasMoved = Math.abs(unit.x - oldX) > 0.1 || Math.abs(unit.y - oldY) > 0.1;
             if (hasMoved) {
                 unit.state = "moving";
@@ -1819,3 +1831,28 @@ function lineIntersectsCircle(x1, y1, x2, y2, cx, cy, r) {
     // If either t1 or t2 is between 0 and 1, the projectile passed through the circle this frame
     return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
 }
+
+// =========================================================
+// TACTICAL AI ROLE TRANSLATOR
+// =========================================================
+window.getTacticalRole = function(unit) {
+    if (!unit || !unit.stats) return 'INFANTRY';
+    
+    const roleStr = String(unit.stats.role || "").toUpperCase();
+    const typeStr = String(unit.unitType || unit.stats.name || "").toUpperCase();
+    
+    // Cavalry Check
+    if (unit.stats.isLarge || unit.isMounted || /(CAV|HORSE|MOUNTED|CAMEL|ELEPH|LANCER|KESHIG)/.test(typeStr) || /(CAVALRY)/.test(roleStr)) {
+        return 'CAVALRY';
+    }
+    // Gunpowder Check
+    if (/(FIRELANCE|BOMB|ROCKET|GUNNER|HAND CANNONEER|MUSKET)/.test(typeStr) || /(BOMB|GUNPOWDER)/.test(roleStr)) {
+        return 'GUNPOWDER';
+    }
+    // Standard Ranged Check
+    if (unit.stats.isRanged || /(ARCHER|BOW|CROSSBOW|SLINGER)/.test(typeStr) || /(RANGED)/.test(roleStr)) {
+        return 'RANGED';
+    }
+    // Default everyone else to Infantry
+    return 'INFANTRY';
+};

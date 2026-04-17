@@ -258,6 +258,7 @@ if(player.gold >= 50) {
     font-family: 'Georgia', serif;
     box-sizing: border-box;
 ">
+
     <div id="dip-header" style="
         display: flex;
         justify-content: space-between;
@@ -276,7 +277,15 @@ if(player.gold >= 50) {
 
     <div id="dip-body" style="height: calc(100% - 60px); overflow-y: auto;">
         <div id="diplomacy-table-container"></div>
+		
     </div>
+</div>
+<div id="diplomacy-panel">
+    <div id="dip-panel-header">
+        <h2>Geopolitical Relations</h2>
+        <button class="dip-close-btn" onclick="toggleDiplomacyMenu()">✕</button>
+    </div>
+    <div id="diplomacy-table-container"></div>
 </div>
 </div>
 <script>
@@ -321,16 +330,19 @@ function toggleDipLog() {
 	<script src="drawSiegeEngines.js"></script>
 	<script src="siege_function_helpers.js"></script>
     <script src="battlefield_launch.js"></script>
-	<script src="naval_battles.js"></script>
+<script src="naval_battles.js"></script>
+<script src="drowning_detector.js"></script>   <!-- new, after naval -->
+<script src="drowning_visuals.js"></script>    <!-- updated -->
 	<script src="custom_naval_launcher.js"></script>
 	<script src="battlefield_logic.js"></script>
 	<script src="enemyCommanderAI.js"></script>
+	  <script src="enemyTacticalAI.js"></script>
 	<script src="ai_categories.js"></script>
     <script src="troop_system.js"></script>
 	<script src="unit-encyclopedia.js"></script>
     <script src="infscript.js"></script>
     <script src="cavscript.js"></script>
-	<script src="drowning_visuals.js"></script>
+ 
     <script src="player_overlay_system.js"></script>
     <script src="battle_roster_avatar.js"></script>
     <script src="battlefield_commands.js"></script>
@@ -347,5 +359,8 @@ function toggleDipLog() {
     <script src="faction_dynamics.js"></script>
     <script src="sandbox_overworld.js"></script>
 	<script src="update.js"></script>
+	<script src="mobile_ui.js"></script>
+	<script src="mobileControls.js"></script>
+	<script src="autoAttack.js"></script>
 </body>
 </html>

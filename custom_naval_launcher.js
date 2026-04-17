@@ -45,6 +45,7 @@
         if (typeof player !== 'undefined') {
             player.hp = player.maxHealth || 150;
             player.maxHealth = player.maxHealth || 150;
+			player.ammo = 24; // <--- SURGERY: HARD RESET AMMO STATE ON EXIT
             player.state = "idle";
             player.isDead = false;
             player.isMoving = false;
@@ -164,29 +165,17 @@
         // STEP 6: Find the player commander
         let pCmdr = battleEnvironment.units.find(u => u.side === "player" && u.isCommander);
 
-        // =====================================================================
-        // FIX 3 — THE ROOT CAUSE OF "BOTTOM RIGHT CORNER":
-        //
-        // `player` is declared with `let` in update.js. Variables declared
-        // with `let` at script scope are NOT properties of `window`.
-        // Therefore `window.player` is undefined and the original code's
-        // guard `typeof window.player !== 'undefined'` was always FALSE.
-        // player.x was NEVER updated to the ship position.
-        //
-        // When the update loop's first frame ran `pCmdr.x = player.x`, it
-        // dragged the commander off the ship to the stale overworld position.
-        // The camera followed, leaving ships far to the bottom-right.
-        //
-        // Fix: use `player` directly (not `window.player`). The variable IS
-        // accessible cross-script as a plain identifier — it just isn't on window.
-        // =====================================================================
-        if (pCmdr && typeof player !== 'undefined') {
+if (pCmdr && typeof player !== 'undefined') {
             player.x         = pCmdr.x;
             player.y         = pCmdr.y;
             player.hp        = pCmdr.hp;
-            player.maxHealth = pCmdr.maxHp;
-            player.speed     = 7;
-        } else if (typeof player !== 'undefined') {
+player.maxHealth = pCmdr.maxHp;
+        player.ammo      = pCmdr.ammo; 
+        player.speed     = 2;
+        player.weaponMode = 'ranged'; // <--- FIX: Force ranged stance upon spawn
+    }
+
+		else if (typeof player !== 'undefined') {
             // Fallback: no commander found — snap to ship center
             let fallbackShip = navalEnvironment.ships[0];
             if (fallbackShip) {
@@ -238,8 +227,7 @@
         // sort() was scrambling index order, pushing units to outer grid cells
         // where they're closest to the hull edge and most likely to miss the
         // safety check. Commander is prepended, then the user's roster in order.
-        let spawnList = ["Commander", ...rosterArray];
-
+let spawnList = ["General", ...rosterArray];
         let cols = Math.ceil(Math.sqrt(spawnList.length * (ship.width / ship.height)));
         if (cols < 1) cols = 1;
         let rows = Math.ceil(spawnList.length / cols);
@@ -267,7 +255,7 @@
 
         spawnList.forEach((unitKey, i) => {
             let template = UnitRoster.allUnits[unitKey] || UnitRoster.allUnits["Militia"];
-            let isCmdr   = (unitKey === "Commander" || unitKey === "General");
+let isCmdr   = (unitKey === "General");
 
             const row = Math.floor(i / cols);
             const col = i % cols;
@@ -332,7 +320,8 @@
                 stats:          unitStats,
                 hp:             safeHP,
                 maxHp:          safeHP,
-                ammo:           unitStats.ammo || template.ammo || 0,
+// SURGERY: Force 24 ammo if template fails, ensuring you never spawn with 0
+                ammo:           isCmdr ? (unitStats.ammo || 24) : (unitStats.ammo || (template && template.ammo) || 0),
                 renderType:     visType,
                 x:              px,
                 y:              py,

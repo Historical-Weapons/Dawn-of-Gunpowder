@@ -1,6 +1,12 @@
  let economyTick = 0;
  let uiSyncTick = 0;
 function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
+	// NEW: If mobile drawer is open, stop movement logic immediately
+    if (window.isMobileDrawerOpen) {
+        player.isMoving = false;
+        return; 
+    }
+	
     if ((player.isSieging && !inBattleMode) || player.stunTimer > 0) {
         if (player.stunTimer > 0) player.stunTimer--;
         player.isMoving = false;
@@ -192,8 +198,8 @@ let player = {
     distTrack: 0,       
 
     // --- MOVEMENT & STATE ---
-    baseSpeed: 15,     
-    speed: 15,
+    baseSpeed: 15,  //overworld    
+    speed: 15, //overworld
     isMoving: false,
     stunTimer: 0,
     anim: 0,
@@ -262,7 +268,7 @@ window.onwheel = (e) => {
     if (window.isZoomAnimating) { 
         window.isZoomAnimating = false; 
     }      
-    zoom = Math.max(0.3, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    zoom = Math.max(0.05, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
 };
 
  function update() {
@@ -300,11 +306,17 @@ window.onwheel = (e) => {
 	{
         if (!battleEnvironment?.grid || typeof pCmdr === 'undefined' || !pCmdr) return;
 		
-// --- NAVAL PHYSICS HOOK ---
-        if (typeof inNavalBattle !== 'undefined' && inNavalBattle) {
+// --- NAVAL / RIVER PHYSICS HOOK ---
+// Check for Ocean/Coastal mode
+        if (typeof window.inNavalBattle !== 'undefined' && window.inNavalBattle) {
             updateNavalPhysics();
+        } 
+        // Check for River mode (Safe against undefined)
+        else if (typeof window.inRiverBattle !== 'undefined' && window.inRiverBattle) {
+            // This runs the river drowning/swimming logic
+            updateRiverPhysics();
         }
-        // --- END NAVAL PHYSICS HOOK ---
+        // --- END NAVAL / RIVER PHYSICS HOOK ---
         
         player.size = 24;
 
@@ -503,7 +515,7 @@ document.getElementById('loc-text').innerText =
     `${Math.round(player.x)}, ${Math.round(player.y)}`;
 
 document.getElementById('terrain-text').innerText =
-    inCityMode ? "City" : currentTile.name;
+    (typeof inCityMode !== 'undefined' && inCityMode) ? "City" : currentTile.name;
 
 const speedEl = document.getElementById('speed-text');
 
@@ -908,6 +920,58 @@ function updateCityPanelUI(city) {
         hostileBox.style.display = 'none';
     }
 }
+// --- SURGERY: MISSING RIVER PHYSICS ENGINE REBUILT ---
+window.updateRiverPhysics = function() {
+    if (!window.inRiverBattle || !battleEnvironment.units) return;
+
+    battleEnvironment.units.forEach(unit => {
+        if (unit.hp <= 0) return;
+        
+        let surface = 'LAND'; 
+
+        // Only use the complex naval 'ship deck' detector if it's a true Ocean/Coastal battle
+        if (window.inNavalBattle && (navalEnvironment.mapType === "Ocean" || navalEnvironment.mapType === "Coastal")) {
+            if (typeof window.getNavalSurfaceAt === 'function') {
+                surface = window.getNavalSurfaceAt(unit.x, unit.y);
+            }
+        } 
+        // Otherwise, check the actual terrain grid tiles (River battles live here)
+        else if (battleEnvironment && battleEnvironment.grid) {
+            const tx = Math.floor(unit.x / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
+            const ty = Math.floor(unit.y / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
+            
+            // ---> THE FIX: Check for BOTH River (4) and Ocean (11) <---
+            if (battleEnvironment.grid[tx] && (battleEnvironment.grid[tx][ty] === 11 || battleEnvironment.grid[tx][ty] === 4)) {
+                surface = 'WATER';
+            }
+        }
+
+        if (surface === 'WATER') {
+            unit.overboardTimer = (unit.overboardTimer || 0) + 1;
+            unit.isSwimming = true;
+            
+            // Apply water friction
+            unit.vx *= 0.15;
+            unit.vy *= 0.15;
+
+            // Drown threshold calculation
+            if (!unit.drownTimer) unit.drownTimer = 0;
+            let drownThreshold = Math.max(450, 4500 - ((unit.stats.weightTier||1)*250) - (unit.stats.mass||10));
+            unit.drownTimer++;
+            
+            if (unit.drownTimer > drownThreshold) {
+                unit.hp = 0; 
+                unit.deathRotation = 0; 
+                unit._drownedSilently = true; 
+            }
+        } else {
+            // Unit is on Land
+            unit.overboardTimer = 0;
+            unit.isSwimming = false;
+            if (unit.drownTimer > 0) unit.drownTimer -= 1;
+        }
+    });
+};
 
 // Optimized: Run bounds check every 100ms instead of every frame (Lag Fix)
 setInterval(() => {if (typeof globalNPCs !== 'undefined') {globalNPCs.forEach(npc => enforceNPCBounds(npc, WORLD_WIDTH, WORLD_HEIGHT));}}, 100);
