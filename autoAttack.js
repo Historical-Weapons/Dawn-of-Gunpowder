@@ -1,10 +1,8 @@
 /**
- * autoAttack.js (ADVANCED TACTICAL ENGINE) - FIXED VERSION + MANUAL OVERRIDE
+ * autoAttack.js (ADVANCED TACTICAL ENGINE) - NAVAL PATCH EDITION
  * Injects side-by-side "Smart Auto" and "Manual" killswitch buttons.
- * Phase 1: March in formation tracking the moving enemy centroid.
- * Phase 2: Skirmish at 600px (Ranged engage, Melee holds).
- * Phase 3: Global Charge.
- * NEW: Manual mode toggle completely disables Auto, stops all units, and deselects them.
+ * LAND: Phase 1 (March), Phase 2 (Skirmish), Phase 3 (Charge).
+ * NAVAL: Hold deck, Melee engages at 100px, Swimmers seek the ship.
  */
 ;(function (W, D) {
   'use strict';
@@ -13,6 +11,7 @@
   let autoBtn = null;
   let manualBtn = null;
   let isManualMode = false;
+  let autoRunning = false; // Tracks the ON/OFF state of the AI
 
   const poll = setInterval(() => {
     if (W.MobileControls && D.getElementById('mc3-hrow')) {
@@ -34,32 +33,38 @@
     container.style.alignItems = 'center';
     container.style.margin = '0 5px';
 
-    // 1. Auto Button
+    // 1. Auto Button (The "ON" Switch)
     autoBtn = D.createElement('button');
     autoBtn.id = 'mc3-lazy-auto';
     autoBtn.setAttribute('type', 'button');
     autoBtn.className = 'mc3-btn mc3-toggle-btn';
-    autoBtn.innerHTML = '⚔️ TACTICAL AUTO';
+    autoBtn.innerHTML = '🤖';
     autoBtn.style.color = '#ff5722';
     autoBtn.style.borderColor = '#ffca28';
     autoBtn.style.flex = '1';
     autoBtn.style.transition = 'opacity 0.2s';
+    autoBtn.style.pointerEvents = 'auto';
+    autoBtn.style.opacity = '1';
 
-    // 2. Manual Button (Killswitch)
+    // 2. Manual Button (The "OFF" / Killswitch)
     manualBtn = D.createElement('button');
     manualBtn.id = 'mc3-manual-override';
     manualBtn.setAttribute('type', 'button');
     manualBtn.className = 'mc3-btn mc3-toggle-btn';
-    manualBtn.innerHTML = '✋ MANUAL OFF';
-    manualBtn.style.color = '#ffca28';
-    manualBtn.style.borderColor = '#ffca28';
+    manualBtn.innerHTML = '🛑';
+    manualBtn.style.color = '#f44336';
+    manualBtn.style.borderColor = '#f44336';
     manualBtn.style.flex = '1';
+    manualBtn.style.transition = 'opacity 0.2s';
+    // Starts disabled because AI isn't running yet
+    manualBtn.style.pointerEvents = 'none';
+    manualBtn.style.opacity = '0.4';
 
     let lastFire = 0;
     
-    // Auto Button Logic
+    // Auto Button Logic (Turn ON)
     const fireAuto = (ev) => {
-      if (isManualMode || autoBtn.disabled) return;
+      if (autoRunning) return; // Prevent if already running
         
       const now = Date.now();
       if (now - lastFire < 500) return; 
@@ -73,85 +78,77 @@
       autoBtn.classList.add('pressed');
       setTimeout(() => autoBtn.classList.remove('pressed'), 130);
 
+      // --- STATE CHANGE: AUTO ON ---
+      autoRunning = true;
+      isManualMode = false; // Allow AI to run
+
+      // Disable Auto button from being clicked, but keep it fully visible for text updates
+      autoBtn.style.pointerEvents = 'none';
+      
+      // Enable Manual button as the active killswitch
+      manualBtn.style.pointerEvents = 'auto';
+      manualBtn.style.opacity = '1';
+
       triggerTacticalAssault();
     };
 
-    // Manual Toggle Logic
+    // Manual Toggle Logic (Turn OFF)
     const toggleManual = (ev) => {
+      if (!autoRunning) return; // Only works if Auto is running
+
       if (ev) {
           ev.preventDefault();
           ev.stopPropagation();
       }
 
-      isManualMode = !isManualMode;
+      // --- STATE CHANGE: AUTO OFF ---
+      autoRunning = false;
+      isManualMode = true; // Signals tactical interval to die
+      
+      // Re-enable Auto button
+      autoBtn.style.pointerEvents = 'auto';
+      autoBtn.innerHTML = '🤖';
+      
+      // Disable Manual button
+      manualBtn.style.pointerEvents = 'none';
+      manualBtn.style.opacity = '0.4';
 
-      if (isManualMode) {
-        // Activate Manual / Killswitch
-        manualBtn.innerHTML = '🛑 MANUAL ON';
-        manualBtn.style.color = '#f44336';
-        manualBtn.style.borderColor = '#f44336';
+      // Terminate AI completely
+      if (tacticalInterval) {
+        clearInterval(tacticalInterval);
+        tacticalInterval = null;
+      }
+
+      // --- Stop moving, hold position, and deselect ---
+      let env = (typeof battleEnvironment !== 'undefined') ? battleEnvironment : W.battleEnvironment;
+      if (env && env.units) {
+        let playerUnits = env.units.filter(u => u.side === "player");
+        restoreSpeeds(playerUnits);
         
-        // Disable Auto visually and functionally
-        autoBtn.disabled = true;
-        autoBtn.style.opacity = '0.4';
-        autoBtn.style.pointerEvents = 'none';
-        autoBtn.innerHTML = '⛔ DISABLED';
-
-        // Terminate AI completely
-        if (tacticalInterval) {
-          clearInterval(tacticalInterval);
-          tacticalInterval = null;
-        }
-
-        // --- NEW: Stop moving, hold position (allows attacking), and deselect ---
-        let env = (typeof battleEnvironment !== 'undefined') ? battleEnvironment : W.battleEnvironment;
-        if (env && env.units) {
-          let playerUnits = env.units.filter(u => u.side === "player");
-          restoreSpeeds(playerUnits);
+        playerUnits.forEach(u => {
+          u.selected = false; 
+          u.hasOrders = true;
+          u.orderType = "hold_position";
+          u.vx = 0;
+          u.vy = 0;
           
-          playerUnits.forEach(u => {
-            u.selected = false; // Deselect unit for manual mode
-            
-            // Halt movement and set to hold position
-            u.hasOrders = true;
-            u.orderType = "hold_position";
-            u.vx = 0;
-            u.vy = 0;
-            
-            // Anchor to current position
-            if (typeof W.getSafeMapCoordinates === 'function') {
-              u.orderTargetPoint = W.getSafeMapCoordinates(u.x, u.y, 15);
-            } else {
-              u.orderTargetPoint = { x: u.x, y: u.y };
-            }
-          });
+          if (typeof W.getSafeMapCoordinates === 'function') {
+            u.orderTargetPoint = W.getSafeMapCoordinates(u.x, u.y, 15);
+          } else {
+            u.orderTargetPoint = { x: u.x, y: u.y };
+          }
+        });
 
-          // Clear UI selection groups to reflect deselection
-          if (typeof currentSelectionGroup !== 'undefined') {
-              currentSelectionGroup = null;
-          }
-          if (W.MobileControls && W.MobileControls.UnitCards) {
-              W.MobileControls.UnitCards._snap = '';
-              W.MobileControls.UnitCards.update();
-          }
+        if (typeof currentSelectionGroup !== 'undefined') currentSelectionGroup = null;
+        if (W.MobileControls && W.MobileControls.UnitCards) {
+            W.MobileControls.UnitCards._snap = '';
+            W.MobileControls.UnitCards.update();
         }
-      } else {
-        // Deactivate Manual
-        manualBtn.innerHTML = '✋ MANUAL OFF';
-        manualBtn.style.color = '#ffca28';
-        manualBtn.style.borderColor = '#ffca28';
-        
-        // Re-enable Auto
-        autoBtn.disabled = false;
-        autoBtn.style.opacity = '1';
-        autoBtn.style.pointerEvents = 'auto';
-        autoBtn.innerHTML = '⚔️ TACTICAL AUTO';
       }
     };
 
     autoBtn.addEventListener('touchstart', fireAuto, { passive: false });
     autoBtn.addEventListener('pointerdown', fireAuto);
-    
     manualBtn.addEventListener('touchstart', toggleManual, { passive: false });
     manualBtn.addEventListener('pointerdown', toggleManual);
 
@@ -162,13 +159,23 @@
     if (group5) group5.after(container);
     else hrow.appendChild(container);
 
+    // Watcher: Reset the UI state cleanly if the battle ends naturally
     setInterval(() => {
       const inBattle = W.MobileControls && W.MobileControls.G.isBattle();
       container.style.display = inBattle ? 'flex' : 'none';
-      if (!inBattle && tacticalInterval) {
-          clearInterval(tacticalInterval);
-          tacticalInterval = null;
-          if (!isManualMode) autoBtn.innerHTML = '⚔️ TACTICAL AUTO';
+      
+      if (!inBattle) {
+          if (tacticalInterval) {
+              clearInterval(tacticalInterval);
+              tacticalInterval = null;
+          }
+          // Reset UI to default OFF state between battles
+          autoRunning = false;
+          isManualMode = false;
+          autoBtn.style.pointerEvents = 'auto';
+          autoBtn.innerHTML = '🤖';
+          manualBtn.style.pointerEvents = 'none';
+          manualBtn.style.opacity = '0.4';
       }
     }, 1000);
   }
@@ -192,7 +199,7 @@
   }
 
   function triggerTacticalAssault() {
-    if (isManualMode) return; // Safety block
+    if (isManualMode) return; 
 
     const MC = W.MobileControls;
     if (!MC || !MC.G.isBattle()) return;
@@ -207,10 +214,103 @@
     let env = (typeof battleEnvironment !== 'undefined') ? battleEnvironment : W.battleEnvironment;
     if (!env || !env.units) return;
 
-    let playerUnits = env.units.filter(u => u.side === "player" && !u.isCommander && u.hp > 0 && !u.disableAICombat);
-    let enemyUnits = env.units.filter(u => u.side === "enemy" && u.hp > 0 && !u.isDummy);
-    
+    // Helper to fetch live valid units
+    const getLivePlayerUnits = () => env.units.filter(u => {
+        const type = String(u.unitType || "").toLowerCase();
+        return (u.side === "player" && u.hp > 0 && u !== W.player && !u.isCommander && type !== "commander" && type !== "general");
+    });
+    const getLiveEnemyUnits = () => env.units.filter(u => u.side === "enemy" && u.hp > 0 && !u.isDummy);
+
+    let playerUnits = getLivePlayerUnits();
+    let enemyUnits = getLiveEnemyUnits();
     if (playerUnits.length === 0 || enemyUnits.length === 0) return;
+
+    // =========================================================
+    // 🌊 NAVAL OVERRIDE BRANCH
+    // =========================================================
+    if (W.inNavalBattle) {
+        if (typeof currentSelectionGroup !== 'undefined') currentSelectionGroup = 5;
+        autoBtn.innerHTML = '⚓'; 
+
+        tacticalInterval = setInterval(() => {
+            if (!MC.G.isBattle() || isManualMode) {
+                clearInterval(tacticalInterval);
+                tacticalInterval = null;
+                restoreSpeeds(playerUnits);
+                if (!isManualMode) autoBtn.innerHTML = '🤖';
+                return;
+            }
+
+            playerUnits = getLivePlayerUnits();
+            enemyUnits = getLiveEnemyUnits();
+
+            if (playerUnits.length === 0 || enemyUnits.length === 0) {
+                clearInterval(tacticalInterval);
+                tacticalInterval = null;
+                autoBtn.innerHTML = '⏳';
+                return;
+            }
+
+            let cmdr = env.units.find(u => u.side === 'player' && u.isCommander && u.hp > 0);
+
+            playerUnits.forEach(u => {
+                u.selected = true; // Visual Yellow Glow
+                u.hasOrders = true;
+
+                // Bulletproof Surface & Fallback check
+                let surface = 'DECK';
+                if (typeof W.getNavalSurfaceAt === 'function') surface = W.getNavalSurfaceAt(u.x, u.y);
+
+                let safeTarget = cmdr ? {x: cmdr.x, y: cmdr.y} : {x: u.x, y: u.y};
+                let myShip = (W.navalEnvironment && W.navalEnvironment.ships) ? W.navalEnvironment.ships.find(s => s.side === 'player') : null;
+                if (myShip) safeTarget = { x: myShip.x, y: myShip.y }; // Ship centroid fallback
+
+                // 🔴 PRIORITY 1: SWIMMING (Survival Mode)
+                if (u.isSwimming || surface === 'WATER') {
+                    u.target = null;
+                    u.orderType = "move_to_point";
+                    u.orderTargetPoint = safeTarget;
+                    return; 
+                }
+
+                // 🟢 PRIORITY 2: DECK COMBAT LOGIC
+                let role = getFallbackRole(u);
+                let nearestDist = Infinity;
+                enemyUnits.forEach(e => {
+                    let d = Math.hypot(u.x - e.x, u.y - e.y);
+                    if (d < nearestDist) nearestDist = d;
+                });
+
+                if (role === "INFANTRY") {
+                    // Melee: Swarm boarders within 100px, otherwise hold tight
+                    if (nearestDist < 100) {
+                        u.orderType = "seek_engage";
+                        u.orderTargetPoint = null;
+                    } else {
+                        u.orderType = "hold_position";
+                        u.vx = 0; u.vy = 0;
+                        u.orderTargetPoint = { x: u.x, y: u.y };
+                    }
+                } else {
+                    // Ranged/Cav: Hold position and shoot natively
+                    u.orderType = "hold_position";
+                    u.vx = 0; u.vy = 0;
+                    u.orderTargetPoint = { x: u.x, y: u.y };
+                }
+            });
+
+            // Sync UI selection state
+            if (MC.UnitCards) {
+                MC.UnitCards._snap = '';
+                MC.UnitCards.update();
+            }
+        }, 500);
+
+        return; // EXIT FUNCTION: Do not run land battle logic
+    }
+    // =========================================================
+    // 🌲 LAND BATTLE LOGIC (Original)
+    // =========================================================
 
     let minDistance = Infinity;
     playerUnits.forEach(p => {
@@ -224,45 +324,39 @@
     let skirmishTicks = 0;
     let avgSpeed = 2; 
 
-    if (isForcedCharge || minDistance <= 150) {
-        phase = "CHARGING";
-    } else if (minDistance <= 600) {
-        phase = "SKIRMISHING";
-    }
+    if (isForcedCharge || minDistance <= 150) phase = "CHARGING";
+    else if (minDistance <= 600) phase = "SKIRMISHING";
 
     if (phase === "MARCHING") {
-        autoBtn.innerHTML = '🚶 ADVANCING...';
+        autoBtn.innerHTML = '🚶..';
         let totalSpeed = 0;
         playerUnits.forEach(u => totalSpeed += (u.stats?.speed || 2));
         avgSpeed = Math.max(1, totalSpeed / playerUnits.length);
         updateMarchTargets(playerUnits, enemyUnits, avgSpeed);
     } else if (phase === "SKIRMISHING") {
-        autoBtn.innerHTML = '🏹 SKIRMISHING...';
+        autoBtn.innerHTML = '🏹..';
         issueSkirmishOrders(playerUnits);
     }
 
-    if (typeof currentSelectionGroup !== 'undefined') {
-        currentSelectionGroup = 5; 
-    }
+    if (typeof currentSelectionGroup !== 'undefined') currentSelectionGroup = 5; 
 
     tacticalInterval = setInterval(() => {
-      // Abort interval if manual mode is toggled or battle ends
       if (!MC.G.isBattle() || isManualMode) {
         clearInterval(tacticalInterval);
         tacticalInterval = null;
         restoreSpeeds(playerUnits);
-        if (!isManualMode) autoBtn.innerHTML = '⚔️ TACTICAL AUTO';
+        if (!isManualMode) autoBtn.innerHTML = '⏳';
         return;
       }
 
-      playerUnits = env.units.filter(u => u.side === "player" && u.hp > 0 && !u.isCommander && !u.disableAICombat);
-      enemyUnits = env.units.filter(u => u.side === "enemy" && u.hp > 0 && !u.isDummy);
+      playerUnits = getLivePlayerUnits();
+      enemyUnits = getLiveEnemyUnits();
 
       if (playerUnits.length === 0 || enemyUnits.length === 0) {
         clearInterval(tacticalInterval);
         tacticalInterval = null;
         restoreSpeeds(playerUnits);
-        autoBtn.innerHTML = '⚔️ TACTICAL AUTO';
+        autoBtn.innerHTML = '⏳';
         return;
       }
 
@@ -270,7 +364,7 @@
       if (playerHoldOverride && phase === "MARCHING") {
           clearInterval(tacticalInterval);
           tacticalInterval = null;
-          autoBtn.innerHTML = '⚔️ TACTICAL AUTO';
+          autoBtn.innerHTML = '⏳';
           restoreSpeeds(playerUnits);
           return;
       }
@@ -283,23 +377,21 @@
         enemyUnits.forEach(e => {
           let dist = Math.hypot(p.x - e.x, p.y - e.y);
           if (dist < minDistance) minDistance = dist;
-          if (role !== "RANGED" && role !== "GUNPOWDER" && dist < meleeMinDistance) {
-              meleeMinDistance = dist;
-          }
+          if (role !== "RANGED" && role !== "GUNPOWDER" && dist < meleeMinDistance) meleeMinDistance = dist;
         });
       });
 
       if (phase === "MARCHING") {
         if (minDistance <= 600) {
           phase = "SKIRMISHING";
-          autoBtn.innerHTML = '🏹 SKIRMISHING...';
+          autoBtn.innerHTML = '🏹..';
           issueSkirmishOrders(playerUnits);
         } else {
           updateMarchTargets(playerUnits, enemyUnits, avgSpeed);
         }
       } 
       else if (phase === "SKIRMISHING") {
-        autoBtn.innerHTML = '🏹 SKIRMISHING...';
+        autoBtn.innerHTML = '🏹..';
         skirmishTicks++;
 
         if (skirmishTicks >= 16 || meleeMinDistance <= 150) {
@@ -308,7 +400,7 @@
       }
       
       if (phase === "CHARGING") {
-        autoBtn.innerHTML = '⚔️ CHARGING!';
+        autoBtn.innerHTML = '⚔️';
         restoreSpeeds(playerUnits);
 
         playerUnits.forEach(u => {
@@ -319,28 +411,23 @@
           u.selected = false;
         });
 
-        if (typeof currentSelectionGroup !== 'undefined') {
-            currentSelectionGroup = null;
-        }
+        if (typeof currentSelectionGroup !== 'undefined') currentSelectionGroup = null;
 
         if (MC.UnitCards) {
           MC.UnitCards._snap = '';
           MC.UnitCards.update();
         }
 
-        if (typeof W.AudioManager !== 'undefined') {
-          W.AudioManager.playSound('charge');
-        }
+        if (typeof W.AudioManager !== 'undefined') W.AudioManager.playSound('charge');
 
         clearInterval(tacticalInterval);
         tacticalInterval = null;
         
-        setTimeout(() => {
-            if (autoBtn && !isManualMode) autoBtn.innerHTML = '⚔️ TACTICAL AUTO';
-        }, 2000);
+        setTimeout(() => { if (autoBtn && !isManualMode) autoBtn.innerHTML = '⏳'; }, 2000);
       }
     }, 500);
 
+    // --- Helpers ---
     function updateMarchTargets(pUnits, eUnits, speedTarget) {
         let eAvgX = 0, eAvgY = 0;
         eUnits.forEach(e => { eAvgX += e.x; eAvgY += e.y; });

@@ -365,48 +365,50 @@ function createUnitsGuide() {
     boxSizing: "border-box"
   });
   modal.id = "units-guide-modal";
-
+  
 const panel = create("div", {
-    position: "relative",
-    /* SURGERY: Reduced from 85vw to 75vw to ensure the Map UI (Player Stats/Log) 
-       is always visible on the sides even in half-screen mode */
-    width: "clamp(320px, 75vw, 1200px)", 
-    height: "clamp(400px, 80vh, 850px)",
-    display: "flex",
-    flexDirection: "row",
-    background: "linear-gradient(180deg, rgba(28, 16, 16, 0.98), rgba(12, 10, 10, 0.98))",
-    border: "2px solid #d4b886",
-    borderRadius: "10px",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.85)",
-    overflow: "hidden",
-    color: "#fff",
-    fontFamily: "Georgia, serif",
-    boxSizing: "border-box"
+  position: "relative",
+  /* SURGERY: Fluid clamping ensures it fits tiny laptops (85vh) down to phones */
+  width: "clamp(320px, 85vw, 1000px)", 
+  height: "clamp(400px, 85vh, 800px)",
+  maxHeight: "95vh", /* Prevents vertical clipping */
+  display: "flex",
+  flexDirection: "row",
+  background: "linear-gradient(180deg, rgba(28, 16, 16, 0.98), rgba(12, 10, 10, 0.98))",
+  border: "2px solid #d4b886",
+  borderRadius: "10px",
+  boxShadow: "0 20px 60px rgba(0,0,0,0.85)",
+  overflow: "hidden", // Inner children will handle their own scroll
+  color: "#fff",
+  fontFamily: "Georgia, serif",
+  boxSizing: "border-box"
 });
 
 const left = create("div", {
-    /* SURGERY: Fluid percentage for transitions, 
-       but capped at 400px so the list doesn't get "stretched" on 4K */
-    width: "35%",
-    maxWidth: "400px", 
-    display: "flex",
-    flexDirection: "column",
-    borderRight: "1px solid rgba(212,184,134,0.28)",
-    background: "rgba(255,255,255,0.02)"
+  /* SURGERY: Uses flex percentages to yield space on laptops */
+  flex: "0 0 30%",
+  minWidth: "220px",
+  maxWidth: "350px", 
+  display: "flex",
+  flexDirection: "column",
+  borderRight: "1px solid rgba(212,184,134,0.28)",
+  background: "rgba(255,255,255,0.02)"
 });
-left.id = "units-guide-left";
+left.id = "units-guide-left"; // Keep ID for CSS targeting
 
 const right = create("div", {
-    width: "65%",
-    minWidth: "0",
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
-    padding: "12px",
-    boxSizing: "border-box",
-    position: "relative" // Anchors the Close Button
+  flex: "1", /* SURGERY: Dynamically fills remaining space */
+  minWidth: "0",
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px", /* Tighter gap */
+  padding: "10px",
+  boxSizing: "border-box",
+  position: "relative",
+  overflowY: "auto" /* SURGERY: Master scrollbar for the right side just in case! */
 });
-right.id = "units-guide-right";
+right.id = "units-guide-right"; // Keep ID for CSS targeting
+ 
 
   const leftHeader = create("div", {
     padding: "14px 14px 10px 14px",
@@ -455,15 +457,17 @@ right.id = "units-guide-right";
   renderTag.style.visibility = "hidden";
 
 const portraitWrap = create("div", {
-    flex: "0 0 45%",           
-    minHeight: "150px",
-    background: "linear-gradient(180deg, #b9e0a7 0%, #7ab260 50%, #3f7f36 100%)",
-    border: "1px solid rgba(212,184,134,0.34)",
-    borderRadius: "8px",
-    overflow: "hidden",
-    position: "relative"
-  });
-  portraitWrap.id = "units-guide-portrait"; // SURGERY: ID to dynamically squish on tiny screens
+  /* SURGERY: Allows portrait to squish down safely without breaking layout */
+  flex: "0 1 clamp(120px, 35vh, 300px)", 
+  minHeight: "120px",
+  background: "linear-gradient(180deg, #b9e0a7 0%, #7ab260 50%, #3f7f36 100%)",
+  border: "1px solid rgba(212,184,134,0.34)",
+  borderRadius: "8px",
+  overflow: "hidden",
+  position: "relative"
+});
+portraitWrap.id = "units-guide-portrait";
+  
   const canvas = create("canvas", {
     display: "block",
     width: "100%",
@@ -492,15 +496,18 @@ const portraitWrap = create("div", {
   });
   statsHeader.textContent = "UNIT STATS";
 
-  const statsScroll = create("div", {
-    flex: "1",
-    overflowY: "auto",
-    padding: "10px",
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "8px",
-    boxSizing: "border-box"
-  });
+const statsScroll = create("div", {
+  flex: "1",
+  overflowY: "auto",
+  padding: "8px",
+  display: "grid",
+  /* SURGERY: Auto-fit grid! 1 column on phones, multiple on PC */
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", 
+  gap: "6px",
+  boxSizing: "border-box"
+});
+  
+  
 const closeBtn = document.createElement("button");
 closeBtn.textContent = "Close";
 closeBtn.className = "close-btn"; // SURGERY: Protect this from mobile button overrides
@@ -720,7 +727,6 @@ unitsBtn.onclick = () => {
   buttonsContainer.appendChild(unitsBtn);
   menu.__unitsGuideHooked = true;
 modal.__unitsGuideReady = true;}
-
 function addStyles() {
   if (document.getElementById("units-guide-styles")) return;
   const style = document.createElement("style");
@@ -734,13 +740,12 @@ function addStyles() {
       width: 100%;
       height: 100%;
       
-/* SURGERY: REVISE ALIGNMENT */
       justify-content: center !important;
-      align-items: flex-start !important; /* Move from center to top */
-      padding-top: 60px !important;       /* Shift down 60px to clear the top loading bar */
+      align-items: flex-start !important; 
+      padding-top: 60px !important;       
       
-background: #000000;
-      z-index: 10000 !important;           /* Just below the #loading text (10001) */
+      background: #000000;
+      z-index: 10000 !important;           
       overflow-y: auto;
       pointer-events: auto;
     }
@@ -756,33 +761,49 @@ background: #000000;
 
     @media (max-width: 900px) {
       #units-guide-modal {
-        padding-top: 50px !important;     /* Slightly tighter for mobile screens */
-        padding-left: 6px !important;
-        padding-right: 6px !important;
+        padding-top: 10px !important; /* Maximize top screen real estate */
+        padding-left: 5px !important;
+        padding-right: 5px !important;
+        align-items: center !important;
       }
 
+      /* The main UI Panel */
       #units-guide-modal > div {
-        width: 98vw !important;
-        height: auto !important;          /* Allow height to adjust */
-        max-height: 85vh !important;      /* Prevent it from hitting the bottom */
+        width: 100vw !important;
+        height: 95vh !important; /* Near full screen */
+        max-height: none !important;
         flex-direction: column !important;
       }
 
-      #units-guide-modal > div > div:first-child {
+      /* Left Panel (The scrollable list) */
+      #units-guide-left {
         width: 100% !important;
-        min-width: 0 !important;
-        height: 34% !important;
+        max-width: none !important;
+        flex: 0 0 35% !important; /* Takes exact top 35% of the screen */
         border-right: 0 !important;
-        border-bottom: 1px solid rgba(212,184,134,0.28) !important;
+        border-bottom: 2px solid rgba(212,184,134,0.5) !important;
       }
 
-      #units-guide-modal > div > div:last-child {
+      /* Right Panel (Portrait + Stats) */
+      #units-guide-right {
         width: 100% !important;
-        height: 66% !important;
+        flex: 1 !important; /* Takes remaining 65% */
+        padding-top: 45px !important; /* Room for close button */
+        overflow-y: auto !important; /* Allows interior scrolling if needed */
       }
 
-      #units-guide-modal button {
-        width: min(280px, 90vw) !important;
+      /* Allow portrait to shrink further on landscape phones */
+      #units-guide-portrait {
+        flex-basis: 120px !important;
+      }
+
+      /* Protect the Close button from the old mobile stretching bug */
+      #units-guide-modal .close-btn {
+        top: 8px !important;
+        right: 8px !important;
+        padding: 6px 12px !important;
+        font-size: 14px !important;
+        width: auto !important; /* Overrides the 'button { width: min(...) }' rule */
       }
     }
   `;

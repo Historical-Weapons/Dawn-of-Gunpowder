@@ -1117,7 +1117,7 @@
     const row = _mkEl('div', 'mc3-hrow');
 
     // P — always visible
-    row.appendChild(_mkBtn('P', 'mc3-pbtn', '', () => Cmd.exit()));
+    row.appendChild(_mkBtn('↩️', 'mc3-pbtn', '', () => Cmd.exit()));
 
     // Group buttons 1-5  (battle-only, visibility managed by Loop)
     const gIcons = ['⚔️', '🏹', '🐎', '🔥', 'ALL'];
@@ -1132,20 +1132,20 @@
 
     // Formations tray toggle (battle-only)
     row.appendChild(_mkBtn(
-      '<span class="ticon">🛡️</span><span class="tlbl">FORM.</span>',
+      '<span class="ticon">🚩️</span><span class="tlbl"></span>',
       'mc3-form-toggle', 'mc3-toggle-btn',
       () => _toggleTray('form')
     ));
 
     // Commands tray toggle (battle-only)
     row.appendChild(_mkBtn(
-      '⚡ CMD', 'mc3-cmd-toggle', 'mc3-toggle-btn',
+      '🗣️', 'mc3-cmd-toggle', 'mc3-toggle-btn',
       () => _toggleTray('cmd')
     ));
 
   // Stack-mode toggle button
     row.appendChild(_mkBtn(
-      '≡ EACH', 'mc3-stack-btn', 'mc3-toggle-btn',
+      '🪪', 'mc3-stack-btn', 'mc3-toggle-btn',
       () => UnitCards.cycleStackMode()
     ));
 
@@ -1159,8 +1159,8 @@
     [
       { icon: '⚔️', lbl: 'CHARGE',  fn: () => Cmd.charge()  },
       { icon: '⛔',  lbl: 'STOP',    fn: () => Cmd.stop()    },
-      { icon: '↩️', lbl: 'RETREAT', fn: () => Cmd.retreat() },
-      { icon: '🫂', lbl: 'FOLLOW',  fn: () => Cmd.follow()  },
+      { icon: '🏳️', lbl: 'RETREAT', fn: () => Cmd.retreat() },
+      { icon: '👫', lbl: 'FOLLOW',  fn: () => Cmd.follow()  },
     ].forEach(c => {
       ct.appendChild(_mkBtn(
         `<span class="ticon">${c.icon}</span><span class="tlbl">${c.lbl}</span>`,
@@ -1173,7 +1173,7 @@
     const ft = _mkEl('div', 'mc3-form-tray', 'mc3-tray');
     [
       { icon: '🛡️', lbl: 'SHIELD', style: 'tight'    },
-      { icon: '🏹',  lbl: 'RANGED',    style: 'standard' },
+      { icon: '═',  lbl: 'STANDARD',    style: 'standard' },
       { icon: '➖', lbl: 'LINE',   style: 'line'     },
       { icon: '⭕', lbl: 'CIRCLE', style: 'circle'   },
       { icon: '🔲', lbl: 'BOX',    style: 'square'   },
@@ -1287,32 +1287,32 @@
 
     const sections = [
       {
-        heading: '🎮 Header Buttons',
+        heading: 'Header Buttons',
         rows: [
           ['P',           'Exit the battle or leave a city. If the battle is still running a notice appears; if you are on the overworld nothing happens.'],
           ['1  ⚔️',       'Select all infantry and shield bearers.'],
           ['2  🏹',       'Select all ranged units (archers, crossbows, etc.).'],
           ['3  🐎',       'Select all cavalry and mounted units.'],
           ['4  🔥',       'Select all gunpowder and artillery units.'],
-          ['ALL / 5',     'Select every controllable unit on the battlefield.'],
+          ['5',     'Select every controllable unit on the battlefield.'],
           ['FORM.',       'Open the Formations tray. Requires 2 or more units selected.'],
-          ['⚡ CMD',      'Open the Commands tray.'],
-          ['≡ EACH/NAME/TYPE', 'Cycle through the three unit-card display modes. See Unit Cards section below.'],
+          ['CMD',      'Open the Commands tray.'],
+          ['🪪EACH/NAME/TYPE', 'Cycle through the three unit-card display modes. See Unit Cards section below.'],
           ['?',           'Toggle this help screen. The game is NOT paused.'],
         ],
       },
       {
-        heading: '🛡️ Formations Tray',
+        heading: 'Formations Tray',
         rows: [
           ['SHIELD',  'Tight defensive wall — shields and infantry packed close. Best with heavy-armour front line.'],
-          ['STD',     'Standard balanced formation — roles separated into sensible positions.'],
+          ['STANDARD',     'Standard balanced formation — roles separated into sensible positions.'],
           ['LINE',    'Long battle line — maximises the frontage to prevent flanking.'],
           ['CIRCLE',  'Circular orb formation — all-round defence in open terrain.'],
           ['BOX',     'Square blob — spread, all-round coverage with room for cavalry inside.'],
         ],
       },
       {
-        heading: '⚡ Commands Tray',
+        heading: 'Commands Tray',
         rows: [
           ['CHARGE',  'Selected units seek and engage the nearest enemy until ordered otherwise.'],
           ['STOP',    'Selected units immediately stop and defend their current position.'],
@@ -1341,9 +1341,9 @@
           ['Tap card',          'Select that unit (all others are deselected).'],
           ['Long-hold card',    'Open the detailed stats popup for that unit or stack.'],
           ['Hold + drag card',  'Drag-to-reorder: hold for ~400ms then slide left/right to change card position. Only available in EACH mode.'],
-          ['≡ EACH mode',       'Every unit shown as its own separate card — the classic view.'],
-          ['≡ NAME mode',       'Cards with the same unit name are grouped into a visually-stacked pile (cards offset by 2% each). Shows a count badge. Tapping the pile selects all units in it.'],
-          ['≡ TYPE mode',       'Same as NAME mode but grouped by tactical category: Infantry, Ranged, Cavalry, Gunpowder, Shield.'],
+          ['🪪EACH mode',       'Every unit shown as its own separate card — the classic view.'],
+          ['🪪NAME mode',       'Cards with the same unit name are grouped into a visually-stacked pile (cards offset by 2% each). Shows a count badge. Tapping the pile selects all units in it.'],
+          ['🪪TYPE mode',       'Same as NAME mode but grouped by tactical category: Infantry, Ranged, Cavalry, Gunpowder, Shield.'],
           ['Tap stacked pile',  'Selects every unit in that stack.'],
           ['Long-hold stack',   'Opens a combined-stats popup totalling HP, ammo, morale, XP across all units in the stack.'],
         ],
@@ -1354,7 +1354,7 @@
           ['HP Bar',        'Current total health out of maximum. Colour shifts green → orange → red as damage accumulates.'],
 
           ['Morale Bar',    'Current morale. Low morale causes units to rout and flee. Averaged across a stacked group.'],
-		 ['Ammo',      'Remaining ammunition for ranged units.'],
+	    	 ['Ammo',      'Remaining ammunition for ranged units.'],
           ['Attack',    'Melee attack power. Averaged for groups.'],
           ['Defense',   'Melee defence value. Averaged for groups.'],
           ['Armor',     'Damage reduction from armour. Averaged for groups.'],
@@ -1549,7 +1549,7 @@
   const UnitCards = {
     // 0 = individual  1 = stack-by-name  2 = stack-by-category
     _stackMode:   0,
-    _stackLabels: ['🪪EACH', '🪪NAME', '🪪TYPE'],
+    _stackLabels: ['🪪', '🪪', '🪪'],
 
 	_cards:     {},    // uid → DOM element (individual mode only)
     _snap:      '',    // last serialised state for dirty-checking
@@ -1638,7 +1638,7 @@
       if (s.match(/(archer|bow|crossbow)/))                         return '🏹';
       if (s.match(/(hand|camel|rocket|firelance)/))           
 		  return '💥';
-      if (s.match(/(pike|spear)/))                                  return '┃┃┃';
+      if (s.match(/(pike|spear)/))                                  return '⚔️';
       if (s.match(/(slinger|javelinier)/))                              return '🤾‍♀️';
       if (s.match(/(shield)/))                                      return '🛡️';
       if (s.match(/(militia|peasant)/))                             return '🪓';
@@ -1646,10 +1646,16 @@
       return '⚔️';
     },
 
-    _clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); },
+_clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); },
+
+    // Identifies ANY commander-type unit
+    _isGen(u) {
+      return Boolean(u.isCommander || ['commander', 'general', 'player', 'captain'].includes((String(u.unitType) || '').toLowerCase()));
+    },
 
     // Tactical category — mirrors getTacticalRole in battlefield_commands.js
     _category(u) {
+      if (this._isGen(u)) return 'GENERAL'; // Forces it into the General category stack
       if (typeof getTacticalRole === 'function') return getTacticalRole(u);
       const r = String(u.stats?.role || '').toUpperCase();
       const t = (
@@ -1667,11 +1673,11 @@
       return 'INFANTRY';
     },
 
-    // Canonical display name used as the stack key in mode 1
+// Canonical display name used as the stack key in mode 1
     _stackName(u) {
+      if (this._isGen(u)) return 'GENERAL'; // Forces duplicates to stack together
       return (u.stats?.name || u.unitType || 'Unit').toUpperCase().trim();
     },
-
     // ── Cycle stack display mode ──────────────────────────────────────────
     cycleStackMode() {
       this._stackMode = (this._stackMode + 1) % 3;
@@ -1681,11 +1687,21 @@
       this.update();
     },
 
-    // ── Main update (called every RAF tick while in battle) ───────────────
+// ── Main update (called every RAF tick while in battle) ───────────────
     update() {
       const hud = D.getElementById('mc3-hud');
       if (!hud) return;
-      const units = G.allPlayerUnits();
+      
+      // DEDUPLICATE: Only allow ONE General/Commander card to exist in the UI
+      let foundGen = false;
+      const units = G.allPlayerUnits().filter(u => {
+        if (this._isGen(u)) {
+          if (foundGen) return false; // Destroy duplicates
+          foundGen = true;
+          return true;
+        }
+        return true;
+      });
 
       const snap = this._stackMode + '|' + JSON.stringify(
         units.map(u => ({
@@ -1880,11 +1896,15 @@ _buildStackedGroup(grpUnits, label) {
       port.appendChild(badge);
       card.appendChild(port);
 
-      // Name label
+// Name label
       const nm = D.createElement('div');
       nm.className = 'mc3-uname';
-      nm.textContent = (unit.stats?.name || unit.unitType || 'Unit')
-        .substring(0, 9).toUpperCase();
+      
+      // Override the text display to guarantee it says "GENERAL"
+      const displayName = this._isGen(unit) ? 'GENERAL' : (unit.stats?.name || unit.unitType || 'Unit');
+      if (this._stackMode !== 2) {
+        nm.textContent = displayName.substring(0, 9).toUpperCase();
+      }
       card.appendChild(nm);
 
       // HP bar
@@ -1923,7 +1943,9 @@ _buildStackedGroup(grpUnits, label) {
 _lpTimer = setTimeout(() => {
           _lpTimer = null;
           if (!_didMove) {
-            me.openPopup(grpUnits);
+            if (me._stackMode === 0) {
+              me.openPopup(grpUnits);
+            }
           }
         }, 420);
       }, { passive: true });
@@ -1952,15 +1974,16 @@ _lpTimer = setTimeout(() => {
         const t = ev.changedTouches[0];
         const wrap = card.closest('.mc3-stack-wrap');
         const dragUid = wrap ? wrap.dataset.uid : uid;
-
-        if (me._drag.active && me._drag.uid === dragUid) {
+if (me._drag.active && me._drag.uid === dragUid) {
           if (_didMove) {
             // They dragged, so drop it
             me._endDrag(t.clientX, t.clientY);
           } else {
             // Held but didn't drag, show popup instead
             me._cancelDrag();
-            me.openPopup(grpUnits);
+            if (me._stackMode === 0) {
+              me.openPopup(grpUnits);
+            }
           }
           return;
         }

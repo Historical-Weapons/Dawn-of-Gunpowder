@@ -3,11 +3,12 @@
     let menuAnimFrameId = null;
     let backgroundUnits = [];
     let particles = [];
+    let countdownInterval; // <--- ADD THIS HERE
 
 window.showMainMenu = function () {
         if (menuActive) return;
         menuActive = true;
-		
+        
      
 
 // --- REVISED MENU MUSIC & MAXIMIZE LOGIC ---
@@ -53,15 +54,23 @@ window.addEventListener('keydown', startStandaloneMusic);
         menu.style.justifyContent = "center";
         menu.style.zIndex = "10000";
         menu.style.transition = "opacity 0.5s ease";
+        // CRITICAL FIX FOR SNAPPED WINDOWS/MOBILE: Allows scrolling if screen is too small
+        menu.style.overflowY = "auto";
+        menu.style.overflowX = "hidden";
+        menu.style.WebkitOverflowScrolling = "touch";
+        menu.style.boxSizing = "border-box";
+        menu.style.padding = "20px 0"; 
+
 
         // --- EPIC BACKGROUND CANVAS ---
         const canvas = document.createElement("canvas");
-        canvas.style.position = "absolute";
+        canvas.style.position = "fixed"; // Changed from absolute to fixed so it stays in background when scrolling
         canvas.style.top = "0";
         canvas.style.left = "0";
         canvas.style.width = "100%";
         canvas.style.height = "100%";
         canvas.style.zIndex = "-1";
+        canvas.style.pointerEvents = "none"; // CRITICAL: Ensures canvas never blocks button/scrollbar clicks
         menu.appendChild(canvas);
 
         const ctx = canvas.getContext("2d");
@@ -79,19 +88,26 @@ window.addEventListener('keydown', startStandaloneMusic);
         uiContainer.style.flexDirection = "column";
         uiContainer.style.alignItems = "center";
         uiContainer.style.zIndex = "1";
+        uiContainer.style.width = "100%";
+        uiContainer.style.maxWidth = "600px";
+        uiContainer.style.padding = "10px";
+        uiContainer.style.boxSizing = "border-box";
         
         // --- TITLE ---
         const title = document.createElement("h1");
         title.innerText = "DAWN OF GUNPOWDER";
         title.style.color = "#f5d76e";
         title.style.fontFamily = "Georgia, serif";
-        title.style.fontSize = "4rem";
-        title.style.margin = "0 0 40px 0";
+        // RESPONSIVE FIX: Scales smoothly between 2rem and 4rem depending on screen width
+        title.style.fontSize = "clamp(2rem, 6vw, 4rem)";
+        title.style.margin = "0 0 clamp(20px, 4vw, 40px) 0";
         title.style.textAlign = "center";
-        title.style.letterSpacing = "8px";
+        title.style.letterSpacing = "clamp(2px, 2vw, 8px)";
         title.style.textShadow = "0 0 20px rgba(212, 184, 134, 0.8), 0 5px 15px rgba(123, 26, 26, 0.9)";
         title.style.border = "none";
         title.style.borderBottom = "none";
+        title.style.width = "100%";
+        title.style.boxSizing = "border-box";
 
         // --- BUTTON CREATOR ---
         function createBtn(text, onClick) {
@@ -100,7 +116,7 @@ window.addEventListener('keydown', startStandaloneMusic);
             btn.style.background = "linear-gradient(to bottom, #7b1a1a, #4a0a0a)";
             btn.style.color = "#f5d76e";
             btn.style.border = "2px solid #d4b886";
-            btn.style.padding = "15px 40px";
+            btn.style.padding = "15px clamp(10px, 4vw, 40px)";
             btn.style.margin = "10px";
             btn.style.fontFamily = "Georgia, serif";
             btn.style.fontSize = "1.2rem";
@@ -108,7 +124,9 @@ window.addEventListener('keydown', startStandaloneMusic);
             btn.style.cursor = "pointer";
             btn.style.borderRadius = "4px";
             btn.style.textTransform = "uppercase";
-            btn.style.width = "280px";
+            // RESPONSIVE FIX: Fits perfectly on iPhone 11 (caps at 280px on PC, scales down on mobile)
+            btn.style.width = "min(280px, 85vw)";
+            btn.style.boxSizing = "border-box";
             btn.style.transition = "all 0.2s";
             btn.style.boxShadow = "0 4px 6px rgba(0,0,0,0.5)";
 
@@ -211,121 +229,140 @@ function startGameSafe() {
         console.error("Critical Error: initGame() not found. Ensure index.html scripts are loaded.");
         alert("Game Engine failed to initialize. Please refresh.");
     }
-}
-        
-        // HIDDEN BY DEFAULT
+} 
         playBtn.style.display = "none";
+		
+ 
 
 const instrBtn = createBtn("Manual", () => {
-    // 1. Instantly unlock the other hidden buttons
+    // 1. Unlock buttons
     playBtn.style.display = "block";
-	customBattleBtn.style.display = "block"; // <--- ADD THIS LINE
-	    // --- NEW: FORCE FULLSCREEN ON FIRST GESTURE ---
-    if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
-            console.warn(`Fullscreen blocked or failed: ${err.message}`);
-        });
-    }
-	
+    customBattleBtn.style.display = "block"; 
     const unitsBtn = document.getElementById("units-guide-btn");
     if (unitsBtn) unitsBtn.style.display = "block";
 
-    // 2. Open the manual immediately (No fullscreen conflict)
+    // 2. Open the manual
     manualModal.style.display = "flex";
     uiContainer.style.display = "none";
-    
-    // 3. Keep this to ensure the layout snaps to the current window size
     window.dispatchEvent(new Event('resize'));
+
+    // 3. RESET & START TIMER
+    let countdown = 20;
+    
+    // Set text immediately so it doesn't wait 1 second to appear
+    closeBtn.innerText = `Close Manual (${countdown})`;
+
+    // Kill any existing timer to prevent it from counting down double-speed
+    if (countdownInterval) clearInterval(countdownInterval);
+
+    countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+            closeBtn.innerText = `Close Manual (${countdown})`;
+        } else {
+            clearInterval(countdownInterval);
+            closeBtn.click(); 
+        }
+    }, 2000);
 });
 
+// --- CUSTOM SCROLLBAR CSS (Removed manual-content scrollbar since it won't scroll anymore) ---
+const style = document.createElement('style');
+style.innerHTML = `
+    #main-menu::-webkit-scrollbar { width: 8px; }
+    #main-menu::-webkit-scrollbar-track { background: #3e2723; }
+    #main-menu::-webkit-scrollbar-thumb { background: #7b1a1a; border-radius: 4px; }
+    #main-menu::-webkit-scrollbar-thumb:hover { background: #d4b886; }
+`;
+document.head.appendChild(style);
 
-        // --- CUSTOM SCROLLBAR CSS ---
-        const style = document.createElement('style');
-        style.innerHTML = `
-            #manual-content::-webkit-scrollbar { width: 10px; }
-            #manual-content::-webkit-scrollbar-track { background: #3e2723; border-radius: 4px; border: 1px solid #7b1a1a; }
-            #manual-content::-webkit-scrollbar-thumb { background: #d4b886; border-radius: 4px; }
-            #manual-content::-webkit-scrollbar-thumb:hover { background: #f5d76e; }
-        `;
-        document.head.appendChild(style);
+// --- IN-GAME MANUAL MODAL GUI ---
+const manualModal = document.createElement("div");
+manualModal.style.display = "none"; // Hidden by default
+manualModal.style.flexDirection = "column";
 
-        // --- IN-GAME MANUAL MODAL GUI ---
-        const manualModal = document.createElement("div");
-        manualModal.style.display = "none"; // Hidden by default
-        manualModal.style.flexDirection = "column";
-manualModal.style.width = "clamp(320px, 60vw, 900px)";
-manualModal.style.height = "clamp(300px, 70vh, 800px)";
-manualModal.style.maxWidth = "95vw";
-manualModal.style.maxHeight = "90vh";
-        manualModal.style.background = "linear-gradient(to bottom, rgba(62, 39, 35, 0.95), rgba(74, 10, 10, 0.95))";
-        manualModal.style.border = "3px solid #d4b886";
-        manualModal.style.borderRadius = "8px";
-        manualModal.style.padding = "30px";
-        manualModal.style.boxShadow = "0 10px 40px rgba(0,0,0,0.8)";
-        manualModal.style.zIndex = "10";
-        manualModal.style.color = "#f5d76e";
-        manualModal.style.fontFamily = "Georgia, serif";
+// SURGERY: Removed the hard "300px" clamp minimums that pushed the button off-screen
+manualModal.style.width = "min(900px, 95vw)";
+manualModal.style.height = "min(800px, 95vh)"; 
+manualModal.style.background = "linear-gradient(to bottom, rgba(62, 39, 35, 0.95), rgba(74, 10, 10, 0.95))";
+manualModal.style.border = "3px solid #d4b886";
+manualModal.style.borderRadius = "8px";
+manualModal.style.padding = "clamp(10px, 3vh, 30px)";
+manualModal.style.boxSizing = "border-box";
+manualModal.style.boxShadow = "0 10px 40px rgba(0,0,0,0.8)";
+manualModal.style.zIndex = "10";
+manualModal.style.color = "#f5d76e";
+manualModal.style.fontFamily = "Georgia, serif";
+manualModal.style.margin = "auto";
 
-        const manualContent = document.createElement("div");
-        manualContent.id = "manual-content";
-        manualContent.style.overflowY = "auto";
-        manualContent.style.flexGrow = "1";
-        manualContent.style.paddingRight = "15px";
-        manualContent.innerHTML = `
-            <h2 style="text-align: center; border-bottom: 2px solid #7b1a1a; padding-bottom: 15px; margin-top: 0; letter-spacing: 2px;">
-                DAWN OF GUNPOWDER:<br><span style="font-size: 0.7em; color: #d4b886;">EMPIRE OF THE 13TH CENTURY</span>
-            </h2>
-       <h3 style="color: #fff; margin-top: 25px;">PC Controls</h3>
-            <ul style="line-height: 1.8; font-size: 1.1rem; list-style-type: square; color: #d4b886;">
-                <li><strong style="color: #f5d76e;">WASD</strong> to Travel</li>
-                <li><strong style="color: #f5d76e;">SCROLL</strong> to Zoom Map</li>
-                <li><strong style="color: #f5d76e;">1-5 or Click</strong> to Select Unit Type</li>
-                <li><strong style="color: #f5d76e;">Q, E, R, F</strong> to Issue Orders</li>
-                <li><strong style="color: #f5d76e;">Z, X, C, V, B</strong> to Set Formation</li>
-                <li><strong style="color: #f5d76e;">P</strong> to Return to Overworld</li>
-                <li><strong style="color: #f5d76e;">T</strong> to View Troops & EXP</li>
-            </ul>
+const manualContent = document.createElement("div");
+manualContent.id = "manual-content";
+manualContent.style.overflow = "hidden"; // SURGERY: No more scrolling!
+manualContent.style.display = "flex";
+manualContent.style.flexDirection = "column";
+manualContent.style.justifyContent = "space-evenly"; // Spreads text out nicely to fill whatever height it has
+manualContent.style.flexGrow = "1";
 
-      <h3 style="color: #fff; margin-top: 25px;">Mobile Controls</h3>
-            <ul style="line-height: 1.8; font-size: 1.1rem; list-style-type: square; color: #d4b886;">
-                <li><strong style="color: #f5d76e;">Virtual Joystick (Bottom Left)</strong> to Travel & Move</li>
-                <li><strong style="color: #f5d76e;">Pinch Gesture</strong> to Zoom Map</li>
-                <li><strong style="color: #f5d76e;">Tap Unit Cards</strong> to Select/Deselect Units</li>
-                <li><strong style="color: #f5d76e;">Floating Group Buttons</strong> to Issue Orders & Formations</li>
-                <li><strong style="color: #f5d76e;">Long Press Unit Card</strong> to View Detailed Unit Stats</li>
-                <li><strong style="color: #f5d76e;">≡ DETAIL Button (Top Right)</strong> to View Troops & EXP</li>
-                <li><strong style="color: #f5d76e;">Back Button</strong> to Return to Overworld after Battle</li>
-            </ul>
-<p style="line-height: 1.6; font-size: 1.1rem; margin-top: 25px;">
-    Dawn of Gunpowder is a tactical strategy experience set in a historically inspired 13th-century world shaped by conquest, innovation, and shifting alliances. Though its factions are fictional, each draws heavily from real medieval cultures, technologies, and battlefield traditions of mostly East Asia before the age of Mongol conquest and during the early gunpowder era. Across sweeping steppes, fortified river valleys, dense forests, deserts, and mountain frontiers, rival powers struggle to dominate trade routes, secure borders, and expand their influence. Among them are mobile steppe confederations inspired by the Mongol war machine, disciplined dynastic armies influenced by Song-era gunpowder warfare, and armored cavalry kingdoms modeled after the Central Asian military traditions. Smaller regional powers, influenced by Korean, Vietnamese, Tibetan, and Japanese warfare, defend their homelands with unique tactics shaped by terrain, culture, and centuries of conflict.
-</p>
+// SURGERY: Replaced hard px/rem font sizes with fluid clamp() and vh/vw units
+manualContent.innerHTML = `
+    <h2 style="text-align: center; border-bottom: 2px solid #d4b886; padding-bottom: clamp(5px, 1.5vh, 15px); margin: 0; letter-spacing: 2px; font-size: clamp(1.2rem, 3.5vh, 2.5rem);">
+        DAWN OF GUNPOWDER:<br><span style="font-size: 0.7em; color: #d4b886;">EMPIRE OF THE 13TH CENTURY</span>
+    </h2>
 
-<p style="line-height: 1.6; font-size: 1.1rem; margin-top: 15px;">
-    Each faction fields armies built around distinctive historical doctrines rather than simple variations of the same units. Steppe-inspired factions dominate open terrain with fast-moving horse archers, raiders, and elite lancers capable of striking deep behind enemy lines. Gunpowder dynasties deploy disciplined infantry supported by crossbows, rockets, firelances, bombs, and early hand cannons, excelling in defensive warfare and siege-style engagements. Cavalry kingdoms rely on heavily armored riders, spear formations, and combined-arms tactics supported by archers and war beasts such as elephants or camels. Highland and frontier factions favor endurance, skirmishing, and specialized weapons suited to rugged terrain, while coastal and riverine powers protect vital trade routes with flexible, mixed formations. As the campaign unfolds, armies grow through recruitment and battlefield experience, transforming small warbands into veteran forces capable of decisive victories. Every battle reflects the strengths and weaknesses of its faction, ensuring that terrain, composition, and tactical decisions shape the outcome of war.
-</p>
-        `;
-
-        const closeBtn = createBtn("Close Manual", () => {
-            manualModal.style.display = "none";
-            uiContainer.style.display = "flex"; // Show main UI again
-        });
-        closeBtn.style.margin = "20px auto 0 auto";
+    <div style="line-height: 1.6; font-size: clamp(0.8rem, 2.2vh, 1.1rem); margin-top: clamp(10px, 2.5vh, 25px); color: #d4b886;">
+        <strong>DAWN OF GUNPOWDER</strong> is a tactical strategy game set in a 13th-century world of conquest and shifting alliances.
+        <br><br>
         
-        manualModal.appendChild(manualContent);
-        manualModal.appendChild(closeBtn);
+        <strong style="color: #d4b886; letter-spacing: 1px;">THE FACTIONS</strong><br>
+        • <b>Steppe Confederations:</b> Swift horse archers and raiders.<br>
+        • <b>Gunpowder Dynasties:</b> Experts in rockets, firelances, and bombs.<br>
+        • <b>Cavalry Kingdoms:</b> Heavy riders and disciplined spear formations.<br>
+        • <b>Regional Powers:</b> Japanese, Korean, Vietnamese, and Jurchen traditions.
+        <br><br>
+
+        <strong style="color: #d4b886; letter-spacing: 1px;">THE STRATEGY</strong><br>
+        • <b>Diverse Terrain:</b> Combat across steppes, river valleys, and mountains.<br>
+        • <b>Veterancy:</b> Armies gain strength through battle experience.<br>
+        • <b>Tactical Choice:</b> Success depends on composition and environment.
+    </div>
+`;
+
+const closeBtn = createBtn("Close Manual", () => {
+    clearInterval(countdownInterval); // Stop timer if clicked early
+    manualModal.style.display = "none";
+    uiContainer.style.display = "flex"; // Show main UI again
+});
+closeBtn.style.margin = "clamp(10px, 2vh, 20px) auto 0 auto";
+// Z-Index fix to make absolutely sure nothing overlaps it
+closeBtn.style.position = "relative";
+closeBtn.style.zIndex = "99999";
+
+manualModal.appendChild(manualContent);
+manualModal.appendChild(closeBtn);
+
+// --- SURGERY END ---
+
+
+
+
+
+
+
 
         // --- CREDITS TEXT ---
         const credits = document.createElement("div");
         credits.innerText = "by Historical Weapons YouTube Channel";
-        credits.style.position = "absolute";
-        credits.style.bottom = "15px";
+        // RESPONSIVE FIX: position changed so it doesn't overlap on extremely short screens
+        credits.style.position = "relative";
+        credits.style.marginTop = "clamp(20px, 4vh, 40px)";
+        credits.style.marginBottom = "20px";
         credits.style.color = "#d4b886";
         credits.style.fontFamily = "Georgia, serif";
         credits.style.fontSize = "0.9rem";
         credits.style.opacity = "0.7";
         credits.style.letterSpacing = "1px";
 
-uiContainer.appendChild(title);
+        uiContainer.appendChild(title);
         uiContainer.appendChild(instrBtn);
         uiContainer.appendChild(playBtn); 
         uiContainer.appendChild(customBattleBtn); // <--- ADD THIS LINE

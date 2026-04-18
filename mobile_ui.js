@@ -532,20 +532,27 @@ function closeDetailDrawer() {
         const coords  = document.getElementById("loc-text")?.innerText    || "—";
         const zoom    = document.getElementById("zoom-text")?.innerText   || "—";
 
-        let html = `
+let html = `
             <div class="mob-section-title">📍 Overworld Info</div>
-            <div class="mob-stat-row"><span>Region / Tile</span><span>${terrain}</span></div>
+            <div class="mob-stat-row"><span>Region</span><span>${terrain}</span></div>
             <div class="mob-stat-row"><span>Coordinates</span><span>${coords}</span></div>
-            <div class="mob-stat-row"><span>Move Speed</span><span>${speed}</span></div>
-            <div class="mob-stat-row"><span>Zoom Level</span><span>${zoom}</span></div>
+            <div class="mob-stat-row"><span>March Speed</span><span>${speed}</span></div>
+<div class="mob-section-title">🏆 The Goal</div>
+            <div class="mob-hint-block" style="line-height: 1.5; font-size: 0.95em; border-left: 3px solid #f8d96d; background: rgba(248, 217, 109, 0.05);">
+                Rise from a lone commander to a Great Emperor. <b>Recruit units</b> from local towns, <b>grow your veteran core</b> through battle, and <b>lay siege to great cities</b> to expand your borders and establish your dynasty.
+            </div>
+			
+            <div class="mob-section-title">💰 Economy & Growth</div>
+            <div class="mob-hint-block" style="line-height: 1.5; font-size: 0.95em;">
+                <b style="color:#f8d96d">🏗️ TOWNS:</b> Hubs for recruitment. Peace boosts their economy, while sieges paralyze trade.<br><br>
+                <b style="color:#f8d96d">🐫 COMMERCE:</b> Caravans travel between factions. Protecting friendly traders ensures gold flow; raiding enemy ones starves their war machine.<br><br>
+                <b style="color:#f8d96d">⚔️ VETERANCY:</b> Units gain experience through survival. A small band of veterans can often break a massive horde of raw recruits.
+            </div>
 
-            <div class="mob-section-title">📖 Controls</div>
-            <div class="mob-hint-block">
-                <b style="color:#ffca28">🌍</b>&nbsp; WASD🏃 Scroll🔍 T📜 P↩️<br>
-                <b style="color:#ffca28">✅</b>&nbsp; 1⚔️&nbsp; 2🏹&nbsp; 3🐎&nbsp; 4🔥&nbsp; 5 ALL<br>
-                <b style="color:#ffca28">📢</b>&nbsp; Z:🛡️ X:REG V:➖ C:⭕ B:🔲<br>
-                <b style="color:#ffca28">🚩</b>&nbsp; Q:🔺️ R:🔻 E:⛔ F:FOLLOW<br>
-                <span style="color:#ff5252">Hold Formation by Deselecting</span>
+            <div class="mob-section-title">📜 State of the Realm</div>
+            <div class="mob-hint-block" style="line-height: 1.5; font-size: 0.95em;">
+                <b style="color:#f8d96d">🕊️ DIPLOMACY:</b> Factions start at <b>Peace</b>. Conflict is a choice—once war is declared, trade stops and the "Sally Out" mechanics begin.<br><br>
+                <b style="color:#f8d96d">🏔️ GEOGRAPHY:</b> The world is vast. Use the <b>Plains</b> for fast land travel, <b>Water</b> for faster ocean travel, and the <b>Trade Routes</b> for wealth.
             </div>
         `;
 

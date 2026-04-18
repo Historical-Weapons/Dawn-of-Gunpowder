@@ -266,8 +266,13 @@ clickAction = `onclick="troopGUI.recruitDirectly('${uniqueUnit}', ${recruitCost}
         ${buttonText}
     </button>`;
 
+ 
+
     // 3. UI HEADER GENERATION
     let html = `
+	
+
+		
         <div style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #d4b886; padding-bottom: 15px; margin-bottom: 10px;">
             <h1 style="color: #d4b886; margin: 0; font-family: 'Georgia', serif; font-size: 2.2rem;">
                 GARRISON UPGRADES 
@@ -282,6 +287,15 @@ clickAction = `onclick="troopGUI.recruitDirectly('${uniqueUnit}', ${recruitCost}
             </div>
         </div>
 
+	        <div style="flex-shrink: 0; padding-top: 20px; border-top: 2px solid #5d4037; margin-top: 20px; display: flex; justify-content: center;">
+            <button onclick="troopGUI.closeUpgradeMenu()" 
+                style="width: 60%; padding: 15px; background: #333; color: #fff; border: 2px solid #d4b886; 
+                cursor: pointer; font-family: 'Georgia', serif; font-size: 1.5rem; font-weight: bold; 
+                text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 15px rgba(0,0,0,0.8); border-radius: 6px;">
+                CLOSE GARRISON MENU
+            </button>
+        </div>
+		
         <div style="flex-shrink: 0; background: rgba(0,0,0,0.4); border: 1px solid #5d4037; padding: 10px; margin-bottom: 20px; border-radius: 4px;">
             <h3 style="margin: 0 0 5px 0; color: #ffca28; font-size: 1rem;">Troop Upgrade Paths:</h3>
             <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.85rem; color: #ddd;">
@@ -313,12 +327,7 @@ clickAction = `onclick="troopGUI.recruitDirectly('${uniqueUnit}', ${recruitCost}
     for (let [unitType, count] of sortedTroops) {
         let upgrades = [...(this.hierarchy[unitType] || [])];
         
-        // MILITIA MASTERKEY: Inject Faction Unique safely into Militia upgrades
-        if (unitType === "Militia" && uniqueUnit) {
-            if (!upgrades.includes(uniqueUnit)) {
-                upgrades.push(uniqueUnit);
-            }
-        }
+ 
         
         if (upgrades && upgrades.length > 0) {
             hasUpgrades = true;
@@ -385,16 +394,7 @@ clickAction = `onclick="troopGUI.recruitDirectly('${uniqueUnit}', ${recruitCost}
 
     html += `</div>`; 
 
-    html += `
-        <div style="flex-shrink: 0; padding-top: 20px; border-top: 2px solid #5d4037; margin-top: 20px; display: flex; justify-content: center;">
-            <button onclick="troopGUI.closeUpgradeMenu()" 
-                style="width: 60%; padding: 15px; background: #333; color: #fff; border: 2px solid #d4b886; 
-                cursor: pointer; font-family: 'Georgia', serif; font-size: 1.5rem; font-weight: bold; 
-                text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 5px 15px rgba(0,0,0,0.8); border-radius: 6px;">
-                CLOSE GARRISON MENU
-            </button>
-        </div>`;
-
+  
     this.menuDiv.innerHTML = html;
 	// In troopGUI.js — end of renderMenu():
 if (typeof window.mobileUI !== 'undefined') window.mobileUI.patchTroopGUI();

@@ -260,10 +260,12 @@ function enterOverworldMode() {
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
 window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 window.onwheel = (e) => {
-    if (typeof inParleMode !== 'undefined' && inParleMode) {
+    // SURGERY 1: Block zoom if in Diplomacy OR the Mobile Detail Drawer is open
+    if ((typeof inParleMode !== 'undefined' && inParleMode) || window.isMobileDrawerOpen) {
         return;
     }
 
+    
     // 2. If player scrolls normally, cancel cinematic instantly
     if (window.isZoomAnimating) { 
         window.isZoomAnimating = false; 
@@ -271,12 +273,13 @@ window.onwheel = (e) => {
     zoom = Math.max(0.05, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
 };
 
- function update() {
+function update() {
     const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
     let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
     let disableAICombatDefeated = pCmdr ? (pCmdr.hp <= 0) : (player.hp <= 0);
 
-    if (typeof inParleMode !== 'undefined' && inParleMode) return;
+    // SURGERY 2: Freeze the entire game loop if in Diplomacy OR the Mobile Detail Drawer is open
+    if ((typeof inParleMode !== 'undefined' && inParleMode) || window.isMobileDrawerOpen) return;
 
     const parlePanel = document.getElementById('parle-panel');
     if ((inBattleMode || (typeof inCityMode !== 'undefined' && inCityMode)) && parlePanel?.style.display !== 'none') {
