@@ -177,6 +177,11 @@ const FactionUnitRules = {
 
     // --- MAIN ENTRY POINT ---
     window.showCustomBattleMenu = function (reportData = null) {
+		
+		const menu = document.createElement("div");
+    menu.id = "custom-battle-menu"; // <--- This MUST match the ID used in save_system.js
+    // ...
+		
         if (customBattleActive && !reportData) return;
         customBattleActive = true;
 

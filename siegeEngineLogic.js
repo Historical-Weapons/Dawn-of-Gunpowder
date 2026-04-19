@@ -94,15 +94,16 @@ function processSiegeEngines() {
             if (ram.y > exactGateY+30) {
                 ram.state = "moving_to_gate";
                 ram.isBreaking = false;
-                ram.y -= ramSpeed; 
+                ram.y -= ramSpeed;
+BattleAudio.playSiegeMovement(ram.x, ram.y, true);				
             } else {
                 ram.y = exactGateY+30; 
                 ram.state = "attacking_gate";
                 ram.isBreaking = true;
                 
                 if (Math.random() > 0.99) { 
-                    ram.targetGate.gateHP -= 50; 
-                    if (typeof AudioManager !== 'undefined') AudioManager.playSound('hit'); 
+                    ram.targetGate.gateHP -= 10;  //sloooooow
+BattleAudio.playRamHit(ram.x, ram.y);
                     
                     if (ram.targetGate.gateHP <= 0) {
                         triggerGateBreach(ram.targetGate);
@@ -234,7 +235,7 @@ function processSiegeEngines() {
         if (activePushers.length > 0 && ladder.y > targetPixelY) {
             ladder.y -= ladder.speed;
             ladder.lastY = ladder.y;
-            
+           BattleAudio.playSiegeMovement(ladder.x, ladder.y, true); 
             // Pull touching pushers along with the ladder
             activePushers.forEach(u => {
                 u.target = { x: ladder.x, y: ladder.y + 10, isDummy: true };
@@ -371,7 +372,7 @@ siegeEquipment.trebuchets.forEach(treb => {
             isFire: false
         });
 
-        if (typeof AudioManager !== 'undefined') AudioManager.playSound('bomb');
+ 
     }
 });
 
@@ -432,7 +433,8 @@ siegeEquipment.ballistas.forEach(bal => {
                 isFire: false
             });
 
-            if (typeof AudioManager !== 'undefined') AudioManager.playSound('arrow');
+// Point to the instance created in soundeffects.js
+BattleAudio.playCrossbowRelease(bal.x, bal.y);
         }
     }
 });
@@ -467,6 +469,7 @@ if (siegeAITick % 6 === 0) {
             }
         }
 
+        // ---> HOLD RESERVE UNTIL BREACH <---
         // ---> HOLD RESERVE UNTIL BREACH <---
         if (u.siegeRole === "gate_reserve") {
             let southGate = overheadCityGates.find(g => g.side === "south");

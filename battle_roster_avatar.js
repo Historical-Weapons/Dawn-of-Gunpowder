@@ -69,7 +69,7 @@ window.hardSyncPlayerRoster = function() {
     return trueSurvivorCount;
 };
 
-// --- 1. OVERRIDE DEPLOY ARMY (Persistent Rosters, 150 Cap & Player Avatar) ---
+// --- 1. OVERRIDE DEPLOY ARMY (Persistent Rosters, 150 Cap 
 deployArmy = function(faction, totalTroops, side) {
     let entity = side === "player" ? player : currentBattleData.enemyRef;
     let expectedCount = side === "player" ? entity.troops : entity.count;
@@ -220,7 +220,7 @@ deployArmy = function(faction, totalTroops, side) {
         typeIndex++;
     }
 
-    // --- STEP 5: INJECT MAIN PLAYER AVATAR ---
+    // --- STEP 5: INJECT MAIN PLAYER  ---
     if (side === "player") {
         if (!player.stats) {
             let pTemplate = UnitRoster.allUnits["Horse Archer"];
@@ -264,7 +264,7 @@ deployArmy = function(faction, totalTroops, side) {
 const originalUpdateBattleUnits = updateBattleUnits;
 
 updateBattleUnits = function() {
-    let avatar =cachedCommander; 
+let avatar =cachedCommander; 
 
 if (avatar && avatar.hp > 0) {
         if (player.isMoving) {
@@ -299,38 +299,7 @@ drawBattleUnits = function(ctx) {
 // SURGERY: Use the cache here too!
     let avatar = cachedCommander;
     // FIX: Check the persistent flag so the UI stays even when the engine deletes your dead body!
-    if (inBattleMode && currentBattleData && currentBattleData.playerDefeatedText) {
-        ctx.save();
-        ctx.resetTransform(); 
-        
-        ctx.fillStyle = "rgba(0, 0, 0, 0)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.textAlign = "center";
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = "black";
-
-        ctx.font = "bold 36px Georgia";
-        ctx.fillStyle = "#ff5252"; 
-        ctx.fillText("YOU HAVE FALLEN", canvas.width / 2, canvas.height / 2 - 30);
  
-        ctx.font = "italic 18px Georgia";
-        ctx.fillStyle = "#ffca28"; 
-        ctx.fillText("Press [P] to return to the world map", canvas.width / 2, canvas.height / 2 + 60);
-
-        ctx.restore();
-    } else if (inBattleMode && avatar && avatar.hp > 0) {
-        // Standard Top-Right Reminder (Only shown while alive)
-        ctx.save();
-        ctx.resetTransform(); 
-        ctx.textAlign = "right";
-        ctx.font = "bold 18px Georgia";
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
- 
-        ctx.fillStyle = "#ffca28"; 
-        ctx.fillText("Press [P] to exit when battle is over", canvas.width - 20, 30);
-        ctx.restore();
-    }
 };
 
 const originalLeaveBattlefield = leaveBattlefield;

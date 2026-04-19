@@ -135,36 +135,44 @@ function renderPortrait(canvas, unit) {
     });
     wrapper.id = "loading-screen-wrapper";
 
-    const header = create("div", {
-      fontSize: "2.5rem", fontWeight: "700", color: "#f5d76e", letterSpacing: "12px",
-      marginBottom: "10px", textShadow: "0 0 15px rgba(245, 215, 110, 0.4)", textAlign: "center"
+const header = create("div", {
+      fontSize: "clamp(1.5rem, 6vw, 1.8rem)", fontWeight: "700", color: "#f5d76e", letterSpacing: "8px",
+      marginBottom: "8px", textShadow: "0 0 15px rgba(245, 215, 110, 0.4)", textAlign: "center"
     });
     header.textContent = "  LOADING...";
 
-    const content = create("div", {
+const content = create("div", {
       display: "flex", 
-      flexDirection: "column", // Vertical stack
+      flexDirection: "column", // SURGERY: Force vertical stack on BOTH PC and Mobile
       alignItems: "center",
-      width: "clamp(300px, 80vw, 600px)",
-      transform: "none" // FIXED: Removed the -200px shift
+      justifyContent: "center",
+      gap: "10px", // Tighter gap for better vertical flow
+      width: "clamp(300px, 90vw, 600px)", // Narrower container since it's a single column
+      transform: "none" 
     });
 
-    // 1. Portrait first (Right under Loading text)
+    // 1. Portrait first (Directly underneath the LOADING text)
     const canvasContainer = create("div", {
-      width: "100%", 
-      height: "350px", 
+      width: "100%", // Take up full width natively
+      height: "clamp(180px, 35vh, 320px)", // Native responsiveness based on screen height
       display: "flex", 
       justifyContent: "center", 
       alignItems: "center",
-      marginBottom: "10px"
+      marginBottom: "10px",
+      flexShrink: "0", 
+      position: "relative" // Confines the canvas drawing area strictly
     });
     const canvas = create("canvas", { width: "100%", height: "100%", display: "block" });
     canvasContainer.appendChild(canvas);
 
-    // 2. Info second
-    const infoPanel = create("div", { width: "100%", textAlign: "center" });
-    const unitName = create("div", { fontSize: "2rem", color: "#fff", borderBottom: "1px solid #7b1a1a", paddingBottom: "5px", marginBottom: "10px" });
-    const unitDesc = create("div", { fontSize: "0.9rem", color: "#d4b886", fontStyle: "italic", marginBottom: "15px" });
+    // 2. Info second (Always underneath the portrait)
+    const infoPanel = create("div", { 
+      width: "100%", // Take up full width
+      textAlign: "center" 
+    });
+	
+  const unitName = create("div", { fontSize: "clamp(1.2rem, 5vw, 1.5rem)", color: "#fff", borderBottom: "1px solid #7b1a1a", paddingBottom: "4px", marginBottom: "6px" });
+    const unitDesc = create("div", { fontSize: "clamp(0.75rem, 3vw, 0.85rem)", color: "#d4b886", fontStyle: "italic", marginBottom: "10px" });
     const statsGrid = create("div", { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" });
 
     infoPanel.appendChild(unitName);
@@ -178,12 +186,7 @@ function renderPortrait(canvas, unit) {
     wrapper.appendChild(content);
     document.body.appendChild(wrapper);
 
-    // --- RE-PATCH WINDOW TO PREVENT MOBILE_UI INTERFERENCE ---
-    window.addEventListener('resize', () => {
-        wrapper.style.flexDirection = "column";
-        content.style.flexDirection = "column";
-        content.style.transform = "none";
-    });
+ 
 
     // ... show/hide logic ...
 
@@ -214,7 +217,7 @@ const stats = randomUnit.stats || {};
 for (const key of STAT_ORDER) {
   if (!(key in stats)) continue;
 statsGrid.innerHTML += `
-  <div style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding:5px 0; font-size:0.9rem;">
+  <div style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding:3px 0; font-size:clamp(0.7rem, 2.5vw, 0.8rem);">
     <span style="color:#d4b886;">${STAT_LABELS[key]}</span>
     <span style="color:#fff;">${prettyValue(key, stats[key])}</span>
   </div>

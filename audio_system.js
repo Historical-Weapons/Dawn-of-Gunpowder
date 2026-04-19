@@ -416,11 +416,16 @@ this.fadeInterval = null; // Used for smooth transitions
         }
     }
 
-    // ========================================================================
-    // PROCEDURAL SOUND EFFECTS (10 EFFECTS)
+// ========================================================================
+    // PROCEDURAL SOUND EFFECTS (10 EFFECTS) - NOW WITH VARIANCE
     // ========================================================================
     
-    playSound(effect) {
+    /**
+     * @param {string} effect - The name of the sound to play
+     * @param {number} pitchVariance - e.g., 0.15 for +/- 15% pitch randomness
+     * @param {number} volVariance - e.g., 0.10 for +/- 10% volume randomness
+     */
+    playSound(effect, pitchVariance = 0.15, volVariance = 0.10) {
         if (!this.initialized || !this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
@@ -428,83 +433,95 @@ this.fadeInterval = null; // Used for smooth transitions
         gain.connect(this.ctx.destination);
         const now = this.ctx.currentTime;
 
+        // SURGERY: Helper function to apply +/- percentage variance to any value
+        const vary = (baseValue, variance) => {
+            const min = baseValue * (1 - variance);
+            const max = baseValue * (1 + variance);
+            return min + Math.random() * (max - min);
+        };
+
+        // Calculate final randomized volume for this instance
+        const finalVol = vary(this.masterSfxVolume, volVariance);
+
         switch(effect) {
             case 'sword_clash':
                 osc.type = 'triangle';
-                osc.frequency.setValueAtTime(1200, now);
-                osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
-                gain.gain.setValueAtTime(this.masterSfxVolume, now);
+                // SURGERY: Randomize the starting frequency
+                osc.frequency.setValueAtTime(vary(1200, pitchVariance), now);
+                osc.frequency.exponentialRampToValueAtTime(vary(100, pitchVariance), now + 0.1);
+                gain.gain.setValueAtTime(finalVol, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
                 osc.start(now); osc.stop(now + 0.2);
                 break;
                 
-            case 'firelance': // Short burst of noise/square
-                this._createNoise(now, 0.3, 'lowpass', 1000);
+            case 'firelance': 
+                this._createNoise(now, 0.3, 'lowpass', vary(1000, pitchVariance));
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(150, now);
-                osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
-                gain.gain.setValueAtTime(this.masterSfxVolume, now);
+                osc.frequency.setValueAtTime(vary(150, pitchVariance), now);
+                osc.frequency.exponentialRampToValueAtTime(vary(40, pitchVariance), now + 0.2);
+                gain.gain.setValueAtTime(finalVol, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
                 osc.start(now); osc.stop(now + 0.3);
                 break;
 
-            case 'bomb': // Deep sub drop
-                this._createNoise(now, 1.0, 'lowpass', 400);
+            case 'bomb': 
+                this._createNoise(now, 1.0, 'lowpass', vary(400, pitchVariance));
                 osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(80, now);
-                osc.frequency.exponentialRampToValueAtTime(20, now + 1.0);
-                gain.gain.setValueAtTime(this.masterSfxVolume, now);
+                osc.frequency.setValueAtTime(vary(80, pitchVariance), now);
+                osc.frequency.exponentialRampToValueAtTime(vary(20, pitchVariance), now + 1.0);
+                gain.gain.setValueAtTime(finalVol, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
                 osc.start(now); osc.stop(now + 1.0);
                 break;
 
-            case 'arrow': // High pitched swoosh
-                this._createNoise(now, 0.2, 'bandpass', 2500);
+            case 'arrow': 
+                this._createNoise(now, 0.2, 'bandpass', vary(2500, pitchVariance));
                 break;
 
-            case 'shield_block': // Dull thud
+            case 'shield_block': 
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(150, now);
-                osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
-                gain.gain.setValueAtTime(this.masterSfxVolume, now);
+                osc.frequency.setValueAtTime(vary(150, pitchVariance), now);
+                osc.frequency.exponentialRampToValueAtTime(vary(50, pitchVariance), now + 0.1);
+                gain.gain.setValueAtTime(finalVol, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
                 osc.start(now); osc.stop(now + 0.15);
                 break;
 
-            case 'horse_trot': // Rhythmic clop
+            case 'horse_trot': 
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(400, now);
-                osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
-                gain.gain.setValueAtTime(this.masterSfxVolume * 0.4, now);
+                osc.frequency.setValueAtTime(vary(400, pitchVariance), now);
+                osc.frequency.exponentialRampToValueAtTime(vary(100, pitchVariance), now + 0.05);
+                gain.gain.setValueAtTime(finalVol * 0.4, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
                 osc.start(now); osc.stop(now + 0.05);
                 break;
 
-            case 'elephant': // Trumpet synth
+            case 'elephant': 
                 osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(300, now);
-                osc.frequency.linearRampToValueAtTime(500, now + 0.2);
-                osc.frequency.linearRampToValueAtTime(250, now + 0.7);
+                osc.frequency.setValueAtTime(vary(300, pitchVariance), now);
+                osc.frequency.linearRampToValueAtTime(vary(500, pitchVariance), now + 0.2);
+                osc.frequency.linearRampToValueAtTime(vary(250, pitchVariance), now + 0.7);
                 gain.gain.setValueAtTime(0, now);
-                gain.gain.linearRampToValueAtTime(this.masterSfxVolume, now + 0.1);
+                gain.gain.linearRampToValueAtTime(finalVol, now + 0.1);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
                 osc.start(now); osc.stop(now + 0.7);
                 break;
 
-            case 'charge': // Simulated shout (mid-low bandpass noise)
-                this._createNoise(now, 0.5, 'bandpass', 600);
+            case 'charge': 
+                this._createNoise(now, 0.5, 'bandpass', vary(600, pitchVariance));
                 break;
 
-            case 'hit': // Flesh impact
-                this._createNoise(now, 0.1, 'lowpass', 800);
+            case 'hit': 
+                this._createNoise(now, 0.1, 'lowpass', vary(800, pitchVariance));
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(100, now);
-                gain.gain.setValueAtTime(this.masterSfxVolume, now);
+                osc.frequency.setValueAtTime(vary(100, pitchVariance), now);
+                gain.gain.setValueAtTime(finalVol, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
                 osc.start(now); osc.stop(now + 0.1);
                 break;
 
-            case 'ui_click': // UI feedback
+            case 'ui_click': 
+                // UI clicks usually shouldn't vary much so they feel responsive and consistent
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(800, now);
                 gain.gain.setValueAtTime(this.masterSfxVolume * 0.3, now);
@@ -540,3 +557,8 @@ this.fadeInterval = null; // Used for smooth transitions
 
 // Global instance to be used across all your files
 const AudioManager = new AudioManagerSystem();
+
+// Ensure this is at the end of audio_system.js
+if (typeof window.AudioManager === 'undefined') {
+    window.AudioManager = new AudioManagerSystem();
+}//The AudioManagerSystem is usually instantiated as AudioManager. Make sure it's accessible globally. At the very bottom of your audio_system.js, ensure you have:

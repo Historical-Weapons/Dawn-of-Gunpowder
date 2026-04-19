@@ -163,15 +163,16 @@ const WORLD_HEIGHT = 6000; //11K
 	// Padding as ratio of world size (e.g., 5% from edges)
 const PADDING_X = WORLD_WIDTH * 0.05;   // 5% of width
 const PADDING_Y = WORLD_HEIGHT * 0.05;  // 5% of height
-
-    const TILE_SIZE = 8; //
+const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent)
+               || window.innerWidth < 900;
+const TILE_SIZE = 16;
     const COLS = Math.floor(WORLD_WIDTH / TILE_SIZE);
     const ROWS = Math.floor(WORLD_HEIGHT / TILE_SIZE);
 
     const bgCanvas = document.createElement('canvas');
     bgCanvas.width = WORLD_WIDTH; 
     bgCanvas.height = WORLD_HEIGHT;
-    const bgCtx = bgCanvas.getContext('2d');
+const bgCtx = bgCanvas.getContext('2d', { alpha: false });
 
  // TO THIS:
 var zoom = 0.8;
@@ -197,7 +198,9 @@ function noise(x, y) {
         let nx1 = n01 * (1 - ux) + n11 * ux;
         return nx0 * (1 - uy) + nx1 * uy;
     }
-function fbm(x, y, octaves = 6) {
+	
+const FBM_OCTAVES = isMobile ? 4 : 6;
+function fbm(x, y, octaves = FBM_OCTAVES) {
         let value = 0, amplitude = 0.5, frequency = 1;
         for (let i = 0; i < octaves; i++) {
             value += amplitude * noise(x * frequency, y * frequency);
@@ -297,7 +300,8 @@ function populateCities() {
 async function generateMap() {
     console.log("Generating Base Topography...");
     for (let i = 0; i < COLS; i++) {
-        if (i % 50 === 0) {
+// AFTER:
+if (i % (isMobile ? 20 : 50) === 0) {
             let percent = Math.floor((i / COLS) * 60);
             await setLoading(percent, "Generating Terrain...");
         }
@@ -639,12 +643,18 @@ async function generateMap() {
             //   Saves one fbm() on roughly 60–70% of all tiles.
             //   The original !isMacroRiver guard was always trivially true here
             //   (macro checks run later), so it is safely omitted.
-            let isProcRiver = false;
-            if (e >= 0.36 && e < 0.65 && m > 0.45) {
-                let procRiverNoise = Math.abs(fbm(warpX * 15 + 5, warpY * 15 + 5) - 0.5) * 2.0;
-                let riverThreshold = 0.012 + Math.max(0, (0.5 - e) * 0.05) + (m * 0.015);
-                isProcRiver = procRiverNoise < riverThreshold;
-            }
+// --- 14. PROCEDURAL TRIBUTARIES ---
+let isProcRiver = false;
+if (e >= 0.36 && e < 0.65 && m > 0.45) {
+    let procRiverNoise = Math.abs(fbm(warpX * 15 + 5, warpY * 15 + 5) - 0.5) * 2.0;
+
+    // --- REVISE THESE NUMBERS TO THICKEN ---
+    // Increase 0.012 -> 0.025 (Base thickness)
+    // Increase 0.015 -> 0.035 (Moisture impact)
+    let riverThreshold = 0.025 + Math.max(0, (0.5 - e) * 0.05) + (m * 0.035);
+    
+    isProcRiver = procRiverNoise < riverThreshold;
+}
 
             // --- 13. DEEP OCEAN (EAST CHINA SEA / PHILIPPINE SEA) ---
             if (warpY > 0.60 && warpX > 0.58) {
@@ -801,7 +811,7 @@ async function generateMap() {
             //   fbm(warpX*30, warpY*30)*0.002 call and then re-checked Yellow River
             //   and Yangtze with the same thickness — pure duplicates removed.
             //   Net saving: 1 fbm() + 2 checkHardcodedRiver() calls per tile.
-            let baseThickness   = 0.0035;
+            let baseThickness   = 0.008;
             let riverEdgeNoise  = fbm(warpX * 30, warpY * 30) * 0.002;
             let finalThickness  = baseThickness + riverEdgeNoise;
 
@@ -971,7 +981,10 @@ async function generateMap() {
                     bgCtx.beginPath();
                     bgCtx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, TILE_SIZE * 0.4, 0, Math.PI * 2);
                     bgCtx.fill();
-                } else if (Math.random() > 0.55) {
+					
+					
+
+			} else if (Math.random() > (isMobile ? 0.93 : 0.55)) {
                     bgCtx.fillStyle = "rgba(0,0,0,0.04)";
                     bgCtx.beginPath();
                     bgCtx.arc(
@@ -1172,11 +1185,9 @@ async function generateMap() {
                 let isDryMountains = tile.name.includes("Large Mountains");
                 let isExtremePeak  = tile.name === "Large Mountains";
 
-                // ⚡ OPT: peakSpawnThreshold raised from 0.97 → 0.984.
-                //   The hash() function returns 0–1; raising by 0.014 cuts the
-                //   number of icon-draw attempts by ~47 % while keeping peaks
-                //   visually present and well-distributed.
-                let peakSpawnThreshold = 0.984;
+ 
+// AFTER:
+let peakSpawnThreshold = isMobile ? 0.991 : 0.984;
 
                 if (hash(i, j) > peakSpawnThreshold) {
                     let isInvalidTerrain = false;
@@ -1225,8 +1236,7 @@ async function generateMap() {
 
                         bgCtx.save();
                         bgCtx.globalAlpha  = alpha;
-                        bgCtx.shadowBlur   = 15;
-                        bgCtx.shadowColor  = 'rgba(0,0,0,0.3)';
+                  
 
                         if (isDryMountains) {
                             drawSnowyPeak(bgCtx, finalPx, finalPy, width, height, isExtremePeak, TILE_SIZE);

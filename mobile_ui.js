@@ -49,6 +49,188 @@
 /* ──────────────────────────────────────────────
    GLOBAL TOUCH IMPROVEMENTS
    ────────────────────────────────────────────── */
+   
+   
+/* Drawer overlay */
+#mob-detail-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 9000;
+    touch-action: none;
+}
+
+#mob-detail-overlay.open {
+    display: block;
+}
+
+/* Drawer panel */
+#mob-detail-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: clamp(280px, 88vw, 420px);
+    height: 100%;
+    background: linear-gradient(to bottom, #1a0d0d, #0d0806);
+    border-left: 2px solid #d4b886;
+    z-index: 9001;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    font-family: 'Georgia', serif;
+    color: #d4b886;
+}
+
+#mob-detail-panel.open {
+    transform: translateX(0);
+}
+
+#mob-detail-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, #7b1a1a, #4a0a0a);
+    border-bottom: 2px solid #ffca28;
+    padding: 0 16px;
+    height: 50px;
+}
+
+#mob-detail-header span {
+    font-size: 15px;
+    font-weight: bold;
+    color: #f5d76e;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+#mob-detail-close {
+    background: transparent;
+    border: 1px solid #d4b886;
+    color: #f5d76e;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+}
+
+#mob-detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: #5d4037 rgba(0,0,0,0.3);
+}
+
+/* Section headings inside drawer */
+.mob-section-title {
+    font-size: 11px;
+    font-weight: bold;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-bottom: 1px solid #3e2723;
+    padding-bottom: 6px;
+    margin: 20px 0 10px 0;
+}
+
+.mob-section-title:first-child {
+    margin-top: 0;
+}
+
+.mob-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(93,64,55,0.25);
+    font-size: 13px;
+}
+
+.mob-stat-row span:first-child { color: #d4b886; }
+.mob-stat-row span:last-child  { color: #fff; font-weight: bold; }
+
+.mob-hint-block {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid #3e2723;
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #ccc;
+    margin-top: 8px;
+}
+
+/* Diplomacy log inside drawer */
+#mob-dip-log {
+    background: rgba(0,0,0,0.5);
+    border: 1px inset #3e2723;
+    border-radius: 4px;
+    padding: 8px;
+    max-height: 160px;
+    overflow-y: auto;
+    font-size: 11px;
+    margin-top: 8px;
+}
+
+#mob-dip-btn {
+    width: 100%;
+    margin-top: 10px;
+    background: linear-gradient(to bottom, #7b1a1a, #4a0a0a);
+    color: #f5d76e;
+    border: 1px solid #d4b886;
+    border-radius: 4px;
+    padding: 12px 10px;
+    font-family: 'Georgia', serif;
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+/* Army roster blocks inside drawer */
+.mob-troop-group {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid #3e2723;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.mob-troop-type { color: #fff; font-weight: bold; font-size: 13px; }
+.mob-troop-meta { color: #8bc34a; font-size: 11px; margin-top: 2px; }
+.mob-troop-count { color: #ffca28; font-weight: bold; font-size: 16px; }
+
+/* XP bar */
+.mob-xp-bar-bg {
+    background: #222;
+    height: 8px;
+    border-radius: 4px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+.mob-xp-bar-fill {
+    background: #ffca28;
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+
 @media (max-width: 900px), (pointer: coarse) {
 
     /* Minimum tap target for every button */
@@ -259,12 +441,21 @@
 /* ──────────────────────────────────────────────
    DETAIL MENU DRAWER (injected by mobile_ui.js)
    ────────────────────────────────────────── */
+
+/* SURGERY: Forces desktop UI to hide when the drawer is open */
+body.detail-drawer-open #ui,
+body.detail-drawer-open #diplomacy-container {
+    display: none !important;
+}
+
 #mob-detail-btn {
-    display: none;
+    display: none; /* Hidden by default, shown via .visible class */
     position: fixed;
-    top: 12px;
-    right: 12px;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%); /* Centers it perfectly on Desktop */
     z-index: 8999;
+    
     background: linear-gradient(to bottom, #7b1a1a, #4a0a0a);
     color: #f5d76e;
     border: 2px solid #ffca28;
@@ -283,188 +474,33 @@
     gap: 8px;
 }
 
+@media (max-width: 900px), (pointer: coarse) {
+    #mob-detail-btn {
+        left: auto;
+        right: 12px;
+        transform: none;
+    }
+}
 #mob-detail-btn.visible {
     display: flex;
 }
 
-/* Drawer overlay */
-#mob-detail-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 9000;
-    touch-action: none;
-}
 
-#mob-detail-overlay.open {
-    display: block;
-}
 
-/* Drawer panel */
-#mob-detail-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: clamp(280px, 88vw, 420px);
-    height: 100%;
-    background: linear-gradient(to bottom, #1a0d0d, #0d0806);
-    border-left: 2px solid #d4b886;
-    z-index: 9001;
-    display: flex;
-    flex-direction: column;
-    transform: translateX(100%);
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-    font-family: 'Georgia', serif;
-    color: #d4b886;
-}
 
-#mob-detail-panel.open {
-    transform: translateX(0);
-}
 
-#mob-detail-header {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: linear-gradient(to bottom, #7b1a1a, #4a0a0a);
-    border-bottom: 2px solid #ffca28;
-    padding: 0 16px;
-    height: 50px;
-}
 
-#mob-detail-header span {
-    font-size: 15px;
-    font-weight: bold;
-    color: #f5d76e;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-}
 
-#mob-detail-close {
-    background: transparent;
-    border: 1px solid #d4b886;
-    color: #f5d76e;
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
-    font-size: 20px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    touch-action: manipulation;
-}
 
-#mob-detail-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    scrollbar-width: thin;
-    scrollbar-color: #5d4037 rgba(0,0,0,0.3);
-}
 
-/* Section headings inside drawer */
-.mob-section-title {
-    font-size: 11px;
-    font-weight: bold;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    border-bottom: 1px solid #3e2723;
-    padding-bottom: 6px;
-    margin: 20px 0 10px 0;
-}
 
-.mob-section-title:first-child {
-    margin-top: 0;
-}
 
-.mob-stat-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid rgba(93,64,55,0.25);
-    font-size: 13px;
-}
 
-.mob-stat-row span:first-child { color: #d4b886; }
-.mob-stat-row span:last-child  { color: #fff; font-weight: bold; }
 
-.mob-hint-block {
-    background: rgba(0,0,0,0.5);
-    border: 1px solid #3e2723;
-    border-radius: 4px;
-    padding: 10px;
-    font-size: 12px;
-    line-height: 1.6;
-    color: #ccc;
-    margin-top: 8px;
-}
 
-/* Diplomacy log inside drawer */
-#mob-dip-log {
-    background: rgba(0,0,0,0.5);
-    border: 1px inset #3e2723;
-    border-radius: 4px;
-    padding: 8px;
-    max-height: 160px;
-    overflow-y: auto;
-    font-size: 11px;
-    margin-top: 8px;
-}
 
-#mob-dip-btn {
-    width: 100%;
-    margin-top: 10px;
-    background: linear-gradient(to bottom, #7b1a1a, #4a0a0a);
-    color: #f5d76e;
-    border: 1px solid #d4b886;
-    border-radius: 4px;
-    padding: 12px 10px;
-    font-family: 'Georgia', serif;
-    font-size: 13px;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    cursor: pointer;
-    touch-action: manipulation;
-}
 
-/* Army roster blocks inside drawer */
-.mob-troop-group {
-    background: rgba(0,0,0,0.5);
-    border: 1px solid #3e2723;
-    border-radius: 4px;
-    padding: 8px 10px;
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-}
 
-.mob-troop-type { color: #fff; font-weight: bold; font-size: 13px; }
-.mob-troop-meta { color: #8bc34a; font-size: 11px; margin-top: 2px; }
-.mob-troop-count { color: #ffca28; font-weight: bold; font-size: 16px; }
-
-/* XP bar */
-.mob-xp-bar-bg {
-    background: #222;
-    height: 8px;
-    border-radius: 4px;
-    margin-top: 6px;
-    overflow: hidden;
-}
-.mob-xp-bar-fill {
-    background: #ffca28;
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.4s ease;
-}
 
         `; // end style.textContent
         document.head.appendChild(style);
@@ -509,6 +545,9 @@ function openDetailDrawer() {
     
     document.body.style.overflow = "hidden"; 
     refreshDetailDrawer();
+    
+    // SURGERY: Apply bulletproof CSS class to beat the game loop
+    document.body.classList.add("detail-drawer-open");
 }
 
 function closeDetailDrawer() {
@@ -517,6 +556,9 @@ function closeDetailDrawer() {
     document.getElementById("mob-detail-panel").classList.remove("open");
     
     document.body.style.overflow = ""; 
+    
+    // SURGERY: Remove the class to let the game loop restore the UI
+    document.body.classList.remove("detail-drawer-open");
 }
     /**
      * Pulls live data from DOM elements and the player object,
@@ -559,14 +601,19 @@ let html = `
         // ── b) Diplomacy log (mirrors #event-log-container) ────────────────
         const logSrc = document.getElementById("event-log-container");
         const logHTML = logSrc ? logSrc.innerHTML : "<em>No events yet.</em>";
-		html += `
+html += `
             <div class="mob-section-title">📜 Events</div>
             <div id="mob-dip-log">${logHTML}</div>
             <button id="mob-dip-btn" class="menu-btn" style="width: 100%; margin-top: 10px; padding: 12px 10px;" onclick="if(window.mobileUI) window.mobileUI.closeDetailDrawer(); if(typeof toggleDiplomacyMenu === 'function') toggleDiplomacyMenu();">
                 Open Diplomacy Table
             </button>
+            <button id="mob-saveload-btn" class="menu-btn" style="width: 100%; margin-top: 10px; padding: 12px 10px; background: linear-gradient(to bottom, #1a4a0a, #0a2a04); border-color: #8bc34a; color: #8bc34a;" onclick="if(window.SaveSystem) { if(window.mobileUI) window.mobileUI.closeDetailDrawer(); window.SaveSystem.openPanel(); }">
+                💾 Save / Load Game
+            </button>
+<button id="mob-mainmenu-btn" class="menu-btn" style="width: 100%; margin-top: 10px; padding: 12px 10px; background: linear-gradient(to bottom, #4a0a0a, #1a0505); border-color: #ff5252; color: #ff5252;" onclick="window.location.reload();">
+    🚪 Quit to Main Menu
+</button>
         `;
-
         // ── c) Player / Army Roster ────────────────────────────────────────
         const p = (typeof player !== "undefined") ? player : null;
         if (p) {
@@ -1124,19 +1171,34 @@ let html = `
     // 10. SHOW / HIDE MOBILE BUTTON based on context
     // ─────────────────────────────────────────────────────────────────────────
     // The Detail button is only shown on the overworld (not in battle/city mode).
-
-    function syncDetailButtonVisibility() {
+function syncDetailButtonVisibility() {
         const btn = document.getElementById("mob-detail-btn");
         if (!btn) return;
 
         const inBattle = (typeof inBattleMode !== "undefined" && inBattleMode);
         const inCity   = (typeof inCityMode   !== "undefined" && inCityMode);
         const inParle  = (typeof inParleMode  !== "undefined" && inParleMode);
+        
+        // SURGERY: Detect if the Main Menu or Loading Screen is currently active
+        const mainMenu = document.getElementById("main-menu");
+        const onMenu   = !!(mainMenu && mainMenu.style.opacity !== "0" && mainMenu.style.display !== "none");
+        const isLoading = document.body.classList.contains('is-loading-state');
+const isGameStateValid = !inBattle && !inCity && !inParle && !onMenu && !isLoading;
 
-        if (isMobile() && !inBattle && !inCity && !inParle) {
-            btn.classList.add("visible");
-        } else {
-            btn.classList.remove("visible");
+// 1. Mobile button visibility (Enabled for PC testing)
+if (isGameStateValid) { 
+    btn.classList.add("visible");
+    // Ensure it's not set to display:none by old CSS
+    btn.style.display = "flex"; 
+} else {
+    btn.classList.remove("visible");
+    btn.style.display = "none";
+}
+
+        // 2. Dual-purpose drawer protection:
+        // Only close the drawer if the game state changes (e.g., entering a battle),
+        // NOT just because the user is on a PC!
+        if (!isGameStateValid) {
             closeDetailDrawer();
         }
     }
@@ -1184,12 +1246,13 @@ let html = `
 
         // Resize events
         window.addEventListener("resize", onResize, { passive: true });
-        window.mobileUI = {
+window.mobileUI = {
             refreshDetailDrawer,
             patchTroopGUI,
             patchMainMenu,
             patchCustomBattleMenu,
-            closeDetailDrawer 
+            closeDetailDrawer,
+            openDetailDrawer
         };
 
         MobileControls.init();

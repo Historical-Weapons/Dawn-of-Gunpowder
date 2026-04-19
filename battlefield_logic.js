@@ -1208,6 +1208,12 @@ let drownThreshold = Math.max(150, 1500 - ((unit.stats.weightTier || 1) * 250) -
             }
         } else {
             // Instantly restore normal movement when hitting land
+			// ---> ADD THIS BLOCK <---
+            if (unit.isSwimming && typeof BattleAudio !== 'undefined') {
+                BattleAudio.playWaterSplash(unit.x, unit.y, false);
+            }
+            // ------------------------
+			
             unit.overboardTimer = 0;
             unit.isSwimming = false;
             if (unit.drownTimer > 0) unit.drownTimer -= 2;

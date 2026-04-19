@@ -96,7 +96,24 @@ handlePlayerOverride: function(unit, units, keys, battleEnv, player) {
 
         if (unit.target) {
             let distToTarget = Math.hypot(unit.target.x - unit.x, unit.target.y - unit.y);
-            unit.stats.updateStance(distToTarget);
+			
+			// ---> SMART SURGERY: Prevent crash on loaded saves (Instance 2)
+if (typeof unit.stats.updateStance === 'function') {
+    unit.stats.updateStance(distToTarget);
+} else {
+    // FALLBACK: Manual stance logic matching troop_system.js
+    if (!unit.stats.isRanged) {
+        unit.stats.currentStance = "statusmelee";
+    } else {
+        const MELEE_ENGAGEMENT_DISTANCE = 15; 
+        if ((unit.stats.ammo !== undefined && unit.stats.ammo <= 0) || distToTarget <= MELEE_ENGAGEMENT_DISTANCE) {
+            unit.stats.currentStance = "statusmelee";
+        } else {
+            unit.stats.currentStance = "statusrange";
+        }
+    }
+}
+			
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
 
             if (distToTarget <= effectiveRange) {
@@ -162,6 +179,9 @@ processMoraleAndFleeing: function(unit, pCount, eCount, currentBattleData) {
 },
 
 processTargeting: function(unit, units) {
+	// 1. Move the inSiege check ABOVE the ram validation
+let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
+
     // SURGERY 1: Protect all manual field commands from the AI target scanner
     if (unit.disableAICombat || ["siege_assault", "follow", "retreat", "move_to_point", "hold_position"].includes(unit.orderType)) {
         return; 
@@ -205,42 +225,42 @@ processTargeting: function(unit, units) {
             return;
         }
 
+
 // --- RAM CREW VALIDATION ---
-        // The ram requires at least one nearby ally to function. 
-        // If "abandoned," it clears its target and stops attacking.
-        if (unit.type === "ram" || unit.siegeRole === "battering_ram") {
-            const crewTouchDistance = 60; // Adjust based on your ram's sprite size
-            const hasActiveCrew = units.some(other => 
-                other.side === unit.side && 
-                other !== unit && 
-                other.hp > 0 && 
-                !other.isDummy &&
-                Math.hypot(unit.x - other.x, unit.y - other.y) < crewTouchDistance
-            );
+// Only run this if we are actually in a siege battle
+if (inSiege && (unit.type === "ram" || unit.siegeRole === "battering_ram")) {
+    const crewTouchDistance = 60; 
+    
+    // Ensure we use 'unit' here, not 'ram'
+    const hasActiveCrew = units.some(other => 
+        other.side === unit.side && 
+        other !== unit && 
+        other.hp > 0 && 
+        !other.isDummy &&
+        Math.hypot(unit.x - other.x, unit.y - other.y) < crewTouchDistance
+    );
 
-            if (!hasActiveCrew) {
-                unit.target = null;
-                unit.hasOrders = false;
-                unit.state = "idle"; // Prevents it from "ghost attacking" the gate
-                return; 
-            }
-        }
+    if (!hasActiveCrew) {
+        unit.target = null;
+        unit.hasOrders = false;
+        unit.state = "idle"; 
+        return; 
+    }
+}
 		
-        // --- CREW REINTEGRATION (ATTACKERS & DEFENDERS) ---
-        // If an attacker or defender's siege engine is destroyed, they abandon the role and join the main line.
-        if (unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew" || unit.siegeRole === "engine_crew") {
-            let myEngine = (unit.target && (unit.target.isTrebuchet || unit.target.isBallista || unit.target.type === "trebuchet" || unit.target.type === "ballista")) ? unit.target : null;
-            
-            // If the target engine doesn't exist or is destroyed, clear their duty.
-            if (!myEngine || myEngine.hp <= 0) {
-                unit.siegeRole = "infantry";
-                unit.target = null;
-                unit.hasOrders = false;
-            }
-        }
-
-        let inSiege = typeof inSiegeBattle !== 'undefined' && inSiegeBattle;
-		
+// --- CREW REINTEGRATION (ATTACKERS & DEFENDERS) ---
+// Wraps engine crew check in the same inSiege check to prevent land battle errors
+if (inSiege && (unit.siegeRole === "treb_crew" || unit.siegeRole === "trebuchet_crew" || unit.siegeRole === "engine_crew")) {
+    let myEngine = (unit.target && (unit.target.isTrebuchet || unit.target.isBallista || unit.target.type === "trebuchet" || unit.target.type === "ballista")) ? unit.target : null;
+    
+    // If the target engine doesn't exist or is destroyed, clear their duty.
+    if (!myEngine || myEngine.hp <= 0) {
+        unit.siegeRole = "infantry";
+        unit.target = null;
+        unit.hasOrders = false;
+    }
+}
+ 
         //clear the gate gathering dummy
 		const now = Date.now();
 
@@ -685,7 +705,16 @@ if (!isGateBreached && unit.side === "player" && unit.target && !unit.target.isD
             let dy = unit.target.y - unit.y;
             let dist = Math.hypot(dx, dy);
 
-            unit.stats.updateStance(dist);
+// ---> SURGERY: Prevent crash on loaded saves (Hydration Fix)
+if (typeof unit.stats.updateStance === 'function') {
+    unit.stats.updateStance(dist);
+} else {
+    // Fallback logic: if the function was lost during JSON load, 
+    // we manually determine the stance so the AI doesn't break.
+    const meleeRange = 40; 
+    unit.stats.currentStance = (dist < meleeRange) ? "statusmelee" : "statusrange";
+}
+
             let effectiveRange = unit.stats.currentStance === "statusmelee" ? 30 : unit.stats.range;
 
 			let isAlreadyAttacking = (unit.state === "attacking" && unit.stats.currentStance === "statusrange");
@@ -734,6 +763,31 @@ if (!isGateBreached && unit.side === "player" && unit.target && !unit.target.isD
             if (!unit.isCommander) unit.state = "idle";
             if (unit.stats.stamina < 100 && Math.random() > 0.9) unit.stats.stamina++;
         }
+		
+		
+// --- MOUNT & INFANTRY AUDIO ---
+        const isAnimal = unit.stats?.isLarge || unit.isMounted || String(unit.unitType).toLowerCase().match(/(cav|horse|camel|eleph)/);
+        
+        if (isAnimal && unit.state !== "FLEEING") {
+            let mType = "horse";
+            let nameStr = String(unit.unitType).toLowerCase();
+            if (nameStr.includes("elephant")) mType = "elephant";
+            else if (nameStr.includes("camel")) mType = "camel";
+
+            if (unit.state === "idle") {
+                BattleAudio.playMountIdle(unit.x, unit.y, mType);
+            } else if (unit.state === "moving" && mType === "horse") {
+                // Throttle handles the spam, just pass the requested speed
+                let currentSpeed = Math.hypot(unit.vx || 0, unit.vy || 0);
+                let speedType = (currentSpeed > 1.2) ? "gallop" : "trot";
+                BattleAudio.playMountMove(unit.x, unit.y, speedType);
+            }
+        } else if (!isAnimal && unit.state === "moving") {
+            // INFANTRY FOOTSTEPS ONLY (No idle sounds)
+            let wTier = unit.stats?.weightTier || 1; // Default to light infantry if undefined
+            BattleAudio.playFootmarch(unit.x, unit.y, wTier);
+        }
+		
     },
 
     // --- INTERNAL HELPER FUNCTIONS ---
@@ -1388,9 +1442,16 @@ _handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
                     isFire: ["Firelance", "Bomb", "Rocket"].includes(unit.unitType)
                 });
 
-                if (["Bomb", "Camel Cannon"].includes(unit.unitType)) AudioManager.playSound('bomb');
-                else if (["Firelance", "Hand Cannoneer", "Rocket"].includes(unit.unitType)) AudioManager.playSound('firelance');
-                else AudioManager.playSound('arrow');
+				const ut = String(unit.unitType).toLowerCase();
+                const ur = String(unit.stats?.role || "").toLowerCase();
+                
+                if (ut === "bomb") BattleAudio.playBombChain(unit.x, unit.y, 1);
+                else if (ut.includes("firelance")) BattleAudio.playFirelanceBurst(unit.x, unit.y, ut.includes("heavy"));
+                else if (ut.includes("rocket")) BattleAudio.playRocketVolley(unit.x, unit.y, 5); 
+                else if (ur.includes("gunner") || ut.includes("cannon")) BattleAudio.playGunpowderShot(unit.x, unit.y, ut.includes("cannon"));
+                else if (ur.includes("crossbow") || ur.includes("repeater")) BattleAudio.playCrossbowRelease(unit.x, unit.y);
+                else if (ur.includes("throwing") || ut.includes("slinger") || ut.includes("javelin")) BattleAudio.playSlingerRelease(unit.x, unit.y);
+                else BattleAudio.playArcheryRelease(unit.x, unit.y);
 
             } else {
                 unit.cooldown = getReloadTime(unit);
@@ -1415,11 +1476,26 @@ _handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
                     unit.target.stats.morale -= 5;
                 }
 
-                if (unit.unitType === "War Elephant") AudioManager.playSound('elephant');
-                else AudioManager.playSound('sword_clash');
+				const utMelee = String(unit.unitType).toLowerCase();
+                const urMelee = String(unit.stats?.role || "").toLowerCase();
+                const isHeavy = urMelee.includes("two_handed") || urMelee.includes("heavy");
+                
+                // 1. Attack Swing/Thrust
+                if (urMelee.includes("pike") || utMelee.includes("glaive") || utMelee.includes("spear")) {
+                    BattleAudio.playPolearm(unit.x, unit.y, urMelee.includes("pike"));
+                } else if (unit.unitType === "War Elephant") {
+                    BattleAudio.playMountIdle(unit.x, unit.y, "elephant"); 
+                } else {
+                    BattleAudio.playMeleeAttack(unit.x, unit.y, isHeavy);
+                }
 
-                if (dmg > 0) AudioManager.playSound('hit');
-                else AudioManager.playSound('shield_block');
+                // 2. Impact
+                if (dmg > 0) {
+                    let armorType = unit.target.stats.armor > 10 ? "armor" : "flesh";
+                    BattleAudio.playMeleeHit(unit.x, unit.y, armorType);
+                } else {
+                    BattleAudio.playMeleeParry(unit.x, unit.y);
+                }
 
                 unit.target.x += (dx / dist) * 5;
                 unit.target.y += (dy / dist) * 5;
@@ -1503,6 +1579,15 @@ _handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
                     }
                 }
 
+				if (isBomb) {
+                    BattleAudio.playBombChain(p.x, p.y, 1);
+                } else if (isRocket || p.projectileType === "firelance") {
+                    BattleAudio.playFirelanceBurst(p.x, p.y, false);
+                } else {
+                    BattleAudio.playProjectileHit(p.x, p.y, "miss");
+                }
+				
+				
                 battleEnvironment.projectiles.splice(i, 1);
                 continue;
             }
@@ -1573,9 +1658,17 @@ _handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
                             if (attackerUnit.isCommander && typeof gainPlayerExperience === 'function') gainPlayerExperience(baseExp);
                         }
 
-                        if (dmg > 0 && typeof AudioManager !== 'undefined') AudioManager.playSound('hit');
-                        else if (typeof AudioManager !== 'undefined') AudioManager.playSound('shield_block');
-
+					if (isBomb) {
+                            BattleAudio.playBombChain(p.x, p.y, 1);
+                        } else {
+                            let armorType = u.stats.armor > 10 ? "armor" : "flesh";
+                            if (dmg > 0) {
+                                BattleAudio.playProjectileHit(p.x, p.y, armorType);
+                            } else {
+                                BattleAudio.playProjectileHit(p.x, p.y, "shield");
+                            }
+                        }
+						
                         // If it stopped, break the loop. If it pierced, keep checking other units behind them!
                         if (!doesPierce) {
                             break; 
@@ -1632,7 +1725,11 @@ _handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
                                     }
                                 }
                             }
-                            if (typeof AudioManager !== 'undefined') AudioManager.playSound('hit');
+							
+						
+// GOOD
+BattleAudio.playBombChain(p.x, p.y, 1);
+
 
                         } else if (p.projectileType === "firelance" || (p.projectileType && p.projectileType.includes("Firelance"))) {
                             if (battleEnvironment.groundEffects.length < 500) {

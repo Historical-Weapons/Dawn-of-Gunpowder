@@ -186,10 +186,11 @@ function generateNavalMap() {
                 let elevation = n;
 
                 // Topography only for Coastal maps
-                if (elevation > 0.80) grid[x][y] = 13;      // Rocks
-                else if (elevation > 0.70) grid[x][y] = 12; // Reefs
-                else if (elevation > 0.58) grid[x][y] = 14; // Algae
-                else if (elevation < 0.25) grid[x][y] = 15; // Dark water
+if (elevation > 0.85) grid[x][y] = 13;      // Rocks (was 0.80)
+else if (elevation > 0.7) grid[x][y] = 12; // Reefs (was 0.70)
+else if (elevation > 0.65) grid[x][y] = 14; // Algae (was 0.58)
+
+                else if (elevation < 0.05) grid[x][y] = 15; // Dark water
                 else grid[x][y] = 11; 
             }
         }
@@ -556,6 +557,9 @@ let atEdge  = (surface === 'EDGE');
 
         } else {
             // Stage A: safe on DECK or PLANK
+			if (unit.isSwimming && typeof BattleAudio !== 'undefined') {
+                BattleAudio.playWaterSplash(unit.x, unit.y, false);
+            }
             unit.overboardTimer = 0;
             unit.isSwimming     = false;
         }

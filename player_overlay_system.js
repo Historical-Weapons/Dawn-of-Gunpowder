@@ -207,11 +207,7 @@ function drawPlayerOverlay(ctx, player, zoom) {
         cursorX += entryWidth + colGap;
     });
 
-    // Footer
-    ctx.textAlign = "center";
-    ctx.font = "12px monospace";
-    ctx.fillStyle = "#888";
-    ctx.fillText("Press T to exit Troop Menu", startX + (boxW / 2), startY + boxH - 20);
+ 
     
     ctx.restore();
 }

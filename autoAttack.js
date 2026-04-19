@@ -62,10 +62,53 @@
 
     let lastFire = 0;
     
-    // Auto Button Logic (Turn ON)
+// Auto Button Logic (Turn ON)
     const fireAuto = (ev) => {
       if (autoRunning) return; // Prevent if already running
-        
+
+      // ---> SURGERY: SIEGE DEFENSE WALL (Block Auto-Attack) <---
+      if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+          
+          let toast = D.getElementById('mc3-siege-toast');
+          if (!toast) {
+              toast = D.createElement('div');
+              toast.id = 'mc3-siege-toast';
+              toast.style.position = 'absolute';
+              toast.style.top = '-35px'; // Pops up just above the buttons
+              toast.style.left = '50%';
+              toast.style.transform = 'translateX(-50%)';
+              toast.style.background = 'rgba(0, 0, 0, 0.85)';
+              toast.style.color = '#ff5252'; 
+              toast.style.padding = '6px 10px';
+              toast.style.borderRadius = '6px';
+              toast.style.fontSize = '12px';
+              toast.style.fontWeight = 'bold';
+              toast.style.whiteSpace = 'nowrap';
+              toast.style.pointerEvents = 'none';
+              toast.style.transition = 'opacity 0.2s';
+              toast.style.border = '1px solid #ff5252';
+              
+              const container = D.getElementById('mc3-tactical-container');
+              if (container) {
+                  container.style.position = 'relative'; 
+                  container.appendChild(toast);
+              }
+          }
+          
+          toast.innerText = 'Orders already issued pre-siege!';
+          toast.style.opacity = '1';
+          // ---> SURGERY: Add the Castle Emoji to the warning text
+          toast.innerText = '🏯 Disabled during sieges';
+          toast.style.opacity = '1';
+          // Clear previous timeout to prevent flickering if tapped rapidly
+          if (toast.fadeTimeout) clearTimeout(toast.fadeTimeout);
+          toast.fadeTimeout = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+
+          return; // HALT EXECUTION: Protect the Siege AI!
+      }
+      // ---> END SURGERY <---
+
       const now = Date.now();
       if (now - lastFire < 500) return; 
       lastFire = now;
@@ -91,6 +134,8 @@
 
       triggerTacticalAssault();
     };
+	
+	
 
     // Manual Toggle Logic (Turn OFF)
     const toggleManual = (ev) => {
@@ -163,7 +208,21 @@
     setInterval(() => {
       const inBattle = W.MobileControls && W.MobileControls.G.isBattle();
       container.style.display = inBattle ? 'flex' : 'none';
-      
+      if (inBattle) {
+          // ---> SURGERY: Visually change the button to a Castle during sieges <---
+          if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
+              if (!autoRunning) {
+                  autoBtn.innerHTML = '🏯';
+                  autoBtn.style.opacity = '0.7'; // Make it look slightly inactive
+              }
+          } else {
+              if (!autoRunning) {
+                  autoBtn.innerHTML = '🤖';
+                  autoBtn.style.opacity = '1';
+              }
+          }
+      }
+	  
       if (!inBattle) {
           if (tacticalInterval) {
               clearInterval(tacticalInterval);
@@ -230,17 +289,29 @@
     // =========================================================
     if (W.inNavalBattle) {
         if (typeof currentSelectionGroup !== 'undefined') currentSelectionGroup = 5;
-        autoBtn.innerHTML = '⚓'; 
+        autoBtn.innerHTML = '⚓..'; 
 
-        tacticalInterval = setInterval(() => {
-            if (!MC.G.isBattle() || isManualMode) {
+tacticalInterval = setInterval(() => {
+            // --- FIXED MANUAL OVERRIDE ---
+            // Only kill the AI if the player explicitly orders a "retreat"
+            // or if the Manual Toggle (isManualMode) is active.
+            const retreatDetected = playerUnits.some(u => u.orderType === "retreat");
+
+            if (retreatDetected || !MC.G.isBattle() || isManualMode) {
                 clearInterval(tacticalInterval);
                 tacticalInterval = null;
-                restoreSpeeds(playerUnits);
-                if (!isManualMode) autoBtn.innerHTML = '🤖';
+                
+                // Reset UI buttons to "Ready" state
+                autoRunning = false;
+                autoBtn.style.pointerEvents = 'auto';
+                autoBtn.innerHTML = '🤖';
+                manualBtn.style.pointerEvents = 'none';
+                manualBtn.style.opacity = '0.4';
+                
+                if (typeof restoreSpeeds === 'function') restoreSpeeds(playerUnits);
                 return;
             }
-
+    // --- END OVERRIDE ---
             playerUnits = getLivePlayerUnits();
             enemyUnits = getLiveEnemyUnits();
 
@@ -281,15 +352,44 @@
                     if (d < nearestDist) nearestDist = d;
                 });
 
-                if (role === "INFANTRY") {
-                    // Melee: Swarm boarders within 100px, otherwise hold tight
-                    if (nearestDist < 100) {
-                        u.orderType = "seek_engage";
-                        u.orderTargetPoint = null;
-                    } else {
-                        u.orderType = "hold_position";
-                        u.vx = 0; u.vy = 0;
-                        u.orderTargetPoint = { x: u.x, y: u.y };
+                let isMelee = (role === "INFANTRY" || role === "CAVALRY");
+                let isRanged = (role === "RANGED" || role === "GUNPOWDER");
+
+                if (isMelee && nearestDist < 120) {
+                    // ⚔️ Engagement: Swarm boarders if they get within 120px
+                    u.orderType = "seek_engage";
+                    u.orderTargetPoint = null;
+                    u.isPatrolling = false; 
+                } else if (isMelee || isRanged) {
+                    // 🛡️ "Wild Patrol": Gunpowder, Ranged, and idle Melee pick random deck spots
+                    const distToTarget = u.orderTargetPoint ? Math.hypot(u.x - u.orderTargetPoint.x, u.y - u.orderTargetPoint.y) : 0;
+                    const needsNewPoint = !u.isPatrolling || distToTarget < 20;
+
+                    if (needsNewPoint) {
+                        let foundDeck = false;
+                        let tx = safeTarget.x;
+                        let ty = safeTarget.y;
+
+                        // Try up to 8 times to find a valid deck spot to guarantee they stay out of the water
+                        for (let i = 0; i < 8; i++) {
+                            // Wayyy more random drift (Spanning 400px instead of 100px)
+                            let driftX = (Math.random() - 0.5) * 400;
+                            let driftY = (Math.random() - 0.5) * 400;
+                            let testX = safeTarget.x + driftX;
+                            let testY = safeTarget.y + driftY;
+
+                            // 🌊 Strict "Never Overboard" Check
+                            if (typeof W.getNavalSurfaceAt === 'function' && W.getNavalSurfaceAt(testX, testY) === 'DECK') {
+                                tx = testX;
+                                ty = testY;
+                                foundDeck = true;
+                                break;
+                            }
+                        }
+
+                        u.orderType = "move_to_point";
+                        u.orderTargetPoint = { x: tx, y: ty };
+                        u.isPatrolling = true;
                     }
                 } else {
                     // Ranged/Cav: Hold position and shoot natively
@@ -334,18 +434,30 @@
         avgSpeed = Math.max(1, totalSpeed / playerUnits.length);
         updateMarchTargets(playerUnits, enemyUnits, avgSpeed);
     } else if (phase === "SKIRMISHING") {
-        autoBtn.innerHTML = '🏹..';
+        autoBtn.innerHTML = '🤺..';
         issueSkirmishOrders(playerUnits);
     }
 
     if (typeof currentSelectionGroup !== 'undefined') currentSelectionGroup = 5; 
 
-    tacticalInterval = setInterval(() => {
-      if (!MC.G.isBattle() || isManualMode) {
+tacticalInterval = setInterval(() => {
+      // --- FIXED MANUAL OVERRIDE ---
+      // We removed "move_to_point" from here so the AI doesn't kill itself 
+      // when it starts marching!
+      const retreatDetected = playerUnits.some(u => u.orderType === "retreat");
+
+      if (retreatDetected || !MC.G.isBattle() || isManualMode) {
         clearInterval(tacticalInterval);
         tacticalInterval = null;
+        
+        // UI Reset
+        autoRunning = false;
+        autoBtn.style.pointerEvents = 'auto';
+        autoBtn.innerHTML = '🤖';
+        manualBtn.style.pointerEvents = 'none';
+        manualBtn.style.opacity = '0.4';
+
         restoreSpeeds(playerUnits);
-        if (!isManualMode) autoBtn.innerHTML = '⏳';
         return;
       }
 

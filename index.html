@@ -59,6 +59,12 @@
     <div id="dip-log-body">
         <div id="event-log-container"></div>
     </div>
+<button id="quit-to-menu-btn" class="diplomacy-main-btn pc-only-btn" style="margin-top: 6px; text-align: center; padding: 0; display: flex; justify-content: center; align-items: center; gap: 10px;" onclick="if(confirm('Are you sure you want to quit? Unsaved progress will be lost.')) location.reload();">
+        🚪 QUIT TO MAIN MENU
+    </button>
+    <button id="pc-detail-btn" class="diplomacy-main-btn pc-only-btn" style="margin-top: 6px; text-align: center; padding: 0; display: flex; justify-content: center; align-items: center; gap: 10px;" onclick="if(window.mobileUI) window.mobileUI.openDetailDrawer();">
+        DETAIL
+    </button>
 </div>
 
     <div id="city-panel">
@@ -330,15 +336,16 @@ function toggleDipLog() {
 	<script src="drawSiegeEngines.js"></script>
 	<script src="siege_function_helpers.js"></script>
     <script src="battlefield_launch.js"></script>
-<script src="naval_battles.js"></script>
-<script src="drowning_detector.js"></script>   <!-- new, after naval -->
-<script src="drowning_visuals.js"></script>    <!-- updated -->
+	<script src="naval_battles.js"></script>
+	<script src="drowning_detector.js"></script>  
+	<script src="drowning_visuals.js"></script>     
 	<script src="custom_naval_launcher.js"></script>
 	<script src="battlefield_logic.js"></script>
 	<script src="enemyCommanderAI.js"></script>
-	  <script src="enemyTacticalAI.js"></script>
+	<script src="enemyTacticalAI.js"></script>
 	<script src="ai_categories.js"></script>
     <script src="troop_system.js"></script>
+	    <script src="troop_draw.js"></script>
 	<script src="unit-encyclopedia.js"></script>
     <script src="infscript.js"></script>
     <script src="cavscript.js"></script>
@@ -351,6 +358,7 @@ function toggleDipLog() {
     <script src="menu-units-guide.js"></script>
 	<script src="loading-screen.js"></script>	
     <script src="audio_system.js"></script>
+	<script src="soundeffects.js"></script>
 	<script src="custom_battle_gui.js"></script>
 	<script src="customsiegebattle.js"></script>	
     <script src="RandomDialogue.js"></script>
@@ -359,9 +367,14 @@ function toggleDipLog() {
     <script src="faction_dynamics.js"></script>
     <script src="sandbox_overworld.js"></script>
 	<script src="update.js"></script>
+	<script src="settings_ui.js"></script> 
+			
 	<script src="mobile_ui.js"></script>
-	<script src="mobileControls.js"></script>
+
+	<script src="RTSControls.js"></script>
 	<script src="autoAttack.js"></script>
 	<script src="mobile_cleanup.js"></script>  
+<script src="save_system.js"></script> 
+	<script src="world_map.js"></script>  
 </body>
 </html>

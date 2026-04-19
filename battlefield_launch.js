@@ -736,7 +736,7 @@ function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     }
     AudioManager.playSound("charge"); 
     if (typeof triggerEpicZoom === 'function') {
-        triggerEpicZoom(0.05, 1.5, 3500);
+        triggerEpicZoom(0.6, 1.5, 3500);
     }
     // --- ADD THIS LINE TO WAKE UP THE ENEMY GENERAL ---
     if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.start();
@@ -865,7 +865,7 @@ let playerTroopCount = playerObj.troops || 0;
     AudioManager.playSound("charge"); // Warcry SFX on spawn
 	// Trigger the Epic Zoom: Starts at 0.3x (high up), lands at 1.5x (tactical view) over 1.5 seconds
     if (typeof triggerEpicZoom === 'function') {
-        triggerEpicZoom(0.05, 1.5, 3500);
+        triggerEpicZoom(0.6, 1.5, 3500);
     }
 	
  
@@ -1023,6 +1023,7 @@ composition.forEach(comp => {
 
 let currentLineXOffset = -(totalLineWidth / 2);
 let spawnedSoFar = 0;
+let playerCommanderSpawned = false; // <--- ADD THIS GUARD
 
 composition.forEach(comp => {
     let count = Math.round(unitsToSpawn * comp.pct);
@@ -1270,6 +1271,8 @@ const blockH = rows * spacingY;
 // 5. Center that bounding box directly on the ship's centroid
 const startX = ship.x - (blockW / 2);
 const startY = ship.y - (blockH / 2);
+
+let playerCommanderSpawned = false; // <--- ADD THIS GUARD
 
 spawnList.forEach((type, i) => {
     let baseTemplate = UnitRoster.allUnits[type];

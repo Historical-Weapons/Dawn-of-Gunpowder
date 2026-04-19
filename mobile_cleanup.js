@@ -95,19 +95,41 @@
 }
 
 /* ══════════════════════════════════════════════════════════
-   §3  LOADING SCREEN — zero gap between title and stats
+   §3.1  LOADING SCREEN RESPONSIVENESS — Fit for all phones
    ══════════════════════════════════════════════════════════ */
 #loading-screen-wrapper {
-  gap: 0 !important;
-  padding: 0 !important;
+  justify-content: center !important;
+  overflow-y: auto !important; /* Allows scrolling if the phone is extremely small */
+  padding: 10px !important;
 }
-#loading-screen-wrapper > * + * {
-  margin-top: 0 !important;
+
+/* Responsive "LOADING..." Header */
+#loading-screen-wrapper > div:first-child {
+  font-size: clamp(1.2rem, 7vw, 2.2rem) !important;
+  letter-spacing: 4px !important;
+  margin-bottom: 5px !important;
 }
-/* The inner two-column / stacked content block */
-#loading-screen-wrapper > :nth-child(2) {
-  gap: 0 !important;
-  margin-top: 4px !important;
+
+/* Shrink Unit Portrait to make room for stats */
+#loading-screen-wrapper > div:nth-child(2) > div:first-child {
+  height: clamp(150px, 30vh, 320px) !important;
+  margin-bottom: 5px !important;
+}
+
+/* Compact Stats Grid */
+#loading-screen-wrapper div[style*="grid"] {
+  gap: 4px 10px !important;
+}
+
+#loading-screen-wrapper div[style*="grid"] div {
+  font-size: clamp(0.7rem, 2.5vw, 0.85rem) !important;
+  padding: 2px 0 !important;
+}
+
+/* Shrink Unit Name and Description */
+#loading-screen-wrapper div[style*="font-size: 2rem"] {
+  font-size: 1.4rem !important;
+  margin-bottom: 5px !important;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -840,7 +862,7 @@
     const obs = new MutationObserver(mutations => {
       for (const m of mutations) {
 
-        // — Child nodes added —
+    // — Child nodes added —
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue;
 
@@ -850,24 +872,24 @@
           if (node.id === 'cb-menu-container') {
             setTimeout(() => patchCustomBattleCompact(node), 80);
           }
-if (el.id === 'settlement-upgrade-menu') {
-  syncTroopCloseBar();
-}
-        }
-
-        // — Attribute changes (style / class) —
-        if (m.type === 'attributes') {
-          const el = m.target;
-
-          if (el.id === 'settlement-upgrade-menu') {
+          if (node.id === 'settlement-upgrade-menu') { // ✅ FIXED
             syncTroopCloseBar();
           }
-          if (el.id === 'mob-detail-panel' &&
-              el.classList.contains('open')) {
+        }
+
+// — Attribute changes (style / class) —
+        if (m.type === 'attributes') {
+          const targetNode = m.target;
+
+          if (targetNode.id === 'settlement-upgrade-menu') {
+            syncTroopCloseBar();
+          }
+          if (targetNode.id === 'mob-detail-panel' &&
+              targetNode.classList.contains('open')) {
             // Small delay so refreshDetailDrawer() has finished writing HTML
             setTimeout(enhanceDetailTroops, 140);
           }
-          if (el.id === 'city-panel') {
+          if (targetNode.id === 'city-panel') {
             syncOverworldButtons();
           }
         }
@@ -1176,7 +1198,7 @@ if (el.id === 'settlement-upgrade-menu') {
                 _populateSubTabEnhanced(tab, typeName);
             }
         });
-    }, 50); // Checks fast enough that the user won't see a flicker
+    }, 100); // 50ms Checks fast enough that the user won't see a flicker
 
     console.log("[mobile_patch2.js] ✓ Lazy troop stats injector loaded");
 
@@ -1245,4 +1267,60 @@ if (el.id === 'settlement-upgrade-menu') {
     };
 
     console.log("✅ Morale & Ammo HUD Sync Patch Applied Successfully.");
+})();
+
+
+ 
+(function() {
+    'use strict';
+ 
+    // --- 1. GLOBAL QUIT FUNCTION ---
+    // The safest way to return to the main menu in a DOM-heavy vanilla JS game 
+    // without memory leaks or duplicate game-loops is to reload the browser state.
+    window.returnToMainMenu = function() {
+        if (confirm("Return to Main Menu?\n\nAny unsaved progress will be lost.")) {
+            window.location.reload(); 
+        }
+    };
+ 
+const style = document.createElement('style');
+    style.textContent = `
+        /* BULLETPROOF GUARD: Hide Save UI during active loading sequences */
+        body.is-loading-state #save-load-overlay {
+            display: none !important;
+        }
+    `;
+    document.head.appendChild(style);
+ 
+    // --- 3. HIGH-SPEED WATCHER LOOP ---
+    // (Fixed the double-setInterval memory leak)
+    setInterval(() => {
+         
+        // A. Prevent Glitches: Check Loading Screen State
+        const loadingRibbon = document.getElementById('loading');
+        const loadingScreen = document.getElementById('loading-screen-wrapper');
+        
+        const isRibbonVisible = loadingRibbon && loadingRibbon.style.display !== 'none' && loadingRibbon.style.display !== '';
+        const isScreenVisible = loadingScreen && loadingScreen.style.display !== 'none' && loadingScreen.style.display !== '';
+ 
+        if (isRibbonVisible || isScreenVisible) {
+            document.body.classList.add('is-loading-state');
+        } else {
+            document.body.classList.remove('is-loading-state');
+        }
+ 
+        // B. Prevent Glitches: Check Main Menu State
+        const mainMenu = document.getElementById('main-menu');
+        // If the menu element exists and is not explicitly hidden, we are on the menu
+        if (mainMenu && mainMenu.style.display !== 'none') {
+            document.body.classList.add('on-main-menu');
+        } else {
+            document.body.classList.remove('on-main-menu');
+        }
+ 
+ 
+ 
+    }, 1000); // Check runs safely once per second
+ 
+    console.log("[menu_navigation_patch.js] ✓ Quit to Menu / Load Screen Guard initialized.");
 })();

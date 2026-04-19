@@ -8,10 +8,9 @@
 window.showMainMenu = function () {
         if (menuActive) return;
         menuActive = true;
-        
-     
+        window.__isManualUnlocked = false; // <--- ADD THIS FLAG INITIALIZER
 
-// --- REVISED MENU MUSIC & MAXIMIZE LOGIC ---
+
 const startStandaloneMusic = () => {
     if (!menuActive) return;
 
@@ -84,6 +83,7 @@ window.addEventListener('keydown', startStandaloneMusic);
 
         // --- UI CONTAINER ---
         const uiContainer = document.createElement("div");
+		uiContainer.id = "main-menu-ui-container"; // <--- ADD THIS LINE
         uiContainer.style.display = "flex";
         uiContainer.style.flexDirection = "column";
         uiContainer.style.alignItems = "center";
@@ -168,6 +168,8 @@ function destroyMenu() {
         menuActive = false;
         window.isPaused = false; 
     }, 500);
+	// ADD THIS LINE HERE:
+window.destroyMainMenuSafe = destroyMenu;
 }
 
 const playBtn = createBtn("Sandbox Game", () => {
@@ -210,6 +212,43 @@ const customBattleBtn = createBtn("Custom Battle", () => {
         alert("Custom Battle module not loaded!");
     }
 });
+
+const loadGameBtn = createBtn("💾 Load Game", () => {
+    if (window.SaveSystem) {
+        // 1. Hide the main menu buttons so they don't overlap the load slots
+        uiContainer.style.display = "none"; 
+
+        // 2. Lower menu priority slightly to ensure the save overlay is on top
+        menu.style.zIndex = "1000"; 
+
+        // 3. Call the correct exposed function from save_system.js (v3.0)
+        if (typeof window.SaveSystem.openPanel === "function") {
+            window.SaveSystem.openPanel();
+        } else {
+            console.error("SaveSystem.openPanel is not available!");
+        }
+
+        // Note: If the user closes the load panel without loading, 
+        // you might want a way to unhide 'uiContainer' here, 
+        // but this gets the panel open!
+    }
+});
+
+loadGameBtn.style.display = "none";
+
+// --- OPTIONS BUTTON ---
+const optionsBtn = createBtn("Options", () => {
+    if (window.SettingsUI) {
+        window.SettingsUI.toggle();
+    } else {
+        alert("Settings module not loaded!");
+    }
+});
+// You can set this to "none" if you want it to appear only after clicking "Manual" 
+// like your other buttons, or leave it visible.
+optionsBtn.style.display = "block";
+
+
 // Start hidden to match your "Manual First" flow
 customBattleBtn.style.display = "none";
 
@@ -236,11 +275,20 @@ function startGameSafe() {
 
 const instrBtn = createBtn("Manual", () => {
     // 1. Unlock buttons
+	window.__isManualUnlocked = true; // <--- ADD THIS LINE HERE
+	
     playBtn.style.display = "block";
     customBattleBtn.style.display = "block"; 
     const unitsBtn = document.getElementById("units-guide-btn");
     if (unitsBtn) unitsBtn.style.display = "block";
+	optionsBtn.style.display = "block"; // <--- ADD THIS LINE HERE
 
+// Surgery 8: Only show Load button if save data exists
+    const hasSaveData = [0, 1, 2].some(i => !!localStorage.getItem("DoG_Save_" + i));
+    if (hasSaveData) {
+        loadGameBtn.style.display = "block";
+    }
+	
     // 2. Open the manual
     manualModal.style.display = "flex";
     uiContainer.style.display = "none";
@@ -278,12 +326,20 @@ document.head.appendChild(style);
 
 // --- IN-GAME MANUAL MODAL GUI ---
 const manualModal = document.createElement("div");
-manualModal.style.display = "none"; // Hidden by default
+manualModal.style.display = "none"; 
 manualModal.style.flexDirection = "column";
+// Keep your existing styling for background, border, etc., but CHANGE these:
 
-// SURGERY: Removed the hard "300px" clamp minimums that pushed the button off-screen
+// 1. Shrink the max-height so it doesn't take up the whole screen
 manualModal.style.width = "min(900px, 95vw)";
-manualModal.style.height = "min(800px, 95vh)"; 
+manualModal.style.height = "min(800px, 80vh)"; // Changed from 95vh to 80vh
+
+// 2. Force it to the bottom by swallowing all empty space at the top
+manualModal.style.marginTop = "auto"; 
+manualModal.style.marginBottom = "5vh"; // Leaves a small 5% gap at the very bottom
+manualModal.style.marginLeft = "auto";
+manualModal.style.marginRight = "auto";
+
 manualModal.style.background = "linear-gradient(to bottom, rgba(62, 39, 35, 0.95), rgba(74, 10, 10, 0.95))";
 manualModal.style.border = "3px solid #d4b886";
 manualModal.style.borderRadius = "8px";
@@ -293,7 +349,9 @@ manualModal.style.boxShadow = "0 10px 40px rgba(0,0,0,0.8)";
 manualModal.style.zIndex = "10";
 manualModal.style.color = "#f5d76e";
 manualModal.style.fontFamily = "Georgia, serif";
-manualModal.style.margin = "auto";
+
+// 2. REVISED MARGIN: "auto" on top pushes it down; "20px" on bottom leaves a small anchor gap
+manualModal.style.margin = "auto auto 20px auto";
 
 const manualContent = document.createElement("div");
 manualContent.id = "manual-content";
@@ -362,10 +420,12 @@ manualModal.appendChild(closeBtn);
         credits.style.opacity = "0.7";
         credits.style.letterSpacing = "1px";
 
-        uiContainer.appendChild(title);
-        uiContainer.appendChild(instrBtn);
-        uiContainer.appendChild(playBtn); 
-        uiContainer.appendChild(customBattleBtn); // <--- ADD THIS LINE
+uiContainer.appendChild(title);
+uiContainer.appendChild(instrBtn);
+uiContainer.appendChild(playBtn);
+uiContainer.appendChild(customBattleBtn);
+uiContainer.appendChild(loadGameBtn); // Surgery 7: Appended here
+uiContainer.appendChild(optionsBtn);
         menu.appendChild(uiContainer);
 
         menu.appendChild(manualModal); // Append Modal to menu

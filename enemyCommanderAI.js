@@ -79,9 +79,15 @@ if (allies.length > 0) {
             cmdr.state = "moving";
             cmdr.isMoving = true;
             cmdr.direction = cmdr.targetVx > 0 ? 1 : -1;
-        } else if (closestE && closestDist <= (cmdr.stats.range || 650)) {
+			
+			
+      } else if (closestE && closestDist <= (cmdr.stats.range || 650)) {
             // NEW: Sit behind troops and SHOOT if an enemy is in range!
-            if ((cmdr.cooldown || 0) <= 0 && (cmdr.ammo || 0) > 0) {
+            
+            // ---> FIX: Check if he was forced into melee stance by proximity <---
+            let inMeleeStance = cmdr.stats && cmdr.stats.currentStance === "statusmelee";
+            
+            if (!inMeleeStance && (cmdr.cooldown || 0) <= 0 && (cmdr.ammo || 0) > 0) {
                 let shootDx = closestE.x - cmdr.x;
                 let shootDy = closestE.y - cmdr.y;
                 let angle = Math.atan2(shootDy, shootDx);
@@ -107,7 +113,8 @@ if (allies.length > 0) {
     cmdr.skirmishStartTime = cmdr.skirmishStartTime || Date.now();
     let elapsed = Date.now() - cmdr.skirmishStartTime;
     let isSkirmishPhase = elapsed < 20000; // 20 seconds
-
+const ammoLeft = Math.max(cmdr.ammo ?? 0, cmdr.stats?.ammo ?? 0);
+const canSkirmish = isSkirmishPhase && ammoLeft > 0;
     // --- 1. DECISION THROTTLING ---
     cmdr.aiTick = (cmdr.aiTick || 0) + 1;
     if (cmdr.aiTick % 10 !== 0 && cmdr.target && cmdr.target.hp > 0) {
@@ -154,7 +161,7 @@ if (allies.length > 0) {
     cmdr.direction = dx > 0 ? 1 : -1;
 
     // --- 3. PHASE LOGIC ---
-    if (!isSkirmishPhase || (cmdr.ammo || 0) <= 0 || (cmdr.stats && cmdr.stats.ammo <= 0)) {
+if (!canSkirmish) {
         // ==========================================
         // PHASE 2: MELEE RUSH (No more arrows!)
         // ==========================================
@@ -229,7 +236,7 @@ if (allies.length > 0) {
 
     // --- 4. COMBAT EXECUTION ---
     // The ultimate safeguard: He is ONLY allowed to shoot if the phase is active AND he actually has ammo.
-    if (isSkirmishPhase && cmdr.state === "attacking" && cmdr.cooldown <= 0 && (cmdr.ammo || 0) > 0) {
+if (canSkirmish && cmdr.state === "attacking" && (cmdr.cooldown || 0) <= 0) {
         fireCommanderProjectile(cmdr, angle);
     }
     
@@ -261,8 +268,11 @@ function applySkirmishPhysics(cmdr) {
         cmdr.y = Math.max(margin, Math.min(worldH - margin, cmdr.y));
     }
 }
-
 function fireCommanderProjectile(cmdr, angle) {
+    // ---> NEW SAFEGUARD: Impossible to shoot an arrow if holding a lance or out of ammo <---
+    if (cmdr.stats && cmdr.stats.currentStance === "statusmelee") return;
+    if (cmdr.ammo <= 0 || (cmdr.stats && cmdr.stats.ammo <= 0)) return;
+
     let projSpeed = 12;
     battleEnvironment.projectiles.push({
         x: cmdr.x, y: cmdr.y,

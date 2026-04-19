@@ -128,12 +128,15 @@ function _track(unit, wx, wy, splashScale) {
         // First frame in water → fire splash, sized to this unit's mass
         if (inWater && !st.wasInWater) {
             _spawnSplash(wx, wy, id, splashScale || 0.4);
+  // ---> ADD THIS LINE <---
+            if (typeof BattleAudio !== 'undefined') BattleAudio.playWaterSplash(wx, wy, true);
         }
 
 // Drowned this frame (hp just became 0 while swimming)
         if (dead && st.wasSwimming && !st.drowned) {
             st.drowned = true;
             _spawnDeathEffect(wx, wy);
+if (typeof BattleAudio !== 'undefined') BattleAudio.playDrowning(wx, wy);
         }
 
         st.wasInWater  = inWater;

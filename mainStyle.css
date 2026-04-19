@@ -196,3 +196,17 @@ h1 { margin: 0; font-size: 1.4rem; color: #f5d76e; text-shadow: 1px 1px 2px #000
     border-radius: 3px !important;
 }
 
+/* ──────────────────────────────────────────
+   PC ONLY BUTTON LOGIC
+   ────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .pc-only-btn {
+        display: none !important;
+    }
+}
+/* ──────────────────────────────────────────
+   DETAIL MENU OVERRIDE (BEATS GAME LOOP)
+   ────────────────────────────────────────── */
+body.detail-drawer-open #ui {
+    display: none !important;
+}

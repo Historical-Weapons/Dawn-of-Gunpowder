@@ -75,12 +75,12 @@ const SYLLABLE_POOLS = {
 const NPC_CARRY_CAPACITY_PER_UNIT = 10; // Each person/soldier can carry 20 units of goods
 let globalNPCs = [];
 let worldMapRef = null; 
-let tSize = 8;
+let tSize = 16;
 let maxCols = 0, maxRows = 0;
 let lastBattleTime = 0;
-const MAX_GARRISON = 200;          ///////////DEBUG LOW NUMBER
+const MAX_GARRISON = 100;          ///////////DEBUG LOW NUMBER
 const BATTLE_COOLDOWN = 2000;  
-const MAX_GLOBAL_NPCS = 500; // NEW: Hard cap to save CPU
+const MAX_GLOBAL_NPCS = 200; // NEW: Hard cap to save CPU
 // ============================================================================
 // CORE HELPER FUNCTIONS
 // ============================================================================
@@ -423,7 +423,7 @@ else if (role === "Commerce") {
     city.gold -= carriedGold;
 }
 else if (role === "Patrol") {
-    count = Math.min(Math.floor(Math.random() * 20) + 10, city.militaryPop);
+    count = Math.min(Math.floor(Math.random() * 20) + 50, city.militaryPop);
     if (count < 10) return;
     speed = 0.5;
     targetX = city.x + (Math.random() - 0.5) * 800;
@@ -436,7 +436,7 @@ else if (role === "Patrol") {
 } 
     else if (role === "Military") {
  
-    count = Math.min(Math.floor(Math.random() * 180) + 20, city.militaryPop);
+    count = Math.min(Math.floor(Math.random() * 180) + 30, city.militaryPop);
     if (count < 20) return;     //military number count
     speed = 0.5;
         target = getEnemyCity(city, citiesArr);
@@ -741,19 +741,38 @@ function updateNPCs(cities) {
                 else if (typeof enterBattlefield === 'function') enterBattlefield(npc, player, currentTile);
             }
 
-            // Player Tracking for AI
-            if (!npc.isSieging && npc.role !== "Civilian" && npc.role !== "Commerce") {
-                let disableAICombatEnemy = (npc.faction === "Bandits") || (player.enemies && player.enemies.includes(npc.faction));
-                if (disableAICombatEnemy && npc.role === "Patrol" && (player.troops || 0) >= npc.count) disableAICombatEnemy = false;
-                
-                if (disableAICombatEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 10000) {
-                    let playerScore = -distSqToPlayer + 90000000;
-                    if (playerScore > bestTargetScore) {
-                        bestTargetScore = playerScore;
-                        bestTarget = { x: player.x, y: player.y, role: "Player", disableAICombat: true };
-                    }
-                }
-            }
+			// Player Tracking for AI
+			if (!npc.isSieging && npc.role !== "Civilian" && npc.role !== "Commerce") {
+				
+				// 1. SURGERY: Use the master diplomacy check instead of the hardcoded array check
+				let isPlayerEnemy = isHostile(npc.faction, "Player's Kingdom");
+
+				// 2. SURGERY: Match NPC-to-NPC radar range (160000 = 400px radius) instead of the blind 100px range
+				if (isPlayerEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 160000) {
+					
+					// 3. SURGERY: Assess if the NPC outnumbers the player
+					let playerTroops = player.troops || 1; 
+					let isOutnumbered = npc.count < playerTroops * 0.6; // Matches your NPC vs NPC combat logic
+
+					if (!isOutnumbered) {
+						// The NPC feels confident enough to pursue you!
+						let playerScore = -distSqToPlayer + 9000000; 
+						
+						if (playerScore > bestTargetScore) {
+							bestTargetScore = playerScore;
+							// 'disableAICombat: true' tells the later flight-or-fight logic to commit to the chase
+							bestTarget = { x: player.x, y: player.y, role: "Player", disableAICombat: true }; 
+						}
+					} else {
+						// The NPC is outnumbered! Mark the player as a "Scary Enemy" so they actively run away
+						if (distSqToPlayer < minScaryDistSq) {
+							minScaryDistSq = distSqToPlayer; 
+							// Feed dummy object with x/y so the flee logic later in the script works
+							closestScaryEnemy = { x: player.x, y: player.y }; 
+						}
+					}
+				}
+			}
         }
 
         // --- 1. COMBAT SEQUENCE ---

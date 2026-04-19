@@ -826,15 +826,12 @@ function isMountedOrBeast(unit) {
 }
 
 function canSelectUnitNow(unit) {
+    // 1. Core safety check: Only select living units
     if (!unit || unit.hp <= 0) return false;
-    if (unit.isCommander) return true;
-
-    if (typeof inSiegeBattle !== "undefined" && inSiegeBattle) {
-        // 🚫 Block all mounted/beast types until gate opens
-        if (isMountedOrBeast(unit) && !isSiegeGateBreached()) {
-            return false;
-        }
-    }
+    
+    // 2. SURGERY: Removed the isMountedOrBeast / gateBreached blockers.
+    // All living units are now universally selectable in all battle modes.
+    
     return true;
 }
 
@@ -952,39 +949,28 @@ function executeSiegeAssaultAI(units) {
     if (typeof AudioManager !== 'undefined') AudioManager.playSound('charge');
 }
 // ============================================================================
-// RTS MOUSE CONTROLS (SELECTION & MOVEMENT) - FIXED VERSION
+// RTS MOUSE CONTROLS (SELECTION & MOVEMENT) - TOTAL WAR STYLE
 // ============================================================================
 
 let isBoxSelecting = false;
 let selectionBoxStart = { x: 0, y: 0 };
-let selectionBoxCurrent = { x: 0, y: 0 };
+let selectionBoxScreenStart = { x: 0, y: 0 };
 let lastClickTime = 0;
-let lastClickedUnitType = null;
 
 // --- BULLETPROOF COORDINATE MAPPER ---
 function getBattleMousePos(e) {
-    // 1. HARD TARGET THE CANVAS
     const canvas = document.querySelector('canvas'); 
     if (!canvas) return { x: 0, y: 0 };
-
     const rect = canvas.getBoundingClientRect();
-
-    // 2. Base screen-to-canvas ratio (Raw Mouse Pixels)
     let rawX = (e.clientX - rect.left) * (canvas.width / rect.width);
     let rawY = (e.clientY - rect.top) * (canvas.height / rect.height);
-
-    // 3. REVERSE-ENGINEER THE INDEX.HTML CAMERA MATH
-    // In index.html you do: center canvas -> scale by zoom -> move to -player position
-    // Here, we do the exact opposite to turn a mouse click back into world coordinates:
     
-    // Fallback variables just in case the globals haven't loaded
     let currentZoom = typeof zoom !== 'undefined' ? zoom : 1;
     let camX = typeof player !== 'undefined' ? player.x : 0;
     let camY = typeof player !== 'undefined' ? player.y : 0;
 
     let worldX = ((rawX - (canvas.width / 2)) / currentZoom) + camX;
     let worldY = ((rawY - (canvas.height / 2)) / currentZoom) + camY;
-
     return { x: worldX, y: worldY };
 }
 
@@ -992,28 +978,67 @@ function isCommanderAlive() {
     return battleEnvironment.units.some(u => u.isCommander && u.hp > 0);
 }
 
-// --- MOUSE DOWN (Start Box Select) ---
+// --- DESKTOP VISUAL BOX OVERLAY ---
+function getDesktopBoxEl() {
+    let el = document.getElementById('desktop-selbox');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'desktop-selbox';
+        el.style.position = 'fixed';
+        el.style.pointerEvents = 'none';
+        el.style.zIndex = 9590;
+        el.style.display = 'none';
+        document.body.appendChild(el);
+    }
+    return el;
+}
+
+// --- MOUSE DOWN (Start Box) ---
 document.addEventListener('mousedown', (e) => {
     if (!inBattleMode || !battleEnvironment) return;
-    // CRITICAL: Ignore clicks if they clicked a UI element instead of the game
     if (e.target.tagName !== 'CANVAS') return; 
     if (!isCommanderAlive()) return;
 
     if (e.button === 0) { 
         isBoxSelecting = true;
         selectionBoxStart = getBattleMousePos(e);
-        selectionBoxCurrent = { x: selectionBoxStart.x, y: selectionBoxStart.y };
+        selectionBoxScreenStart = { x: e.clientX, y: e.clientY };
     }
 });
 
-// --- MOUSE MOVE (Update Box Select) ---
+// --- MOUSE MOVE (Draw Box) ---
 document.addEventListener('mousemove', (e) => {
     if (!inBattleMode || !isBoxSelecting) return;
-    selectionBoxCurrent = getBattleMousePos(e);
+    
+    const dragDist = Math.hypot(e.clientX - selectionBoxScreenStart.x, e.clientY - selectionBoxScreenStart.y);
+    if (dragDist > 10) {
+        const boxEl = getDesktopBoxEl();
+        const hasSelection = battleEnvironment.units.some(u => u.side === "player" && !u.isCommander && u.hp > 0 && u.selected);
+        
+        // Contextual Box Colors
+        if (hasSelection) {
+            boxEl.style.border = '2px dashed rgba(66, 135, 245, 0.82)'; // Blue = Move
+            boxEl.style.background = 'rgba(66, 135, 245, 0.15)';
+            boxEl.style.boxShadow = 'inset 0 0 10px rgba(66, 135, 245, 0.2)';
+        } else {
+            boxEl.style.border = '2px dashed rgba(245,215,110,0.82)'; // Gold = Select
+            boxEl.style.background = 'rgba(245,215,110,0.06)';
+            boxEl.style.boxShadow = 'inset 0 0 10px rgba(245,215,110,0.08)';
+        }
+
+        boxEl.style.display = 'block';
+        boxEl.style.left = Math.min(e.clientX, selectionBoxScreenStart.x) + 'px';
+        boxEl.style.top = Math.min(e.clientY, selectionBoxScreenStart.y) + 'px';
+        boxEl.style.width = Math.abs(e.clientX - selectionBoxScreenStart.x) + 'px';
+        boxEl.style.height = Math.abs(e.clientY - selectionBoxScreenStart.y) + 'px';
+    }
 });
 
-// --- MOUSE UP (Process Box Select & Clicks) ---
+// --- MOUSE UP (Process Actions) ---
 document.addEventListener('mouseup', (e) => {
+    const boxEl = getDesktopBoxEl();
+    boxEl.style.display = 'none';
+
     if (!inBattleMode || !battleEnvironment || !isBoxSelecting) {
         isBoxSelecting = false;
         return;
@@ -1029,104 +1054,120 @@ document.addEventListener('mouseup', (e) => {
     const dy = pos.y - selectionBoxStart.y;
     const dragDistance = Math.hypot(dx, dy);
 
-    // BOX SELECT
-    if (dragDistance > 10) { // Increased deadzone slightly to prevent accidental box clicks
+    // DRAG BOX LOGIC
+    if (dragDistance > 10) { 
         const minX = Math.min(selectionBoxStart.x, pos.x);
         const maxX = Math.max(selectionBoxStart.x, pos.x);
         const minY = Math.min(selectionBoxStart.y, pos.y);
         const maxY = Math.max(selectionBoxStart.y, pos.y);
 
-        playerUnits.forEach(u => {
-u.selected = (u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY && canSelectUnitNow(u));
-        });
+        const selectedUnits = playerUnits.filter(u => u.selected);
+
+        if (selectedUnits.length > 0) {
+            // ACTION: FORMATION MOVE TO RECTANGLE
+            executeBoxFormationMove(selectedUnits, minX, maxX, minY, maxY);
+        } else {
+            // ACTION: SELECT UNITS IN RECTANGLE
+            playerUnits.forEach(u => {
+                u.selected = (u.x >= minX && u.x <= maxX && u.y >= minY && u.y <= maxY && canSelectUnitNow(u));
+            });
+        }
         
         currentSelectionGroup = null; 
         if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
     } 
-    // SINGLE / DOUBLE CLICK
+    // SINGLE CLICK LOGIC (Double click to multi-select is permanently removed)
     else {
         let clickedUnit = null;
         let closestDist = Infinity;
         
-playerUnits.forEach(u => {
-    if (!canSelectUnitNow(u)) return;
-
-    let hitbox = (u.stats.radius || 10) + 20;
-    let d = Math.hypot(u.x - pos.x, u.y - pos.y);
-    if (d < hitbox && d < closestDist) {
-        closestDist = d;
-        clickedUnit = u;
-    }
-});
-        const now = Date.now();
-        const isDoubleClick = (now - lastClickTime < 350) && clickedUnit && (lastClickedUnitType === clickedUnit.unitType);
+        playerUnits.forEach(u => {
+            if (!canSelectUnitNow(u)) return;
+            let hitbox = (u.stats.radius || 10) + 20;
+            let d = Math.hypot(u.x - pos.x, u.y - pos.y);
+            if (d < hitbox && d < closestDist) {
+                closestDist = d;
+                clickedUnit = u;
+            }
+        });
 
         if (clickedUnit) {
-            if (isDoubleClick) {
-                playerUnits.forEach(u => u.selected = (u.unitType === clickedUnit.unitType));
-            } else {
-                playerUnits.forEach(u => u.selected = false);
-                clickedUnit.selected = true;
-            }
-            lastClickedUnitType = clickedUnit.unitType;
+            playerUnits.forEach(u => u.selected = false);
+            clickedUnit.selected = true;
             if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click');
         } else {
-            // Clicked empty dirt -> Deselect all
             playerUnits.forEach(u => u.selected = false);
         }
         
         currentSelectionGroup = null;
-        lastClickTime = now;
     }
 });
 
-// --- RIGHT CLICK (Move Command) ---
-document.addEventListener('contextmenu', (e) => {
-    if (!inBattleMode || !battleEnvironment) return;
-    if (e.target.tagName === 'CANVAS') e.preventDefault(); // Only prevent default if clicking the game
+// --- RECTANGLE FORMATION MATHEMATICS ---
+function executeBoxFormationMove(units, minX, maxX, minY, maxY) {
+    if (!units || units.length === 0) return;
+    
+    if (typeof stopLazyGeneral === 'function') stopLazyGeneral(); 
 
-    if (!isCommanderAlive()) return;
+    const boxWidth = Math.max(30, maxX - minX);
+    const boxHeight = Math.max(30, maxY - minY);
+    const centerX = minX + boxWidth / 2;
+    const centerY = minY + boxHeight / 2;
 
-    stopLazyGeneral(); // Disable lazy spam on manual move
-
-    const playerUnits = battleEnvironment.units.filter(u => u.selected && u.hp > 0);
-    if (playerUnits.length === 0) return;
-
-    const targetPos = getBattleMousePos(e);
-
-    // Skip formation geometry if only 1 unit is moving
-    if (playerUnits.length === 1) {
-        let u = playerUnits[0];
-        u.hasOrders = true;
-        u.orderType = "move_to_point";
-        u.orderTargetPoint = getSafeMapCoordinates(targetPos.x, targetPos.y);
-        u.formationTimer = 200;
-        if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
-        return;
-    }
-
-    // Calculate formation shape centered around the DESTINATION point
-    calculateFormationOffsets(playerUnits, currentFormationStyle, targetPos);
-
-    playerUnits.forEach(u => {
-        u.hasOrders = true;
-        u.orderType = "move_to_point";
-        // --- BRAIN PROCESSING DELAY ---
-        u.reactionDelay = Math.floor(Math.random() * 161) + 3;
- 
-        let offX = u.formationOffsetX || 0;
-        let offY = u.formationOffsetY || 0;
-
-        let rawDestX = targetPos.x + offX;
-        let rawDestY = targetPos.y + offY;
-        u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
-        
-        u.formationTimer = 200; 
+    // Tactical sort so melee stands up front
+    let shields = [], infantry = [], ranged = [], gunpowder = [], cavalry = [];
+    units.forEach(u => {
+        let r = getTacticalRole(u);
+        if (r === "SHIELD") shields.push(u);
+        else if (r === "INFANTRY") infantry.push(u);
+        else if (r === "RANGED") ranged.push(u);
+        else if (r === "GUNPOWDER") gunpowder.push(u);
+        else cavalry.push(u);
     });
+    const sortedUnits = [...shields, ...infantry, ...ranged, ...gunpowder, ...cavalry];
+    const N = sortedUnits.length;
 
-    if (typeof AudioManager !== 'undefined') AudioManager.playSound('ui_click'); 
-});
+    // Determine how many fit per row based on box width
+    const minSpacing = 35; 
+    let cols = Math.max(1, Math.floor(boxWidth / minSpacing));
+    cols = Math.min(cols, N); // Can't have more columns than units
+    let rows = Math.ceil(N / cols);
 
+    // Distribute perfectly into the drawn space
+    const actualSpacingX = Math.min(60, boxWidth / cols);
+    const actualSpacingY = Math.min(60, boxHeight / rows);
+
+    const startXOffset = -((cols - 1) * actualSpacingX) / 2;
+    const startYOffset = -((rows - 1) * actualSpacingY) / 2;
+
+    sortedUnits.forEach((u, i) => {
+        let r = Math.floor(i / cols);
+        let c = i % cols;
+        
+        // Auto-center the final incomplete row
+        let unitsInThisRow = Math.min(N - (r * cols), cols);
+        let rowStartX = -((unitsInThisRow - 1) * actualSpacingX) / 2;
+
+        let offX = rowStartX + (c * actualSpacingX);
+        let offY = startYOffset + (r * actualSpacingY);
+
+        u.hasOrders = true;
+        u.orderType = "move_to_point";
+        u.reactionDelay = Math.floor(Math.random() * 15) + 2;
+        u.formationTimer = 200;
+
+        let rawDestX = centerX + offX;
+        let rawDestY = centerY + offY;
+
+// Use the safety wrapper if it exists, otherwise raw coords
+        if (typeof getSafeMapCoordinates === 'function') {
+            u.orderTargetPoint = getSafeMapCoordinates(rawDestX, rawDestY);
+        } else {
+            u.orderTargetPoint = { x: rawDestX, y: rawDestY };
+        }
+		
+    });
+}
 // ============================================================================
 // UNIVERSAL MAP BOUNDARY CLAMP ENGINE (THE RED LINE)
 // ============================================================================

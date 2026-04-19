@@ -209,7 +209,7 @@ let player = {
     gold: 500,
     food: 100,
     maxFood: 2000,
-    troops: 150, //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>dpnt forget
+    troops: 20, //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>dpnt forget
 
     // --- PROGRESSION ---
     experience: 0,
@@ -225,8 +225,16 @@ let player = {
     // --- DIPLOMACY ---
     faction: "Player's Kingdom",
     enemies: ["Bandits"],
- roster: ["Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", "General", "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", "Heavy Lancer", "Elite Lancer", "Rocket", "Keshig", "Hand Cannoneer", "Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", "Slinger", "Glaiveman", "Javelinier", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Archer", "Archer", "Archer", "Archer", "Archer", "Archer", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Bomb", "Repeater Crossbowman", "Repeater Crossbowman", "Repeater Crossbowman", "Poison Crossbowman", "Slinger"].map(unitName => ({ type: unitName, exp: 1 })),
-//roster: ["Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance", "Heavy Firelance"].map(unitName => ({ type: unitName, exp: 1 })),
+ //roster: ["Militia", "Crossbowman", "Heavy Crossbowman", "Bomb", "Spearman", "Firelance", "Heavy Firelance", "Archer", "Horse Archer", "Heavy Horse Archer", "General", "Shielded Infantry", "Light Two Handed", "Heavy Two Handed", "Lancer", "Heavy Lancer", "Elite Lancer", "Rocket", "Keshig", "Hand Cannoneer", "Camel Cannon", "Poison Crossbowman", "War Elephant", "Repeater Crossbowman", "Slinger", "Glaiveman", "Javelinier", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Militia", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Spearman", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Shielded Infantry", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Heavy Crossbowman", "Archer", "Archer", "Archer", "Archer", "Archer", "Archer", "Firelance", "Firelance", "Firelance", "Firelance", "Heavy Firelance", "Heavy Firelance", "Bomb", "Repeater Crossbowman", "Repeater Crossbowman", "Repeater Crossbowman", "Poison Crossbowman", "Slinger"].map(unitName => ({ type: unitName, exp: 1 })),
+ 
+ roster: [
+     
+    "Militia", "Militia", "Militia", "Militia", "Militia",
+    "Militia", "Militia", "Militia", "Militia", "Militia",
+    "Militia", "Militia", "Militia", "Militia", "Militia",
+    "Militia", "Militia", "Militia", "Militia", "Militia"
+].map(unitName => ({ type: unitName, exp: 1 })),
+
     // --- SYSTEM ---
     isInitialized: false
 };
@@ -270,10 +278,19 @@ window.onwheel = (e) => {
     if (window.isZoomAnimating) { 
         window.isZoomAnimating = false; 
     }      
-    zoom = Math.max(0.05, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    zoom = Math.max(0.7, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
 };
 
 function update() {
+	// --- PRECISION SURGERY: HIDE UI DURING BATTLE/SIEGE ---
+let uiElement = document.getElementById("ui");
+if (uiElement) {
+    // inBattleMode typically covers both field battles and sieges. 
+    // If true, hide it. If false, show it.
+    uiElement.style.display = inBattleMode ? "none" : "block";
+}
+// ------------------------------------------------------
+
     const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
     let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
     let disableAICombatDefeated = pCmdr ? (pCmdr.hp <= 0) : (player.hp <= 0);
@@ -424,11 +441,17 @@ else
 
         const oldX = player.x, oldY = player.y;
         
-        // Apply starvation penalty AND terrain speed multiplier
-        let starvPenalty = player.food > 0 ? 1.0 : 0.6;
-// SURGERY: Overworld speed reduced by 50%
-player.speed = player.baseSpeed * starvPenalty * currentTile.speed * 0.60;
-        
+// 1. Calculate penalties
+let starvPenalty = player.food > 0 ? 1.0 : 0.6;
+
+// 2. Troop Weight Penalty: Each troop reduces speed slightly.
+// Example: -0.2% speed per soldier, with a minimum speed floor of 40%.
+let troopPenalty = Math.max(0.4, 1.0 - (player.troops * 0.002)); 
+
+// 3. Apply all multipliers to calculate final Overworld speed
+// SURGERY: Base speed modified by hunger, army size, terrain, and a 0.60 global overworld modifier
+player.speed = player.baseSpeed * starvPenalty * troopPenalty * currentTile.speed * 0.60;
+
         // Now pass the heavily modified speed into the engine
         calculateMovement(player.speed / 4, worldMap, TILE_SIZE, COLS, ROWS, false);
         // ---------------------------------------------------------------
@@ -511,23 +534,35 @@ AudioManager.playRandomMP3List([
         player.lastEncounteredFaction = null;
     }
 }
-// --- END AUDIO SYSTEM ---
+// --- SURGERY: HIDE TOP LEFT UI IN BATTLE/SIEGE ---
+let locEl = document.getElementById('loc-text');
+let topGuiContainer = locEl ? locEl.parentElement : null;
 
-//what is displayed in the topleft gui is here
-document.getElementById('loc-text').innerText =
-    `${Math.round(player.x)}, ${Math.round(player.y)}`;
+// Hide the entire panel if in battle or actively sieging
+if (topGuiContainer) {
+    if (inBattleMode || player.isSieging) {
+        topGuiContainer.style.display = 'none';
+    } else {
+        topGuiContainer.style.display = 'block';
+    }
+}
 
-document.getElementById('terrain-text').innerText =
-    (typeof inCityMode !== 'undefined' && inCityMode) ? "City" : currentTile.name;
+// Proceed with updating text variables only if they exist
+if (locEl) locEl.innerText = `${Math.round(player.x)}, ${Math.round(player.y)}`;
+
+let terrainEl = document.getElementById('terrain-text');
+if (terrainEl) terrainEl.innerText = (typeof inCityMode !== 'undefined' && inCityMode) ? "City" : currentTile.name;
 
 const speedEl = document.getElementById('speed-text');
-
-if (inBattleMode || (typeof inCityMode !== 'undefined' && inCityMode)) {
-    speedEl.style.display = 'none';
-} else {
-    speedEl.style.display = 'block';
-    speedEl.innerText = currentTile.speed + "x";
+if (speedEl) {
+    if (inBattleMode || (typeof inCityMode !== 'undefined' && inCityMode)) {
+        speedEl.style.display = 'none';
+    } else {
+        speedEl.style.display = 'block';
+        speedEl.innerText = currentTile.speed + "x";
+    }
 }
+// --------------------------------------------------
 
 document.getElementById('zoom-text').innerText =
     zoom.toFixed(2) + "x";
@@ -658,38 +693,10 @@ if (canDrawForts) {
         // 6. Draw Battle UI overlays
         const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
 
-        ctx.font = "bold 18px Georgia";
-        ctx.textAlign = "center";
-        ctx.shadowColor = "black";
-        ctx.shadowBlur = 4;
+ 
 
-if (aliveEnemies > 0) {
-            ctx.font = "10px Arial";
-            ctx.fillStyle = "#ffffff";
-            ctx.textAlign = "center";
-            
-            // First line
-            ctx.fillText(
-                `Enemies Remaining: ${aliveEnemies}`,
-                BATTLE_WORLD_WIDTH / 2,
-                canvas.height + 450
-            );
-            
-            // Second line (shifted down by 15 pixels so they don't overlap)
-            ctx.fillText(
-                "Press P to exit when the battle is over",
-                BATTLE_WORLD_WIDTH / 2,
-                canvas.height + 465 
-            );
-        } else {
-            ctx.fillStyle = "#ffca28";
-            let drawX = (player && player.hp > 0) ? player.x : canvas.width / 2;
-            let drawY = (player && player.hp > 0) ? player.y - 60 : canvas.height - 200;
 
-            ctx.fillText("BATTLE OVER - Press [p] to Exit", drawX, drawY);
-        }
 
-        ctx.shadowBlur = 0;
 
 } else if (inCityMode) {
 
@@ -827,6 +834,80 @@ if (aliveEnemies > 0) {
 
     updateAndDrawPlayerSystems(ctx, player, zoom, WORLD_WIDTH, WORLD_HEIGHT, typeof globalNPCs !== 'undefined' ? globalNPCs : []);
 	updateCitySystems();
+	
+drawMasterStateOverlay(ctx, canvas.width, canvas.height);
+drawVictoryStateOverlay(ctx, canvas.width, canvas.height);
+}
+// A dedicated function that ONLY runs at the very end of the frame
+function drawMasterStateOverlay(ctx, canvasWidth, canvasHeight) {
+    if (typeof inBattleMode === 'undefined' || !inBattleMode) return;
+    if (typeof battleEnvironment === 'undefined' || !battleEnvironment.units) return;
+
+    let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
+    if (!pCmdr) return;
+
+    if (pCmdr.hp <= 0) {
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        // --- CENTER DEATH TEXT ---
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        
+        let mainFontSize = Math.min(64, canvasWidth * 0.1); 
+        ctx.fillStyle = "#ff3333"; 
+        ctx.font = `bold ${mainFontSize}px Georgia, serif`;
+        ctx.shadowBlur = 10;
+        ctx.fillText("YOU HAVE FALLEN", canvasWidth / 2, canvasHeight / 2 - 20);
+
+        let subFontSize = Math.min(24, canvasWidth * 0.04);
+        ctx.fillStyle = "#ffca28";
+        ctx.font = `italic ${subFontSize}px Georgia, serif`;
+        ctx.shadowBlur = 5;
+        ctx.fillText("Press [P] or ↩️ to end Battle.", canvasWidth / 2, canvasHeight / 2 + 40);
+
+        ctx.restore();
+    }
+}
+
+function drawVictoryStateOverlay(ctx, canvasWidth, canvasHeight) {
+    // 1. Guards: Ensure we are in battle and the environment exists
+    if (typeof inBattleMode === 'undefined' || !inBattleMode) return;
+    if (typeof battleEnvironment === 'undefined' || !battleEnvironment.units) return;
+
+    // 2. Count alive enemies (excluding the player's side)
+    const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
+
+    // 3. Trigger overlay only when no enemies remain
+    if (aliveEnemies < 1) {
+        ctx.save();
+        
+        // Full-screen semi-transparent wash
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+        // --- CENTER VICTORY TEXT ---
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        
+        // Main Title: Gold/Amber for Victory
+        let mainFontSize = Math.min(64, canvasWidth * 0.1); 
+        ctx.fillStyle = "#ffca28"; 
+        ctx.font = `bold ${mainFontSize}px Georgia, serif`;
+        ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+        ctx.shadowBlur = 10;
+        ctx.fillText("VICTORY", canvasWidth / 2, canvasHeight / 2 - 20);
+
+        // Subtext: Exit instructions following your [P] key logic
+        let subFontSize = Math.min(24, canvasWidth * 0.04);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `italic ${subFontSize}px Georgia, serif`;
+        ctx.shadowBlur = 5;
+        ctx.fillText("Press [P] or ↩️ to return to the Overworld.", canvasWidth / 2, canvasHeight / 2 + 40);
+
+        ctx.restore();
+    }
 }
 
 
