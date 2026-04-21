@@ -1455,10 +1455,21 @@ _handleCombatExecution: function(unit, dx, dy, dist, battleEnv, player) {
 
             } else {
                 unit.cooldown = getReloadTime(unit);
-                let stateStr = "melee_attack";
-                if (typeof ROLES !== 'undefined' && unit.stats.role === ROLES.CAVALRY) stateStr += " charging";
-                if (typeof isFlanked !== 'undefined' && isFlanked(unit, unit.target)) stateStr += " flanked";
+             let stateStr = "melee_attack";
 
+                // SURGERY: Timer-based Charge Bonus (Prevents infinite charging)
+                if (typeof ROLES !== 'undefined' ) {
+                    if (typeof unit.engagedTicks === 'undefined') unit.engagedTicks = 0;
+                    unit.engagedTicks++;
+                    
+                    // Charge bonus lasts for the first ~3 seconds of melee contact (roughly 180 frames)
+                    if (unit.engagedTicks < 180) {
+                        stateStr += " charging";
+                    }
+                }
+                
+                if (typeof isFlanked !== 'undefined' && isFlanked(unit, unit.target)) stateStr += " flanked";
+                
                 let dmg = typeof calculateDamageReceived !== 'undefined' ? calculateDamageReceived(unit.stats, unit.target.stats, stateStr) : 10;
                 unit.target.hp -= dmg;
 

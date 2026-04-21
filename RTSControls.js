@@ -1150,16 +1150,47 @@
   }
 
   // ── Header bar ─────────────────────────────────────────────────────────────
-  function _buildHeader() {
+function _buildHeader() {
     const bar = _mkEl('div', 'mc3-hbar');
     const row = _mkEl('div', 'mc3-hrow');
 
-    // P — always visible
+    // 1) P — always visible
     row.appendChild(_mkBtn('↩️', 'mc3-pbtn', '', () => Cmd.exit()));
 
-// Group buttons 1-5  (battle-only, visibility managed by Loop)
-    const gIcons = ['🪓', '🏹', '🐎', '🔥', '👥'];
-    for (let i = 1; i <= 5; i++) {
+    // 2) Help
+    row.appendChild(_mkBtn(
+      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">❓</span>',
+      'mc3-help-btn', 'mc3-toggle-btn',
+      () => Help.toggle()
+    ));
+
+  
+
+    // 5) Commands
+    row.appendChild(_mkBtn(
+      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">🥁️</span>',
+      'mc3-cmd-toggle', 'mc3-toggle-btn',
+      () => _toggleTray('cmd')
+    ));
+
+    // 6) Formations
+    row.appendChild(_mkBtn(
+      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">🚩️</span>',
+      'mc3-form-toggle', 'mc3-toggle-btn',
+      () => _toggleTray('form')
+    ));
+
+    // 7) Group 5
+    row.appendChild(_mkBtn(
+      `<span style="font-size: clamp(1.1rem, 3.8vw, 1.5rem); line-height: 1;">👥</span>`,
+      'mc3-g5',
+      'mc3-gbtn',
+      () => Cmd.selectGroup(5)
+    ));
+
+    // 8–11) Groups 1–4
+    const gIcons = ['🪓', '🏹', '🐎', '🔥'];
+    for (let i = 1; i <= 4; i++) {
       row.appendChild(_mkBtn(
         `<span style="font-size: clamp(1.1rem, 3.8vw, 1.5rem); line-height: 1;">${gIcons[i - 1]}</span>`,
         `mc3-g${i}`,
@@ -1168,35 +1199,13 @@
       ));
     }
 
-    // Formations tray toggle (battle-only)
+    // 12) Stack-mode toggle button
     row.appendChild(_mkBtn(
-      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">🚩️</span>',
-      'mc3-form-toggle', 'mc3-toggle-btn',
-      () => _toggleTray('form')
-    ));
-
-    // Commands tray toggle (battle-only)
-    row.appendChild(_mkBtn(
-      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">🥁️</span>', 
-      'mc3-cmd-toggle', 'mc3-toggle-btn',
-      () => _toggleTray('cmd')
-    ));
-
-    // Stack-mode toggle button
-    row.appendChild(_mkBtn(
-      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">🪪</span>', 
+      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">🪪</span>',
       'mc3-stack-btn', 'mc3-toggle-btn',
       () => UnitCards.cycleStackMode()
     ));
 
-    // Help button — ALWAYS visible
-    row.appendChild(_mkBtn(
-      '<span class="ticon" style="font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1; margin: 0;">❓</span>', 
-      'mc3-help-btn', 'mc3-toggle-btn', 
-      () => Help.toggle()
-    ));
-	
-	
     bar.appendChild(row);
 
     // ── CMD tray ─────────────────────────────────────────────────────────
@@ -1205,7 +1214,7 @@
       { icon: '⚔️', lbl: 'CHARGE',  fn: () => Cmd.charge()  },
       { icon: '⛔',  lbl: 'STOP',    fn: () => Cmd.stop()    },
       { icon: '🏳️', lbl: 'RETREAT', fn: () => Cmd.retreat() },
-      { icon: '👫', lbl: 'FOLLOW',  fn: () => Cmd.follow()  },
+      { icon: '👫',  lbl: 'FOLLOW',  fn: () => Cmd.follow()  },
     ].forEach(c => {
       ct.appendChild(_mkBtn(
         `<span class="ticon">${c.icon}</span><span class="tlbl">${c.lbl}</span>`,
@@ -1217,11 +1226,11 @@
     // ── Formation tray ───────────────────────────────────────────────────
     const ft = _mkEl('div', 'mc3-form-tray', 'mc3-tray');
     [
-      { icon: '🛡️', lbl: 'SHIELD', style: 'tight'    },
-      { icon: '═',  lbl: 'STANDARD',    style: 'standard' },
-      { icon: '➖', lbl: 'LINE',   style: 'line'     },
-      { icon: '⭕', lbl: 'CIRCLE', style: 'circle'   },
-      { icon: '🔲', lbl: 'BOX',    style: 'square'   },
+      { icon: '🛡️', lbl: 'SHIELD',   style: 'tight' },
+      { icon: '═',   lbl: 'STANDARD', style: 'standard' },
+      { icon: '➖',   lbl: 'LINE',     style: 'line' },
+      { icon: '⭕',   lbl: 'CIRCLE',   style: 'circle' },
+      { icon: '🔲',   lbl: 'BOX',      style: 'square' },
     ].forEach(f => {
       ft.appendChild(_mkBtn(
         `<span class="ticon">${f.icon}</span><span class="tlbl">${f.lbl}</span>`,
@@ -1231,8 +1240,7 @@
     bar.appendChild(ft);
 
     return bar;
-  }
-
+}
 // ── HUD wrapper (card row) ──────────────────────────────────
   function _buildHUDWrapper() {
     const wrap = _mkEl('div', 'mc3-hud-wrap');
@@ -1334,15 +1342,18 @@
       {
         heading: 'Header Buttons',
         rows: [
-          ['P',           'Exit the battle or leave a city. If the battle is still running a notice appears; if you are on the overworld nothing happens.'],
-          ['1  ⚔️',       'Select all infantry and shield bearers.'],
-          ['2  🏹',       'Select all ranged units (archers, crossbows, etc.).'],
-          ['3  🐎',       'Select all cavalry and mounted units.'],
+          ['↩️',           'Exit the battle when possible, or leave a city.'],
+          ['1  ⚔️',       'Select all infantry.'],
+          ['2  🏹',       'Select all ranged non-gunpowder units.'],
+          ['3  🐎',       'Select all cavalry and beasts.'],
           ['4  🔥',       'Select all gunpowder and artillery units.'],
-          ['5',     'Select every controllable unit on the battlefield.'],
-          ['FORM.',       'Open the Formations tray. Requires 2 or more units selected.'],
-          ['CMD',      'Open the Commands tray.'],
-          ['🪪EACH/NAME/TYPE', 'Cycle through the three unit-card display modes. See Unit Cards section below.'],
+          ['5  👥',     'Select every controllable unit.'],
+		  ['🏯 / ⚓', 'AI mode for Siege and Naval battles.'],
+ 		  ['🤖 / 🛑', 'AI toggle for Land battles.'],
+       
+          ['🚩',       'Open the Formations tray. Requires 2 or more units selected.'],
+          ['🥁',      'Open the Commands tray.'],
+          ['🪪', 'Cycle through the three unit-card display modes. See Unit Cards section below.'],
           ['?',           'Toggle this help screen. The game is NOT paused.'],
         ],
       },

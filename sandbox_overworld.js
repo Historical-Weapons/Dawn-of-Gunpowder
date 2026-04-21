@@ -158,11 +158,11 @@ if (typeof initDiplomacy === 'function') {initDiplomacy(FACTIONS);}
 	
 
     // --- WORLD SCALE ---
-const WORLD_WIDTH = 8000; //15K 
-const WORLD_HEIGHT = 6000; //11K
+const WORLD_WIDTH = 4000; //optimized for mobile
+const WORLD_HEIGHT = 3000;  
 	// Padding as ratio of world size (e.g., 5% from edges)
-const PADDING_X = WORLD_WIDTH * 0.05;   // 5% of width
-const PADDING_Y = WORLD_HEIGHT * 0.05;  // 5% of height
+const PADDING_X = WORLD_WIDTH * 0.03;   // 5% of widthpadding
+const PADDING_Y = WORLD_HEIGHT * 0.03;  // 5% of height
 const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent)
                || window.innerWidth < 900;
 const TILE_SIZE = 16;
@@ -219,7 +219,7 @@ const PALETTE = {
     };
 
     const worldMap = [];
-    const TARGET_CITIES = 60; // How many cities to scatter across the map
+    const TARGET_CITIES = 40; // How many cities to scatter across the map
     const cities = [];
   
 function populateCities() {
@@ -249,7 +249,7 @@ function populateCities() {
                 // Check distance to other cities (Prevent clumping)
                 let tooClose = false;
                 for(let c of cities) {
-                    if(Math.hypot(c.x - cx, c.y - cy) < 400) { // Min 400px between cities
+                    if(Math.hypot(c.x - cx, c.y - cy) < 250) { // Min 400px between cities
                         tooClose = true; 
                         break; 
                     }

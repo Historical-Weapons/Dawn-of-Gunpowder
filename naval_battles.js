@@ -822,9 +822,16 @@ function drawNavalBackground(ctx) {
         }
     }
 
-    // 2. The magic: Just paste the pre-rendered image every frame!
-    // This turns thousands of calculations into a single, instant draw call.
-    ctx.drawImage(navalBackgroundCache, 0, 0);
+// 2. The magic: Extract the viewport from the cache!
+    if (typeof drawOptimizedBattleCanvas === 'function' && typeof player !== 'undefined') {
+        let cw = window.innerWidth;
+        let ch = window.innerHeight;
+        let cZoom = typeof zoom !== 'undefined' ? zoom : 1;
+        // Naval cache is drawn strictly at 0,0 (no visual padding offset)
+        drawOptimizedBattleCanvas(ctx, navalBackgroundCache, player.x, player.y, cw, ch, cZoom, 0, 0);
+    } else {
+        ctx.drawImage(navalBackgroundCache, 0, 0);
+    }
 }
 
 // ============================================================================

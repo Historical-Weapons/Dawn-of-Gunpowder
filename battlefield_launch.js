@@ -101,7 +101,6 @@ else if (worldTerrainType.includes("Plains")) {
     generateBattleOrganicFeatures(grid, 6, 2, 10);   // Occasional rocks
  
 }
-
 else if (worldTerrainType.includes("River")) {
     groundColor = "#6b7a4a";
     treeColorPool = ["#4e6b3e", "#3a522d", "#2d5a27"];
@@ -110,58 +109,49 @@ else if (worldTerrainType.includes("River")) {
     generateBattleOrganicFeatures(grid, 3, 25, 15);
     generateBattleOrganicFeatures(grid, 7, 20, 10);
 
-    // --- NEW: Calculate the forbidden margins ---
-    const marginPx = 200;
-    const marginTiles = Math.ceil(marginPx / BATTLE_TILE_SIZE); 
-    
-    // 1. SPREAD OUT THE TRANSITION: Increased from 45 to 90 to make the curve longer
-    const curveBuffer = 90; 
+    const riverSeed = Math.random() * 1000;
 
-    for (let y = 0; y < BATTLE_ROWS; y++) {
-        // DRASTIC MEANDER
-        let riverCenterX = 
-            (BATTLE_COLS / 2) + 
-            Math.sin(y * 0.03) * 45 +  
-            Math.sin(y * 0.01) * 25;  
-
-        // --- SURGERY: SOFTER, LONGER EXIT CURVES ---
-        let topLimit = marginTiles + curveBuffer;
-        let bottomLimit = BATTLE_ROWS - marginTiles - curveBuffer;
+    for (let x = 0; x < BATTLE_COLS; x++) {
         
-        let intensity = 0; // Track curve intensity to adjust width later
+        // 1. THE PATH: 99% STRAIGHT
+        // Reduced to a tiny 0.5 - 1.0 pixel waver. 
+        // This is essentially a straight line that just "breathes" slightly.
+        let pathNoise = Math.sin(x * 0.01 + riverSeed) * 0.8;
+        let riverCenterY = (BATTLE_ROWS / 2) + pathNoise;
 
-if (y < topLimit) {
-    intensity = (topLimit - y) / curveBuffer; 
-    // REVISE THIS LINE: Change 0.6 to 0.25
-    riverCenterX -= Math.pow(intensity, 1.8) * (BATTLE_COLS * 0.25); 
-} else if (y > bottomLimit) {
-    intensity = (y - bottomLimit) / curveBuffer;
-    // REVISE THIS LINE: Change 0.6 to 0.25
-    riverCenterX += Math.pow(intensity, 1.8) * (BATTLE_COLS * 0.25);
-}
+        // 2. THE WIDTH: STABLE
+        // Minimal variance so the river doesn't "pulse" aggressively.
+        let riverWidth = 24 + (Math.sin(x * 0.02 + riverSeed) * 1.5); 
 
-        // Base width
-        let riverWidth = 42 + Math.sin(y * 0.06) * 4; 
+        for (let y = 0; y < BATTLE_ROWS; y++) {
+            let distY = Math.abs(y - riverCenterY);
 
-        // 3. THICKNESS CORRECTION: As the river turns horizontal, we artificially 
-        // inflate the X-axis width. This keeps the visual perpendicular thickness higher 
-        // than your screenshot, but still slightly less thick than the main vertical body.
-        riverWidth += (intensity * 35); 
-
-        for (let x = 0; x < BATTLE_COLS; x++) {
-            let distX = Math.abs(x - riverCenterX);
-
-            // Slightly more aggressive edge noise for the wider banks
-            let edgeNoise = Math.sin(y * 0.12 + x * 0.18) * 1.5;
-            let d = distX - riverWidth + edgeNoise;
+            // 3. THE BANKS: SMOOTH BUT ORGANIC
+            // SURGERY: Lowered multipliers from 3.0+ down to 0.5 and 1.2.
+            // This creates "rolling" banks rather than "jagged" ones.
+            let edgeNoise = 0;
+            edgeNoise += Math.sin(x * 0.1 + y * 0.1 + riverSeed) * 0.6;   // Low jitter
+            edgeNoise += Math.cos(x * 0.02 + y * 0.02) * 1.4;            // Soft rolling bank
+            
+            let d = distY - riverWidth + edgeNoise;
 
             if (d < 0) {
-                grid[x][y] = 4; // Main river body
-            } else if (d < 3) {
-                grid[x][y] = 7; // Muddy shoreline
+                grid[x][y] = 4; // Water
+            } else if (d < 1.5) {
+                // 4. THE SHORE: TIGHTER MUD LINE
+                // Reduced the mud thickness so it doesn't look like a swamp.
+                grid[x][y] = 7; 
             } else if (d < 6) {
-                // Increased probability of scattered mud on the banks
-                if (Math.random() > 0.5) grid[x][y] = 7; 
+                // 5. THE BLEED: LESS "SPECKLED"
+                // Increased the threshold and reduced the search area 
+                // so you get occasional smooth patches of mud rather than "static noise."
+                let bleedNoise = Math.sin(x * 0.3) * Math.cos(y * 0.3);
+                let distanceFactor = d / 6;
+                let threshold = 0.6 + (distanceFactor * 0.5) + (bleedNoise * 0.1);
+
+                if (Math.random() > threshold) {
+                    grid[x][y] = 7; 
+                }
             }
         }
     }
@@ -670,7 +660,7 @@ function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     // expected size so the "Abyss Fix" doesn't kick in unnecessarily.
     if (window.inRiverBattle) {
         BATTLE_WORLD_WIDTH = 2400; 
-        BATTLE_WORLD_HEIGHT = 3600; 
+        BATTLE_WORLD_HEIGHT = 1200; 
     }
     window.inRiverBattle = (currentWorldMapTile && currentWorldMapTile.name === "River");
 // --- NAVAL BATTLE HOOK ---
@@ -738,8 +728,7 @@ function enterBattlefield(enemyNPC, playerObj, currentWorldMapTile) {
     if (typeof triggerEpicZoom === 'function') {
         triggerEpicZoom(0.6, 1.5, 3500);
     }
-    // --- ADD THIS LINE TO WAKE UP THE ENEMY GENERAL ---
-    if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.start();
+     
     return; // Stop the regular land/siege battle generator from running!
 }
 // --- END NAVAL BATTLE HOOK ---
@@ -750,14 +739,14 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
         let rows = (typeof CITY_ROWS !== 'undefined') ? CITY_ROWS : 200;
         BATTLE_WORLD_WIDTH = cols * BATTLE_TILE_SIZE; 
         BATTLE_WORLD_HEIGHT = rows * BATTLE_TILE_SIZE;
-    } else {
+} else {
         BATTLE_WORLD_WIDTH = 2400; 
-        BATTLE_WORLD_HEIGHT = 3600; // <--- SURGERY: TRIPLED HEIGHT (3 * 1600)
+        // SURGERY: Preserve River at 1200, set standard Land to 1800 (1/2 size)
+        BATTLE_WORLD_HEIGHT = window.inRiverBattle ? 1200 : 1800; 
 		
 		mapCols = BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE;
-        mapRows = BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE; // This forces the map to draw the extra height
+        mapRows = BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE; 
     }
-
     // 2. Recalculate grid columns and rows based on chosen dimensions
     BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / BATTLE_TILE_SIZE);
     BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / BATTLE_TILE_SIZE);
@@ -863,12 +852,13 @@ let playerTroopCount = playerObj.troops || 0;
         AudioManager.playMP3('music/battlemusic.mp3', false);
     }
     AudioManager.playSound("charge"); // Warcry SFX on spawn
-	// Trigger the Epic Zoom: Starts at 0.3x (high up), lands at 1.5x (tactical view) over 1.5 seconds
+// Trigger the Epic Zoom: Starts at 0.3x (high up), lands at 1.5x (tactical view) over 1.5 seconds
     if (typeof triggerEpicZoom === 'function') {
         triggerEpicZoom(0.6, 1.5, 3500);
     }
-	
- 
+    
+    // --- NEW: START ENEMY TACTICAL AI FOR CAMPAIGN BATTLES ---
+    if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.start();
 }
  
  
@@ -922,8 +912,8 @@ function deployArmy(faction, totalTroops, side, uniqueType) {
         currentBattleData.initialCounts = { player: 0, enemy: 0 };
     }
     
-    // 2. Setup spawn coordinates
-    let spawnY = side === "player" ? BATTLE_WORLD_HEIGHT - 30 : 600;
+   // 2. Setup spawn coordinates (SURGERY: Scaled Enemy Spawning)
+    let spawnY = side === "player" ? BATTLE_WORLD_HEIGHT - 30 : Math.min(600, BATTLE_WORLD_HEIGHT * 0.15);
     let spawnXCenter = BATTLE_WORLD_WIDTH / 2;
     let factionColor = (typeof FACTIONS !== 'undefined' && FACTIONS[faction]) ? FACTIONS[faction].color : "#ffffff";
     

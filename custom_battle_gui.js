@@ -939,11 +939,12 @@ window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
         else if (selectedMap === "Ocean" || selectedMap === "Coastal") {
             window.launchCustomNavalBattle(playerSetup, enemySetup, selectedMap, pNavalShipSize, eNavalShipSize);
 		return; }
-       else {
+else {
             // --- EXISTING FIELD BATTLE LOGIC ---
             // FIX: Set dimensions BEFORE generation so the canvas and arrays are built correctly!
             BATTLE_WORLD_WIDTH = 2400;
-            BATTLE_WORLD_HEIGHT = 3600;
+            // SURGERY: Assign 1200 to River, 1800 to Land
+            BATTLE_WORLD_HEIGHT = (selectedMap === "River") ? 1200 : 1800; 
             BATTLE_COLS = Math.floor(BATTLE_WORLD_WIDTH / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
             BATTLE_ROWS = Math.floor(BATTLE_WORLD_HEIGHT / (typeof BATTLE_TILE_SIZE !== 'undefined' ? BATTLE_TILE_SIZE : 8));
 
@@ -1050,13 +1051,17 @@ window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
         }
 
         window.isPaused = false;
+		// --- NEW: START ENEMY TACTICAL AI FOR CUSTOM BATTLES ---
+        if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.start();
+		
         startCustomBattleMonitor();
         console.log("Custom Battle Launched: Units Spawned =", battleEnvironment.units.length);
     }
 
-    // --- CUSTOM SPAWNER FOR THIS UI (REWRITTEN: MIRRORED COMMANDER & FALLBACK ARMOR) ---
+// --- CUSTOM SPAWNER FOR THIS UI (REWRITTEN: MIRRORED COMMANDER & FALLBACK ARMOR) ---
     function customSpawnLoop(rosterArray, side, faction, color) {
-let startY = side === 'player' ? BATTLE_WORLD_HEIGHT - 40 : 600;
+        // SURGERY: Scaled Enemy Spawning
+        let startY = side === 'player' ? BATTLE_WORLD_HEIGHT - 40 : Math.min(600, BATTLE_WORLD_HEIGHT * 0.15);
         let centerX = BATTLE_WORLD_WIDTH / 2;
         
         // FIX: Prevent River Drowning by shifting armies to opposite banks
@@ -1217,10 +1222,13 @@ function handleCustomBattleExit() {
         clearInterval(window.cbRegicideMonitor);
         window.cbRegicideMonitor = null;
     }
-    if (window.cbCustomBattleMonitor) {
+if (window.cbCustomBattleMonitor) {
         clearInterval(window.cbCustomBattleMonitor);
         window.cbCustomBattleMonitor = null;
     }
+    
+    // --- NEW: STOP ENEMY TACTICAL AI WHEN EXITING CUSTOM BATTLE ---
+    if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.stop();
 
     let pAlive = 0, pHP = 0;
     let eAlive = 0, eHP = 0;

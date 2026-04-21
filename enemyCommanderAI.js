@@ -268,11 +268,24 @@ function applySkirmishPhysics(cmdr) {
         cmdr.y = Math.max(margin, Math.min(worldH - margin, cmdr.y));
     }
 }
-function fireCommanderProjectile(cmdr, angle) {
-    // ---> NEW SAFEGUARD: Impossible to shoot an arrow if holding a lance or out of ammo <---
-    if (cmdr.stats && cmdr.stats.currentStance === "statusmelee") return;
-    if (cmdr.ammo <= 0 || (cmdr.stats && cmdr.stats.ammo <= 0)) return;
 
+function fireCommanderProjectile(cmdr, angle) {
+    // 1. STRICT AMMO CHECK: Must have ammo on BOTH wrapper and stats object
+    const currentAmmo = Math.max(cmdr.ammo || 0, (cmdr.stats && cmdr.stats.ammo) || 0);
+    if (currentAmmo <= 0) return;
+
+    // 2. STRICT STANCE CHECK: Must explicitly be in a ranged stance
+    // If stats is missing, or stance is missing, do NOT shoot.
+    if (!cmdr.stats) return;
+    const stance = String(cmdr.stats.currentStance || "").toLowerCase();
+    
+    // Explicitly reject any variation of melee or lance
+    if (stance.includes("melee") || stance.includes("lance")) return;
+    
+    // Explicitly require a ranged stance (adjust if your game uses different strings)
+    if (stance !== "statusranged" && stance !== "status_ranged") return;
+
+    // 3. FIRE PROJECTILE
     let projSpeed = 12;
     battleEnvironment.projectiles.push({
         x: cmdr.x, y: cmdr.y,
@@ -287,6 +300,10 @@ function fireCommanderProjectile(cmdr, angle) {
     });
 
     if (typeof AudioManager !== 'undefined') AudioManager.playSound('arrow');
-    cmdr.ammo--;
+    
+    // Decrease ammo on both tracking locations to be safe
+    cmdr.ammo = Math.max(0, (cmdr.ammo || 0) - 1);
+    if (cmdr.stats) cmdr.stats.ammo = Math.max(0, (cmdr.stats.ammo || 0) - 1);
+    
     cmdr.cooldown = 150;
 }

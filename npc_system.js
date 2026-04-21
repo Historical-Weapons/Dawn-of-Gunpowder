@@ -80,7 +80,7 @@ let maxCols = 0, maxRows = 0;
 let lastBattleTime = 0;
 const MAX_GARRISON = 100;          ///////////DEBUG LOW NUMBER
 const BATTLE_COOLDOWN = 2000;  
-const MAX_GLOBAL_NPCS = 200; // NEW: Hard cap to save CPU
+const MAX_GLOBAL_NPCS = 100; // NEW: Hard cap to save CPU
 // ============================================================================
 // CORE HELPER FUNCTIONS
 // ============================================================================
@@ -329,7 +329,7 @@ function updateCityEconomies(cities) {
         city.gold += Math.floor(taxRevenue - militaryUpkeep);
 
         // Caps
-        let maxFood = 1000;
+        let maxFood = 500;
         let maxGold = city.pop ;
 
         if (city.food > maxFood) city.food = maxFood;
@@ -506,8 +506,8 @@ function spawnBandit(padX, padY) {
 // ... rest of object
         originCity: null, targetCity: null,
         x: coords.x, y: coords.y,
-        targetX: coords.x + (Math.random() - 0.5) * 1000,
-        targetY: coords.y + (Math.random() - 0.5) * 1000,
+        targetX: coords.x + (Math.random() - 0.5) * 400, //instead of letting them wander up to 1000 pixels away, limit them to 400 pixels.
+        targetY: coords.y + (Math.random() - 0.5) * 400,
         speed: 0.4, 
         anim: Math.floor(Math.random() * 100), 
         isMoving: true, 
@@ -640,7 +640,7 @@ function updateNPCs(cities) {
             }
 
             // --- 2. RADAR CHECK ---
-            if (distSq > 160000) continue; // Skip if > 400px away
+            if (distSq > 100000) continue; // Skip if > 300px away
             
             // Cache the hostility check (Massive CPU saver)
             let areEnemies = typeof isHostile === 'function' && isHostile(npc.faction, other.faction);
@@ -748,7 +748,7 @@ function updateNPCs(cities) {
 				let isPlayerEnemy = isHostile(npc.faction, "Player's Kingdom");
 
 				// 2. SURGERY: Match NPC-to-NPC radar range (160000 = 400px radius) instead of the blind 100px range
-				if (isPlayerEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 160000) {
+				if (isPlayerEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 100000) {
 					
 					// 3. SURGERY: Assess if the NPC outnumbers the player
 					let playerTroops = player.troops || 1; 
@@ -756,7 +756,7 @@ function updateNPCs(cities) {
 
 					if (!isOutnumbered) {
 						// The NPC feels confident enough to pursue you!
-						let playerScore = -distSqToPlayer + 9000000; 
+						let playerScore = -distSqToPlayer + 4000000; 
 						
 						if (playerScore > bestTargetScore) {
 							bestTargetScore = playerScore;
@@ -977,8 +977,8 @@ tc.militaryPop = Math.min(MAX_GARRISON, Math.max(10, Math.floor(npc.count * 0.5)
                         }
                     }
                     else if ((npc.role === "Bandit" || npc.role === "Patrol") && npc.faction !== tc.faction) {
-                        npc.targetX = npc.x + (Math.random() - 0.5) * 600;
-                        npc.targetY = npc.y + (Math.random() - 0.5) * 600;
+                        npc.targetX = npc.x + (Math.random() - 0.5) * 300;
+                        npc.targetY = npc.y + (Math.random() - 0.5) * 300;
                         npc.waitTimer = Math.floor(Math.random() * 60) + 30;
                         npc.targetCity = null; 
                     }
@@ -1036,8 +1036,8 @@ if (tc.militaryPop < targetGarrison) {
                     if (npc.targetCity) {
                         npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y;
                     } else {
-                        npc.targetX = npc.x + (Math.random() - 0.5) * 600;
-                        npc.targetY = npc.y + (Math.random() - 0.5) * 600;
+                        npc.targetX = npc.x + (Math.random() - 0.5) * 300;
+                        npc.targetY = npc.y + (Math.random() - 0.5) * 300;
                     }
                     npc.waitTimer = Math.floor(Math.random() * 60) + 30;
                 }

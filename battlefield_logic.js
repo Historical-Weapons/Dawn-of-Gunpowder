@@ -1184,7 +1184,7 @@ function updateRiverPhysics() {
 
 let drownThreshold = Math.max(150, 1500 - ((unit.stats.weightTier || 1) * 250) - (unit.stats.mass || 10));
  
-                drownThreshold *= 3;
+                drownThreshold *= 10;
  
             unit.drownTimer++;
 
