@@ -6,6 +6,7 @@
 // ============================================================================
 
 (function () {
+	
     "use strict";
 
     // ── WORLD MAP SCALE CONSTANTS ─────────────────────────────────────────────
@@ -28,7 +29,12 @@
     let autoCloseTimeout  = null;
     let countdownInterval = null;
     let secondsLeft       = 10;
-
+// --- ZOOM & PAN STATE ---
+    let mapCam = { x: 0, y: 0, zoom: 1 };
+    let isPanning = false;
+    let lastMousePos = { x: 0, y: 0 };
+    let lastPinchDist = 0;
+	
     // ── RIVER COORDINATE ARRAYS (Identical to sandbox_overworld.js) ───────────
     // Hardcoded percentages [x, y] in world-space [0..1]
 
@@ -1252,31 +1258,34 @@
     }
 
     // ── OPEN / CLOSE & TIMER LOGIC ────────────────────────────────────────────
-    function openMap() {
+  function openMap() {
         buildOverlay();
         if (!mainCtx) return;
+
+        // SURGERY: Initialize controls once to prevent event-listener stacking
+        if (!window._mapControlsAdded) {
+            addMapControls();
+            window._mapControlsAdded = true;
+        }
 
         window.isMobileDrawerOpen = true;
         toggleJoysticks(false);
         overlayEl.style.display = 'flex';
 
-        // Reset and start auto-close timer
+        // Timer Logic
         secondsLeft = 20;
         const timerEl = document.getElementById('world-map-timer');
         if (timerEl) timerEl.innerText = `Auto-closing in ${secondsLeft}s`;
-
         clearInterval(countdownInterval);
         clearTimeout(autoCloseTimeout);
-
         countdownInterval = setInterval(() => {
             secondsLeft--;
             if (timerEl) timerEl.innerText = `Auto-closing in ${secondsLeft}s`;
             if (secondsLeft <= 0) clearInterval(countdownInterval);
         }, 1000);
-
         autoCloseTimeout = setTimeout(() => { closeMap(); }, 20000);
 
-        // Render map (generates terrain on first open, then uses cache)
+        // Render Logic
         if (!cachedBgCanvas) {
             mainCtx.fillStyle = '#2b4a5f';
             mainCtx.fillRect(0, 0, DISPLAY_W, DISPLAY_H);
@@ -1287,13 +1296,12 @@
             mainCtx.fillText('Loading World Map...', DISPLAY_W / 2, DISPLAY_H / 2);
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 renderTerrainBg();
-                buildMap();
+                redrawMap(); // Use the new interactive renderer
             }));
         } else {
-            requestAnimationFrame(buildMap);
+            requestAnimationFrame(redrawMap); // Use the new interactive renderer
         }
     }
-
     function closeMap() {
         clearInterval(countdownInterval);
         clearTimeout(autoCloseTimeout);
@@ -1349,4 +1357,138 @@
 
     window.WorldMap = { open: openMap, close: closeMap };
 
+
+// ============================================================================
+// UNIFIED INTERACTIVE CAMERA & RENDERING
+// ============================================================================
+    
+    function redrawMap() {
+        if (!mainCtx || !cachedBgCanvas) return;
+
+        mainCtx.save();
+        mainCtx.clearRect(0, 0, DISPLAY_W, DISPLAY_H);
+
+        // Apply Transformation Matrix
+        mainCtx.translate(DISPLAY_W / 2, DISPLAY_H / 2);
+        mainCtx.scale(mapCam.zoom, mapCam.zoom);
+        mainCtx.translate(-DISPLAY_W / 2 + mapCam.x, -DISPLAY_H / 2 + mapCam.y);
+
+        // 1. Draw Terrain
+        mainCtx.drawImage(cachedBgCanvas, 0, 0);
+
+        // 2. Draw Cities with Proportional Scaling & LOD
+        if (window.cities_sandbox) {
+            const WW = window.WORLD_WIDTH_sandbox || 4000;
+            const WH = window.WORLD_HEIGHT_sandbox || 3000;
+
+            window.cities_sandbox.forEach(city => {
+                const cx = (city.x / WW) * DISPLAY_W;
+                const cy = (city.y / WH) * DISPLAY_H;
+
+                mainCtx.beginPath();
+                mainCtx.arc(cx, cy, 3 / mapCam.zoom, 0, Math.PI * 2);
+                mainCtx.fillStyle = city.color || city.factionColor || "#f5d76e";
+                mainCtx.fill();
+                mainCtx.strokeStyle = "#1a1a1a";
+                mainCtx.lineWidth = 1.5 / mapCam.zoom;
+                mainCtx.stroke();
+
+                if (mapCam.zoom > 1.4) {
+                    const fontSize = Math.max(6, 14 / mapCam.zoom);
+                    mainCtx.font = `bold ${fontSize}px Georgia`;
+                    mainCtx.textAlign = "center";
+                    
+                    mainCtx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+                    mainCtx.lineWidth = 3 / mapCam.zoom;
+                    mainCtx.strokeText(city.name, cx, cy - (8 / mapCam.zoom));
+                    
+                    mainCtx.fillStyle = "#ffffff";
+                    mainCtx.shadowBlur = 0; 
+                    mainCtx.fillText(city.name, cx, cy - (8 / mapCam.zoom));
+                }
+            });
+        }
+
+        // 3. Draw Player Position
+        // Pass the context, map display width, and map display height
+        drawPlayer(mainCtx, DISPLAY_W, DISPLAY_H);
+
+        mainCtx.restore();
+    }
+	
+    function addMapControls() {
+        // --- DESKTOP MOUSE SUPPORT ---
+        overlayEl.addEventListener('wheel', e => {
+            e.preventDefault();
+            const zoomSensitivity = 0.0015;
+            mapCam.zoom -= e.deltaY * zoomSensitivity;
+            mapCam.zoom = Math.min(Math.max(mapCam.zoom, 1), 5); // Clamp zoom between 1x and 5x
+            redrawMap();
+        }, { passive: false });
+
+        overlayEl.addEventListener('mousedown', e => {
+            isPanning = true;
+            lastMousePos = { x: e.clientX, y: e.clientY };
+        });
+
+        window.addEventListener('mousemove', e => {
+            if (!isPanning || overlayEl.style.display === 'none') return;
+            const dx = (e.clientX - lastMousePos.x) / mapCam.zoom;
+            const dy = (e.clientY - lastMousePos.y) / mapCam.zoom;
+            mapCam.x += dx;
+            mapCam.y += dy;
+            lastMousePos = { x: e.clientX, y: e.clientY };
+            redrawMap();
+        });
+
+        window.addEventListener('mouseup', () => isPanning = false);
+        window.addEventListener('mouseleave', () => isPanning = false);
+
+        // --- MOBILE TOUCH SUPPORT (PAN & PINCH-TO-ZOOM) ---
+        let initialPinchDistance = null;
+        let initialZoom = 1;
+
+        overlayEl.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                isPanning = true;
+                lastMousePos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            } else if (e.touches.length === 2) {
+                isPanning = false; // Stop panning if a second finger touches down
+                initialPinchDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                initialZoom = mapCam.zoom;
+            }
+        }, { passive: false });
+
+        overlayEl.addEventListener('touchmove', e => {
+            e.preventDefault(); // Stop mobile browser from pulling to refresh
+            
+            if (isPanning && e.touches.length === 1) {
+                // 1-Finger Pan
+                const dx = (e.touches[0].clientX - lastMousePos.x) / mapCam.zoom;
+                const dy = (e.touches[0].clientY - lastMousePos.y) / mapCam.zoom;
+                mapCam.x += dx;
+                mapCam.y += dy;
+                lastMousePos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                redrawMap();
+            } else if (e.touches.length === 2 && initialPinchDistance) {
+                // 2-Finger Zoom
+                const currentDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const scale = currentDistance / initialPinchDistance;
+                mapCam.zoom = Math.min(Math.max(initialZoom * scale, 1), 5); // Clamp zoom
+                redrawMap();
+            }
+        }, { passive: false });
+        
+        overlayEl.addEventListener('touchend', () => { 
+            isPanning = false;
+            initialPinchDistance = null;
+        });
+    }
+	
 })();

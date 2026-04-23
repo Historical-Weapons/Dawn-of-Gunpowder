@@ -422,7 +422,7 @@
         transition: width 0.35s ease;
       }
       .mc3-bfill.hp  { background: #4caf50; }
-      .mc3-bfill.mor { background: #7c4dff; }
+ 
 
       /* ── Floating drag-ghost card (follows finger during reorder) ──────── */
       #mc3-drag-card {
@@ -1633,7 +1633,7 @@ _tick() {
   // ==========================================================================
   const UnitCards = {
     // 0 = individual  1 = stack-by-name  2 = stack-by-category
-    _stackMode:   0,
+    _stackMode:   1,
     _stackLabels: ['🪪', '🪪', '🪪'],
 
 	_cards:     {},    // uid → DOM element (individual mode only)
@@ -1715,19 +1715,28 @@ _tick() {
         (u.unitType    || '') + ' ' +
         (u.stats?.name || '')
       ).toLowerCase();
-      if (s.match(/(cav|horse|lancer|mount|eleph|keshig)/)) 
-		  return '🐎';
+      if (s.match(/(cav|horse|lancer|mount|keshig)/)) 
+		  return '🏇';
+	  if (s.match(/eleph/)) 
+			return '🐘';
       if (s.match(/(bomb|artill|trebuch)/))                  
 		  return '💣';
-      if (s.match(/(ship|naval|galley)/))                           return '⛵';
-      if (s.match(/(archer|bow|crossbow)/))                         return '🏹';
-      if (s.match(/(hand|camel|rocket|firelance)/))           
-		  return '💥';
-      if (s.match(/(pike|spear)/))                                  return '⚔️';
+      if (s.match(/(ship|naval|galley)/))                           
+		  return '⛵';
+      if (s.match(/(archer|bow|crossbow)/))                         
+		  return '🏹';
+      if (s.match(/(hand|rocket|firelance)/))           
+		  return '🔥';
+	  if (s.match(/camel/)) 
+			return '🐫';
+
+	  if (s.match(/(pike|spear|glaive)/))                                  return '🔱';
       if (s.match(/(slinger|javelinier)/))                              return '🤾‍♀️';
-      if (s.match(/(shield)/))                                      return '🛡️';
-      if (s.match(/(militia|peasant)/))                             return '🪓';
-      if (s.match(/(general|command)/))                             return '⭐';
+      if (s.match(/(shield)/))                                  
+		  return '🛡️';
+      if (s.match(/(militia|peasant)/))                             
+		  return '🪓';
+      if (s.match(/(general|command|player)/))                             return '⭐';
       return '⚔️';
     },
 
@@ -1797,14 +1806,11 @@ _lastUpdate: 0, // <--- ADD THIS PROPERTY to Uni
         return true;
       });
 
-      const snap = this._stackMode + '|' + JSON.stringify(
-        units.map(u => ({
-          id:  u.id,
-          hp:  u.hp,
-          sel: u.selected,
-          mor: u.stats?.morale,
-        }))
-      );
+let snap = this._stackMode + '|';
+      for (let i = 0; i < units.length; i++) {
+        const u = units[i];
+snap += u.id + ',' + u.hp + ',' + u.selected + '|';
+      }
       if (snap === this._snap) return;
       this._snap = snap;
 
@@ -1970,21 +1976,12 @@ if (count > 1) {
       card.className   = 'mc3-card';
       card.dataset.uid = uid;
 
-	// Portrait: Image or Emoji + HP badge
-      const port  = D.createElement('div');
+const port  = D.createElement('div');
       port.className  = 'mc3-portrait';
       
-      if (this._stackMode === 2) {
-        // Mode 3 (Category): Emoji Simplification
-        const emoji = D.createTextNode(this._emoji(unit));
-        port.appendChild(emoji);
-      } else {
-        // Mode 1 & 2 (EACH / NAME): Dynamic Visual Portrait
-        const img = D.createElement('img');
-        img.className = 'mc3-portrait-img';
-        img.src = this._getCachedPortrait(unit);
-        port.appendChild(img);
-      }
+      // Always use emojis to save memory and avoid LOD conflicts
+      const emoji = D.createTextNode(this._emoji(unit));
+      port.appendChild(emoji);
 
       const badge = D.createElement('span');
       badge.className = 'mc3-badge';
@@ -2010,15 +2007,7 @@ if (count > 1) {
       hpFill.dataset.bar = 'hp';
       hpTrack.appendChild(hpFill);
       card.appendChild(hpTrack);
-
-      // Morale bar
-      const morTrack = D.createElement('div');
-      morTrack.className = 'mc3-bar';
-      const morFill  = D.createElement('div');
-      morFill.className  = 'mc3-bfill mor';
-      morFill.dataset.bar = 'mor';
-      morTrack.appendChild(morFill);
-      card.appendChild(morTrack);
+ 
 // ── Touch event handlers ─────────────────────────────────────────
       const me = this;
       let _lpTimer   = null;
@@ -2034,12 +2023,13 @@ if (count > 1) {
         _startY    = t.clientY;
         _startTime = Date.now();
         _didMove   = false;
-
-_lpTimer = setTimeout(() => {
+		_lpTimer = setTimeout(() => {
           _lpTimer = null;
           if (!_didMove) {
             if (me._stackMode === 0) {
               me.openPopup(grpUnits);
+            } else if (me._stackMode === 1) {
+              me.openPopup(grpUnits[0]); // Passes a single unit, bypassing the group average
             }
           }
         }, 420);
@@ -2070,7 +2060,7 @@ _lpTimer = setTimeout(() => {
         const wrap = card.closest('.mc3-stack-wrap');
         const dragUid = wrap ? wrap.dataset.uid : uid;
 if (me._drag.active && me._drag.uid === dragUid) {
-          if (_didMove) {
+if (_didMove) {
             // They dragged, so drop it
             me._endDrag(t.clientX, t.clientY);
           } else {
@@ -2078,6 +2068,8 @@ if (me._drag.active && me._drag.uid === dragUid) {
             me._cancelDrag();
             if (me._stackMode === 0) {
               me.openPopup(grpUnits);
+            } else if (me._stackMode === 1) {
+              me.openPopup(grpUnits[0]); // Passes a single unit, bypassing the group average
             }
           }
           return;
@@ -2120,13 +2112,8 @@ if (me._drag.active && me._drag.uid === dragUid) {
       
       // Calculate averages using percentages to normalize varying max values
       const avgHpPct = all.reduce((s, u) => s + ((u.hp ?? 0) / (u.stats?.health ?? 100)), 0) / all.length;
-// Calculate Morale percentage 
-      const avgMorPct = all.reduce((s, u) => {
-          const m = u.stats?.morale ?? 0;
-          const maxM = u.stats?.maxMorale ?? 100; 
-          return s + (m / Math.max(maxM, 1));
-      }, 0) / all.length;
-
+	  
+ 
 const isGen = (u) => u.isCommander || ['commander', 'general', 'player', 'captain'].includes((String(u.unitType) || '').toLowerCase());
       const hasLivingGen = all.some(isGen);
       
@@ -2143,10 +2130,7 @@ const isGen = (u) => u.isCommander || ['commander', 'general', 'player', 'captai
         hpFill.style.background = hpPct > 60 ? '#4caf50' : hpPct > 30 ? '#ff9800' : '#f44336';
       }
 
-const morFill = card.querySelector('[data-bar="mor"]');
-      if (morFill) {
-        morFill.style.width = this._clamp(avgMorPct * 100, 0, 100) + '%';
-      }
+
 
       const badge = card.querySelector('.mc3-badge');
       if (badge) badge.textContent = Math.ceil(totalHp) + 'hp';

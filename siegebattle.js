@@ -484,9 +484,24 @@ function deploySiegeDefenders(faction, totalTroops, side, npcRoster) {
     wallTiles.sort(() => Math.random() - 0.5);
     groundTiles.sort(() => Math.random() - 0.5);
 
-// ---> SURGERY: Use Global Scale <---
-    let visualScale = window.GLOBAL_BATTLE_SCALE || 1; 
-    let unitsToSpawn = Math.round(totalTroops / visualScale);
+// Replace the dead window.CURRENT_MOBILE_RATIO check with:
+let visualScale = window.GLOBAL_BATTLE_SCALE || 1;
+
+// SURGERY: Apply native-device scale floor (mirrors optimization-siege.js IS_NATIVE pattern)
+const _isNativeDevice = (
+    typeof window.Capacitor !== 'undefined' ||
+    /\bwv\b/.test(navigator.userAgent) ||
+    window.AndroidInterface != null ||
+    (/Android/.test(navigator.userAgent) &&
+     !/Chrome\/\d/.test(navigator.userAgent) &&
+     !/Firefox\/\d/.test(navigator.userAgent))
+);
+if (_isNativeDevice) {
+    visualScale = Math.max(visualScale, 2.5); // caps native at ~80 visible units
+    window.CURRENT_MOBILE_RATIO = visualScale; // write it so it's accessible to other systems
+}
+
+let unitsToSpawn = Math.round(totalTroops / Math.max(1, visualScale));
 
 // Inside function deploySiegeDefenders(faction, totalTroops, side, npcRoster)
 for (let i = 0; i < unitsToSpawn; i++) {
@@ -630,7 +645,7 @@ siegeEquipment = { rams: [], trebuchets: [], mantlets: [], ladders: [], ballista
     // (Spawn Rams, Trebuchets, Mantlets, and Ladders as usual...)
     if (southGate) {
         siegeEquipment.rams.push({
-            x: midX, y: campY - 350, targetGate: southGate, hp: 1000, speed: 0.5, isBreaking: false,
+            x: midX, y: campY - 350, targetGate: southGate, hp: 1000, speed: 0.65, isBreaking: false,
             shieldHP: 220, shieldMaxHP: 220, shieldW: 54, shieldH: 28, shieldOffsetX: 0, shieldOffsetY: -52
         });
     }
@@ -709,7 +724,7 @@ ballistaXPositions.forEach(baseX => {
 // Spawns many more mantlets randomly across the siege line,
 // while preventing them from spawning too close together.
 
-const mantletCount = 20;     // way more than before
+const mantletCount = 10;     
 const minSpacing = 85;       // minimum distance between mantlets
 const spreadMin = -980;      // left boundary
 const spreadMax = 980;       // right boundary

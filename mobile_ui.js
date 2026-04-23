@@ -223,15 +223,43 @@
     margin-top: 6px;
     overflow: hidden;
 }
-.mob-xp-bar-fill {
-    background: #ffca28;
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.4s ease;
+/* ──────────────────────────────────────────────
+   CAMP SYSTEM BUTTONS (Centered & Scaled)
+   ────────────────────────────────────────────── */
+#camp-action-wrapper, #packup-wrapper {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    bottom: 30px !important;
+    align-items: center !important; /* Centers the button and the error text */
+    width: 100%;
+    pointer-events: none; /* Lets you click through the wrapper... */
 }
 
+#encamp-btn, #packup-btn {
+    pointer-events: auto; /* ...but keeps the button clickable */
+    width: clamp(180px, 50vw, 300px) !important;
+    min-height: 54px !important;
+    font-size: clamp(14px, 4vw, 18px) !important;
+    padding: 12px 24px !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.8) !important;
+    border-radius: 8px !important;
+    font-weight: bold !important;
+    letter-spacing: 1px !important;
+}
 
-@media (max-width: 900px), (pointer: coarse) {
+#camp-terrain-note {
+    text-align: center !important;
+    margin-top: 6px !important;
+    font-size: clamp(10px, 3vw, 12px) !important;
+}
+
+#camp-info-panel {
+    pointer-events: auto;
+    text-align: center !important;
+    margin-top: 8px !important;
+    width: clamp(180px, 50vw, 300px) !important;
+    box-sizing: border-box !important;
+}
 
     /* Minimum tap target for every button */
     button, .menu-btn, select, input[type="number"] {
@@ -610,6 +638,9 @@ html += `
             <button id="mob-saveload-btn" class="menu-btn" style="width: 100%; margin-top: 10px; padding: 12px 10px; background: linear-gradient(to bottom, #1a4a0a, #0a2a04); border-color: #8bc34a; color: #8bc34a;" onclick="if(window.SaveSystem) { if(window.mobileUI) window.mobileUI.closeDetailDrawer(); window.SaveSystem.openPanel(); }">
                 💾 Save / Load Game
             </button>
+            <button id="mob-quest-btn" class="menu-btn" style="width: 100%; margin-top: 10px; padding: 12px 10px; background: linear-gradient(to bottom, #4a3a00, #22180a); border-color: #ffe600; color: #ffe600;" onclick="if(window.mobileUI) window.mobileUI.closeDetailDrawer(); if(window.QuestSystem) window.QuestSystem.openQuestLog();">
+                📜 Quest Log
+            </button>
 <button id="mob-mainmenu-btn" class="menu-btn" style="width: 100%; margin-top: 10px; padding: 12px 10px; background: linear-gradient(to bottom, #4a0a0a, #1a0505); border-color: #ff5252; color: #ff5252;" onclick="window.location.reload();">
     🚪 Quit to Main Menu
 </button>
@@ -622,10 +653,11 @@ html += `
             const expNeeded  = lvl * 10;
             const xpPct      = Math.min(100, Math.round((exp / expNeeded) * 100));
             const hp         = Math.floor(p.hp || 0);
-            const maxHp      = p.maxHealth || 100;
+			const maxHp      = p.maxHealth || 100;
             const gold       = Math.floor(p.gold || 0);
             const food       = Math.floor(p.food || 0);
             const troops     = p.troops || 0;
+            const cohesion   = p.cohesion !== undefined ? Math.floor(p.cohesion) : 70; // NEW COHESION STAT
 
             html += `
                 <div class="mob-section-title">⚔️ Commander Status</div>
@@ -633,15 +665,40 @@ html += `
                 <div class="mob-stat-row"><span>Experience</span><span>${exp} / ${expNeeded} XP</span></div>
                 <div class="mob-xp-bar-bg"><div class="mob-xp-bar-fill" style="width:${xpPct}%"></div></div>
                 <div class="mob-stat-row" style="margin-top:8px"><span>Hit Points</span><span>${hp} / ${maxHp}</span></div>
+                <div class="mob-stat-row"><span>Army Cohesion</span><span style="color:${cohesion >= 50 ? '#8bc34a' : '#ff5252'}">${cohesion}%</span></div>
                 <div class="mob-stat-row"><span>Melee Attack</span><span>${p.meleeAttack || 0}</span></div>
                 <div class="mob-stat-row"><span>Melee Defense</span><span>${p.meleeDefense || 0}</span></div>
-
                 <div class="mob-section-title">💰 Resources</div>
-                <div class="mob-stat-row"><span>Gold</span><span style="color:#ffca28">${gold}</span></div>
-                <div class="mob-stat-row"><span>Food</span><span style="color:#8bc34a">${food}</span></div>
-                <div class="mob-stat-row"><span>Total Force</span><span>${troops} men</span></div>
+<div class="mob-stat-row"><span>Gold</span><span style="color:#ffca28">${gold}</span></div>
+    <div class="mob-stat-row"><span>Food</span><span style="color:#8bc34a">${food}</span></div>
+    <div class="mob-stat-row"><span>Total Force</span><span>${troops} men</span></div>
+`;
 
-                <div class="mob-section-title">🪖 Army Roster</div>
+// --- SURGERY: Dynamically inject Player Inventory ---
+let cargoUsed = 0;
+let inventoryHtml = "";
+if (p.inventory && typeof RESOURCE_CATALOG !== 'undefined') {
+    for (let rid in p.inventory) {
+        let amount = p.inventory[rid];
+        if (amount > 0 && RESOURCE_CATALOG[rid]) {
+            let res = RESOURCE_CATALOG[rid];
+            cargoUsed += amount;
+            inventoryHtml += `<div class="mob-stat-row"><span>${res.emoji} ${res.label}</span><span style="color:#fff">${amount}</span></div>`;
+        }
+    }
+}
+let cargoMax = p.cargoCapacity || 50;
+let cargoColor = cargoUsed >= cargoMax ? '#ff5252' : '#8bc34a';
+
+if (inventoryHtml !== "") {
+    html += `<div class="mob-section-title">🎒 Cargo (${cargoUsed}/${cargoMax})</div>` + inventoryHtml;
+} else {
+    html += `<div class="mob-section-title">🎒 Cargo (0/${cargoMax})</div><div class="mob-hint-block" style="color:#888">Inventory is empty.</div>`;
+}
+// ----------------------------------------------------
+
+html += `
+    <div class="mob-section-title">🪖 Army Roster</div>
             `;
 
             // Build dynamic troop groups from roster (same logic as player_overlay_system.js)

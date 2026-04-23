@@ -1080,24 +1080,40 @@
 ;(function(W, D) {
     'use strict';
 
-    // 1. Inject the revised CSS for the narrower 8-column layout
+// 1. Inject the revised CSS for the scrollable layout
     const style = D.createElement('style');
     style.textContent = `
-        /* Overwrite the previous padding to fit all 8 columns on mobile */
+        /* Override mobile_cleanup.js hidden overflow to allow horizontal swiping */
+        .mob-troop-subtab {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: thin !important;
+        }
+        /* Style the scrollbar to match the UI theme */
+        .mob-troop-subtab::-webkit-scrollbar {
+            height: 6px !important;
+            display: block !important;
+        }
+        .mob-troop-subtab::-webkit-scrollbar-thumb {
+            background: #d4b886 !important;
+            border-radius: 4px !important;
+        }
         .mob-troop-subtab th {
             color: #ffca28 !important;
             text-align: left !important;
-            padding: 3px 3px !important;
+            padding: 4px 6px !important;
             border-bottom: 1px solid #5d4037 !important;
             font-size: 9px !important;
             text-transform: uppercase !important;
             letter-spacing: 0.5px !important;
+            white-space: nowrap !important;
         }
         .mob-troop-subtab td {
-            padding: 2px 3px !important;
+            padding: 3px 6px !important;
             color: #d4b886 !important;
             font-size: 10px !important;
             border-bottom: 1px solid rgba(93, 64, 55, 0.2) !important;
+            white-space: nowrap !important;
         }
         .mob-subtab-hp-hi  { color: #8bc34a !important; }
         .mob-subtab-hp-mid { color: #ff9800 !important; }
@@ -1124,24 +1140,26 @@
             return;
         }
 
-        let html = `
-            <table style="table-layout: fixed; width: 100%;">
+let html = `
+            <table style="width: 100%; min-width: 480px; border-collapse: collapse;">
                 <thead>
                     <tr>
-                        <th style="width: 8%;">#</th>
-                        <th style="width: 14%;">HP</th>
-                        <th style="width: 12%;">LVL</th>
-                        <th style="width: 14%;">EXP</th>
-                        <th style="width: 13%;">MOR</th>
-                        <th style="width: 13%;">ATK</th>
-                        <th style="width: 13%;">DEF</th>
-                        <th style="width: 13%;">ARM</th>
+                        <th>#</th>
+                        <th>HP</th>
+                        <th>LVL</th>
+                        <th>EXP</th>
+                        <th>MOR</th>
+                        <th>ATK</th>
+                        <th>DEF</th>
+                        <th>ARM</th>
+                        <th>CST</th>
+                        <th>UPK</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
-        units.forEach((u, i) => {
+units.forEach((u, i) => {
             // Safely map stats utilizing fallbacks mapped from troop_system.js
             const hp     = Math.floor(u.hp ?? u.health ?? 100);
             const lvl    = u.lvl ?? u.experienceLevel ?? u.level ?? 1;
@@ -1154,6 +1172,14 @@
             const atk = Math.floor(u.meleeAttack ?? 10);
             const def = Math.floor(u.meleeDefense ?? 10);
             const arm = Math.floor(u.armor ?? 2);
+
+            // --- NEW: COST & UPKEEP LOGIC ---
+            // Fetch from the base roster template in case the individual unit object doesn't save cost
+            const template = window.UnitRoster && window.UnitRoster.allUnits[u.type || u.name];
+            const cost = Math.floor(u.cost ?? (template ? template.cost : 0));
+            
+            // Adjust the upkeep divisor based on your game's global economy logic (defaulting to 10% of cost here)
+            const upkeep = Math.floor(u.upkeep ?? (cost / 10));
             
             const rowBg = i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent';
 
@@ -1177,6 +1203,8 @@
                     <td style="color:#e57373;">${atk}</td>
                     <td style="color:#64b5f6;">${def}</td>
                     <td style="color:#9e9e9e;">${arm}</td>
+                    <td style="color:#ffca28; font-weight:bold;">${cost}</td>
+                    <td style="color:#ffab00;">${upkeep}</td>
                 </tr>
             `;
         });

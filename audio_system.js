@@ -5,10 +5,10 @@
 class AudioManagerSystem {
     constructor() {
         this.ctx = null;
-        this.masterMusicVolume = 0.15; // Kept lower so it doesn't overpower SFX
+        this.masterMusicVolume = 0.015; // Kept lower so it doesn't overpower SFX
         this.masterSfxVolume = 0.5;
         this.initialized = false;
-        
+
         // MP3 state
         this.currentMp3 = null;
         this.mp3Volume = 0.2; // Default volume for MP3 tracks
@@ -19,7 +19,7 @@ class AudioManagerSystem {
         this.currentPlaylist = [];
         this.isPlaylistMode = false;
         this.mp3Volume = 0.2; // Default volume for MP3 tracks
-this.fadeInterval = null; // Used for smooth transitions
+        this.fadeInterval = null; // Used for smooth transitions
         // Sequencer state
         this.currentTrack = null;
         this.isPlaying = false;
@@ -27,7 +27,9 @@ this.fadeInterval = null; // Used for smooth transitions
         this.currentStep = 0;
         this.timerID = null;
         this.activeOscillators = [];
-
+        // --- Inside constructor() ---
+        this._sfxGateTime = 0;       // Timestamp when all SFX are allowed
+        this._combatGateTime = 0;    // Timestamp when combat SFX are allowed
         // --- MUSICAL SCALES (Offsets from root note) ---
         const SCALES = {
             majorPentatonic: [0, 2, 4, 7, 9, 12, 14], // Bright, Eastern (Hong, Xiaran)
@@ -113,6 +115,14 @@ this.fadeInterval = null; // Used for smooth transitions
     // ========================================================================
 
     playMP3(url, loop = true) {
+		
+		const now = Date.now();
+        if (now < this._sfxGateTime) return; 
+        const combatKeywords = ["melee", "hit", "swing", "projectile", "arrow", "bolt", "firelance"];
+        if (combatKeywords.some(key => url.toLowerCase().includes(key)) && now < this._combatGateTime) return;
+		
+		
+		
         // 1. Stop all current music and increment the session ID to kill pending callbacks
         this.stopMusic(); // Synth killer
         this.stopMP3();   // MP3 killer
@@ -124,9 +134,17 @@ this.fadeInterval = null; // Used for smooth transitions
         const newAudio = new Audio(url);
         this._trackAudio(newAudio); // Add to our global kill-list
         
-        this.currentMp3 = newAudio;
+this.currentMp3 = newAudio;
         newAudio.volume = 0; // Start at 0 for fade in
         newAudio.loop = loop;
+        
+        // BULLETPROOF LOOP FIX FOR LOCAL FILES (file:///)
+        if (loop) {
+            newAudio.addEventListener('ended', function() {
+                this.currentTime = 0;
+                this.play().catch(e => console.warn("Manual loop restart failed:", e));
+            }, false);
+        }
         
         newAudio.play().then(() => {
             // RACE CONDITION CHECK: Did another file stop/change the music while this was buffering?
@@ -248,18 +266,37 @@ this.fadeInterval = null; // Used for smooth transitions
     
     // --- Helper Methods ---
 
-    _fadeMP3(audioObj, targetVolume, duration, callback = null) {
-        if (!audioObj) return;
+_fadeMP3(audioObj, targetVolume, duration, callback = null) {
+        if (!audioObj) {
+            if (callback) callback();
+            return;
+        }
         
         if (audioObj._fadeInterval) clearInterval(audioObj._fadeInterval);
         
+        // If it's already paused or at target volume, just snap and callback instantly
+        if (audioObj.paused || audioObj.volume === targetVolume) {
+            audioObj.volume = targetVolume;
+            if (callback) callback();
+            return;
+        }
+
         let steps = 20; 
         let timeStep = duration / steps;
         let volumeStep = (targetVolume - audioObj.volume) / steps;
         
+        // Failsafe: Prevent infinite loops if volume step is effectively zero
+        if (volumeStep === 0) {
+            if (callback) callback();
+            return;
+        }
+
         audioObj._fadeInterval = setInterval(() => {
+            // Failsafe: if audio gets destroyed or paused midway (e.g. track ended)
             if (!audioObj || audioObj.paused) {
                 clearInterval(audioObj._fadeInterval);
+                audioObj._fadeInterval = null;
+                if (callback) callback();
                 return;
             }
             
@@ -270,6 +307,7 @@ this.fadeInterval = null; // Used for smooth transitions
             
             audioObj.volume = newVol;
             
+            // Check if we reached or overshot the target
             if ((volumeStep > 0 && audioObj.volume >= targetVolume - 0.01) || 
                 (volumeStep < 0 && audioObj.volume <= targetVolume + 0.01)) {
                 
@@ -369,6 +407,29 @@ this.fadeInterval = null; // Used for smooth transitions
         }
     }
 
+// Add this inside the AudioManagerSystem class in audio_system.js
+
+playCityPlaylist() {
+    // SECURITY CHECK 1: If we are already playing city music, DO NOT RESTART.
+    if (this.currentMusicType === "city") return;
+
+    // SECURITY CHECK 2: If we are in the middle of a fade transition, wait.
+    if (this.isTransitioning) return;
+
+    console.log("🏙️ Entering City: Starting playlist.");
+
+    // Set the type so this function 'locks' itself
+    this.currentMusicType = "city";
+
+    // Use your existing function for the city tracks 1-6
+    if (typeof this.playRandomMP3List === 'function') {
+        this.playRandomMP3List([
+            'music/city1.mp3', 'music/city2.mp3', 'music/city3.mp3', 
+            'music/city4.mp3', 'music/city5.mp3', 'music/city6.mp3'
+        ]);
+    }
+}
+
     playNextNote() {
         const track = this.tracks[this.currentTrack];
         const secondsPerBeat = 60.0 / track.tempo;
@@ -425,13 +486,20 @@ this.fadeInterval = null; // Used for smooth transitions
      * @param {number} pitchVariance - e.g., 0.15 for +/- 15% pitch randomness
      * @param {number} volVariance - e.g., 0.10 for +/- 10% volume randomness
      */
-    playSound(effect, pitchVariance = 0.15, volVariance = 0.10) {
-        if (!this.initialized || !this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        const now = this.ctx.currentTime;
+	 
+playSound(effect, pitchVariance = 0.15, volVariance = 0.10) {
+    const wallClockNow = Date.now(); 
+    if (wallClockNow < this._sfxGateTime) return;
+    if (effect === 'charge' && wallClockNow < this._combatGateTime) return;
+    
+    if (!this.initialized || !this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    
+    const ctxTime = this.ctx.currentTime; // Renamed to avoid conflict
+    // ... update the rest of the switch cases to use ctxTime instead of now ...
 
         // SURGERY: Helper function to apply +/- percentage variance to any value
         const vary = (baseValue, variance) => {
@@ -447,86 +515,86 @@ this.fadeInterval = null; // Used for smooth transitions
             case 'sword_clash':
                 osc.type = 'triangle';
                 // SURGERY: Randomize the starting frequency
-                osc.frequency.setValueAtTime(vary(1200, pitchVariance), now);
-                osc.frequency.exponentialRampToValueAtTime(vary(100, pitchVariance), now + 0.1);
-                gain.gain.setValueAtTime(finalVol, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-                osc.start(now); osc.stop(now + 0.2);
+                osc.frequency.setValueAtTime(vary(1200, pitchVariance), ctxTime);
+                osc.frequency.exponentialRampToValueAtTime(vary(100, pitchVariance), ctxTime + 0.1);
+                gain.gain.setValueAtTime(finalVol, ctxTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 0.2);
+                osc.start(ctxTime); osc.stop(ctxTime + 0.2);
                 break;
                 
             case 'firelance': 
-                this._createNoise(now, 0.3, 'lowpass', vary(1000, pitchVariance));
+                this._createNoise(ctxTime, 0.3, 'lowpass', vary(1000, pitchVariance));
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(vary(150, pitchVariance), now);
-                osc.frequency.exponentialRampToValueAtTime(vary(40, pitchVariance), now + 0.2);
-                gain.gain.setValueAtTime(finalVol, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                osc.start(now); osc.stop(now + 0.3);
+                osc.frequency.setValueAtTime(vary(150, pitchVariance), ctxTime);
+                osc.frequency.exponentialRampToValueAtTime(vary(40, pitchVariance), ctxTime + 0.2);
+                gain.gain.setValueAtTime(finalVol, ctxTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 0.3);
+                osc.start(ctxTime); osc.stop(ctxTime + 0.3);
                 break;
 
             case 'bomb': 
-                this._createNoise(now, 1.0, 'lowpass', vary(400, pitchVariance));
+                this._createNoise(ctxTime, 1.0, 'lowpass', vary(400, pitchVariance));
                 osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(vary(80, pitchVariance), now);
-                osc.frequency.exponentialRampToValueAtTime(vary(20, pitchVariance), now + 1.0);
-                gain.gain.setValueAtTime(finalVol, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
-                osc.start(now); osc.stop(now + 1.0);
+                osc.frequency.setValueAtTime(vary(80, pitchVariance), ctxTime);
+                osc.frequency.exponentialRampToValueAtTime(vary(20, pitchVariance), ctxTime + 1.0);
+                gain.gain.setValueAtTime(finalVol, ctxTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 1.0);
+                osc.start(ctxTime); osc.stop(ctxTime + 1.0);
                 break;
 
             case 'arrow': 
-                this._createNoise(now, 0.2, 'bandpass', vary(2500, pitchVariance));
+                this._createNoise(ctxTime, 0.2, 'bandpass', vary(2500, pitchVariance));
                 break;
 
             case 'shield_block': 
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(vary(150, pitchVariance), now);
-                osc.frequency.exponentialRampToValueAtTime(vary(50, pitchVariance), now + 0.1);
-                gain.gain.setValueAtTime(finalVol, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-                osc.start(now); osc.stop(now + 0.15);
+                osc.frequency.setValueAtTime(vary(150, pitchVariance), ctxTime);
+                osc.frequency.exponentialRampToValueAtTime(vary(50, pitchVariance), ctxTime + 0.1);
+                gain.gain.setValueAtTime(finalVol, ctxTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 0.15);
+                osc.start(ctxTime); osc.stop(ctxTime + 0.15);
                 break;
 
             case 'horse_trot': 
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(vary(400, pitchVariance), now);
-                osc.frequency.exponentialRampToValueAtTime(vary(100, pitchVariance), now + 0.05);
-                gain.gain.setValueAtTime(finalVol * 0.4, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-                osc.start(now); osc.stop(now + 0.05);
+                osc.frequency.setValueAtTime(vary(400, pitchVariance), ctxTime);
+                osc.frequency.exponentialRampToValueAtTime(vary(100, pitchVariance), ctxTime + 0.05);
+                gain.gain.setValueAtTime(finalVol * 0.4, ctxTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 0.05);
+                osc.start(ctxTime); osc.stop(ctxTime + 0.05);
                 break;
 
             case 'elephant': 
                 osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(vary(300, pitchVariance), now);
-                osc.frequency.linearRampToValueAtTime(vary(500, pitchVariance), now + 0.2);
-                osc.frequency.linearRampToValueAtTime(vary(250, pitchVariance), now + 0.7);
-                gain.gain.setValueAtTime(0, now);
-                gain.gain.linearRampToValueAtTime(finalVol, now + 0.1);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.7);
-                osc.start(now); osc.stop(now + 0.7);
+                osc.frequency.setValueAtTime(vary(300, pitchVariance), ctxTime);
+                osc.frequency.linearRampToValueAtTime(vary(500, pitchVariance), ctxTime + 0.2);
+                osc.frequency.linearRampToValueAtTime(vary(250, pitchVariance), ctxTime + 0.7);
+                gain.gain.setValueAtTime(0, ctxTime);
+                gain.gain.linearRampToValueAtTime(finalVol, ctxTime + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 0.7);
+                osc.start(ctxTime); osc.stop(ctxTime + 0.7);
                 break;
 
             case 'charge': 
-                this._createNoise(now, 0.5, 'bandpass', vary(600, pitchVariance));
+                this._createNoise(ctxTime, 0.5, 'bandpass', vary(600, pitchVariance));
                 break;
 
             case 'hit': 
-                this._createNoise(now, 0.1, 'lowpass', vary(800, pitchVariance));
+                this._createNoise(ctxTime, 0.1, 'lowpass', vary(800, pitchVariance));
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(vary(100, pitchVariance), now);
-                gain.gain.setValueAtTime(finalVol, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-                osc.start(now); osc.stop(now + 0.1);
+                osc.frequency.setValueAtTime(vary(100, pitchVariance), ctxTime);
+                gain.gain.setValueAtTime(finalVol, ctxTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 0.1);
+                osc.start(ctxTime); osc.stop(ctxTime + 0.1);
                 break;
 
             case 'ui_click': 
                 // UI clicks usually shouldn't vary much so they feel responsive and consistent
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(800, now);
-                gain.gain.setValueAtTime(this.masterSfxVolume * 0.3, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-                osc.start(now); osc.stop(now + 0.05);
+                osc.frequency.setValueAtTime(800, ctxTime);
+                gain.gain.setValueAtTime(this.masterSfxVolume * 0.3, ctxTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctxTime + 0.05);
+                osc.start(ctxTime); osc.stop(ctxTime + 0.05);
                 break;
         }
     }
@@ -553,7 +621,24 @@ this.fadeInterval = null; // Used for smooth transitions
         gain.connect(this.ctx.destination);
         noise.start(time);
     }
+	
+	clearAllSFXForBattle() {
+    const now = Date.now();
+    this._sfxGateTime = now + 1000;    // 1 second global block
+    this._combatGateTime = now + 2000; // 2 second combat block
+
+    // Stop all currently playing synth/buffer oscillators
+    this.activeOscillators.forEach(osc => {
+        try { osc.stop(); } catch(e) {}
+    });
+    this.activeOscillators = [];
+    
+    console.log("Audio Cleared: SFX Silenced for 1s, Combat for 2s.");
 }
+
+}
+
+
 
 // Global instance to be used across all your files
 const AudioManager = new AudioManagerSystem();

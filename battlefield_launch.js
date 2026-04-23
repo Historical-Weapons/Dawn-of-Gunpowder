@@ -851,7 +851,7 @@ let playerTroopCount = playerObj.troops || 0;
         // Ensure path matches your folder: music/menu_noloop.mp3
         AudioManager.playMP3('music/battlemusic.mp3', false);
     }
-    AudioManager.playSound("charge"); // Warcry SFX on spawn
+ 
 // Trigger the Epic Zoom: Starts at 0.3x (high up), lands at 1.5x (tactical view) over 1.5 seconds
     if (typeof triggerEpicZoom === 'function') {
         triggerEpicZoom(0.6, 1.5, 3500);
@@ -867,7 +867,7 @@ let playerTroopCount = playerObj.troops || 0;
 // Brute forces random coordinates until it finds a valid spot on the ship's deck
 // ============================================================================
 function findValidShipDeckPosition(ship, role, side) {
-    let maxAttempts = 5000; // Massive attempt pool to prevent ocean spawning
+    let maxAttempts = 1000; // Massive attempt pool to prevent ocean spawning
     let rx = ship.width / 2;
     let ry = ship.height / 2;
     
@@ -991,8 +991,37 @@ if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle) {
 // --- 3. Spawning Engine (Distributed side-by-side) ---
     // ---> SURGERY: Use the unified Global Scale <---
     let visualScale = window.GLOBAL_BATTLE_SCALE || 1; 
-    let unitsToSpawn = Math.round(totalTroops / visualScale);
 
+    // =========================================================
+    // ---> NEW SURGERY: MOBILE NATIVE 80-UNIT CAP FOR SIEGES
+    // =========================================================
+    const isMobileNative = (
+        typeof window.Capacitor !== 'undefined' || 
+        /\bwv\b/.test(navigator.userAgent) || 
+        /Android/.test(navigator.userAgent)
+    );
+
+    if (typeof inSiegeBattle !== 'undefined' && inSiegeBattle && isMobileNative) {
+        // If the defender already set the ratio, use it to ensure perfect 1:1 scaling
+        if (window.CURRENT_MOBILE_RATIO) {
+            visualScale = Math.max(visualScale, window.CURRENT_MOBILE_RATIO);
+        } else {
+            // Since Attackers (deployArmy) fire BEFORE Defenders, we calculate the ratio here.
+            // Pull the expected enemy count from currentBattleData to get the true total
+            let expectedEnemyCount = currentBattleData.enemyRef ? currentBattleData.enemyRef.count : 0;
+            let totalCombatants = totalTroops + expectedEnemyCount;
+            
+            let mobileScale = totalCombatants / 80;
+            visualScale = Math.max(visualScale, mobileScale);
+            
+            // Save it globally so the Defenders function (which runs next) uses the EXACT same ratio
+            window.CURRENT_MOBILE_RATIO = visualScale;
+        }
+    }
+    // =========================================================
+
+    let unitsToSpawn = Math.round(totalTroops / Math.max(1, visualScale));
+	
 // First, calculate the total width of all "Line" units (non-cavalry)
 // This ensures we can center the entire army perfectly.
 let totalLineWidth = 0;

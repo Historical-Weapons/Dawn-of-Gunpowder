@@ -352,10 +352,9 @@ function gameIsReady() {
     // FIX: Look for 'cb-menu-container' which is the actual ID appended to the DOM
     const customBattleMenuOpen = !!document.getElementById("cb-menu-container") || !!document.getElementById("custom-battle-menu");
 
-    // 4. BLOCK if in City View
-    const inCity = (typeof inCityMode !== 'undefined' && inCityMode);
-
-    return basicReady && !inAnyBattle && !customBattleMenuOpen && !inCity;
+    // NOTE: City mode is intentionally NOT blocked — quest accepts and cargo
+    // changes happen inside cities and must be preserved in saves.
+    return basicReady && !inAnyBattle && !customBattleMenuOpen;
 }
 
 function isOnMainMenu() {
@@ -416,9 +415,14 @@ function isOnMainMenu() {
                     count: u.count !== undefined ? u.count : 1
                   }))
                 : [],
-            stats_snapshot: serializeStats(player.stats),
+stats_snapshot: serializeStats(player.stats),
             baseSpeed:       player.baseSpeed,
-            size:            player.size
+            size:            player.size,
+            questLog:        player.questLog || { active: [], completed: [] },
+            inventory:       player.inventory || {},
+            cargoCapacity:   player.cargoCapacity || 50,
+            cargoUsed:       player.cargoUsed || 0,
+            cohesion:        player.cohesion !== undefined ? player.cohesion : 100
         };
     }
 
@@ -507,6 +511,15 @@ function isOnMainMenu() {
         player.roster          = Array.isArray(data.roster)
             ? data.roster.map(u => ({ type: u.type, exp: u.exp || 1, count: u.count || 1 }))
             : [];
+			
+			// --- NEW FEATURES RESTORED HERE ---
+        player.questLog        = data.questLog      ?? { active: [], completed: [] };
+        player.inventory       = data.inventory     ?? {};
+        player.cargoCapacity   = data.cargoCapacity ?? 50;
+        player.cargoUsed       = data.cargoUsed     ?? 0;
+        player.cohesion        = data.cohesion      ?? 100;
+        // ----------------------------------
+		
         if (data.baseSpeed !== undefined) player.baseSpeed = data.baseSpeed;
         if (data.size      !== undefined) player.size      = data.size;
         if (data.stats_snapshot) {

@@ -128,6 +128,13 @@
       autoBtn.style.pointerEvents  = 'none';
       manualBtn.style.pointerEvents = 'auto';
       manualBtn.style.opacity       = '1';
+      
+      // SURGERY 1: Disable RTSControls group buttons 1-5
+      for (let i = 1; i <= 5; i++) {
+        let gBtn = D.getElementById('mc3-g' + i);
+        if (gBtn) { gBtn.style.pointerEvents = 'none'; gBtn.style.opacity = '0.3'; }
+      }
+
       triggerTacticalAssault();
     };
 
@@ -135,12 +142,19 @@
     const toggleManual = (ev) => {
       if (!autoRunning) return;
       if (ev) { ev.preventDefault(); ev.stopPropagation(); }
-      autoRunning  = false;
+     autoRunning  = false;
       isManualMode = true;
       autoBtn.style.pointerEvents  = 'auto';
       autoBtn.innerHTML            = '🤖';
       manualBtn.style.pointerEvents = 'none';
       manualBtn.style.opacity       = '0.4';
+
+      // SURGERY 2: Re-enable RTSControls group buttons 1-5
+      for (let i = 1; i <= 5; i++) {
+        let gBtn = D.getElementById('mc3-g' + i);
+        if (gBtn) { gBtn.style.pointerEvents = 'auto'; gBtn.style.opacity = '1'; }
+      }
+
       if (tacticalInterval) { clearInterval(tacticalInterval); tacticalInterval = null; }
 
       let env = _env();
@@ -179,7 +193,7 @@
           autoBtn.style.opacity = isSiege ? '0.7' : '1';
         }
       }
-      if (!inBattle) {
+if (!inBattle) {
         if (tacticalInterval) { clearInterval(tacticalInterval); tacticalInterval = null; }
         autoRunning = false; isManualMode = false;
         autoBtn.style.pointerEvents  = 'auto';
@@ -187,6 +201,12 @@
         autoBtn.style.opacity        = '1';
         manualBtn.style.pointerEvents = 'none';
         manualBtn.style.opacity       = '0.4';
+
+        // SURGERY 3: Fail-safe reset for next battle
+        for (let i = 1; i <= 5; i++) {
+          let gBtn = D.getElementById('mc3-g' + i);
+          if (gBtn) { gBtn.style.pointerEvents = 'auto'; gBtn.style.opacity = '1'; }
+        }
       }
     }, 1000);
   }

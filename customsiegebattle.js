@@ -1,6 +1,9 @@
 (function () { //customBATTLE version OF enter siege battle
 window.launchCustomSiege = function(playerSetup, enemySetup, selectedMap) {
- 
+     // SURGERY: Hard-reset scale so no campaign siege bleeds into custom
+    window.GLOBAL_BATTLE_SCALE = 1;
+    window.CURRENT_MOBILE_RATIO = 0; // also clear the mobile ratio (see BUG 4)
+    // ... rest unchanged
     inBattleMode = true;    // CRITICAL: Tells the engine we are in a tactical battle
     inSiegeBattle = true;
     zoom = 0.1;             // Start at "Clouds" level for the zoom effect

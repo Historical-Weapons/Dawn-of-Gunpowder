@@ -52,7 +52,7 @@
         <button id="dip-log-toggle-btn" onclick="toggleDipLog()">−</button>
         
         <button class="diplomacy-main-btn" onclick="toggleDiplomacyMenu()">
-            📜 Diplomacy Table
+            🫱‍🫲🏽 Diplomacy Table
         </button>
     </div>
 
@@ -153,6 +153,10 @@ if(player.gold >= 50) {
                     alert('Not enough gold for rations!'); 
                 }
             ">Buy Food (10 Gold)</button>
+			
+<button id="trade-btn" class="menu-btn" onclick="openTradePanel()" style="background: linear-gradient(to bottom, #1b5e20, #0a330c); border-color: #8bc34a; font-size: 1rem;">
+                ⚖️ Open Trade Market
+</button>
             
         </div>
         <div id="hostile-box" style="display: none; flex-direction: column; gap: 8px; align-items: center; border-top: 1px solid #5d4037; padding-top: 15px; margin-top: 10px;">
@@ -294,6 +298,7 @@ if(player.gold >= 50) {
     <div id="diplomacy-table-container"></div>
 </div>
 </div>
+<div id="trade-panel" style="display:none;"></div>
 <script>
 // ============================================================================
 // REVISED TOGGLE UI: Targets the whole container state
@@ -329,6 +334,7 @@ function toggleDipLog() {
     <script src="npc_system.js"></script>
     <script src="fortification_system.js"></script>
 	<script src="city_system.js"></script>
+	<script src="trade_materials_nonfood.js"></script>
 	<script src="city_dialogue_system.js"></script>
 	<script src="city_conversation_engine.js"></script>
 	<script src="siegebattle.js"></script>
@@ -345,13 +351,13 @@ function toggleDipLog() {
 	<script src="enemyTacticalAI.js"></script>
 	<script src="ai_categories.js"></script>
     <script src="troop_system.js"></script>
-	    <script src="troop_draw.js"></script>
+	<script src="troop_draw.js"></script>
 	<script src="unit-encyclopedia.js"></script>
     <script src="infscript.js"></script>
     <script src="cavscript.js"></script>
  
     <script src="player_overlay_system.js"></script>
-    <script src="battle_roster_avatar.js"></script>
+    <script src="leave_battle_roster.js"></script>
     <script src="battlefield_commands.js"></script>
     <script src="troopGUI.js"></script> 
     <script src="menu.js"></script>  
@@ -364,20 +370,24 @@ function toggleDipLog() {
     <script src="RandomDialogue.js"></script>
     <script src="parler_system.js"></script>
     <script src="siege_system.js"></script>
-    <script src="faction_dynamics.js"></script>
+	<script src="faction_dynamics.js"></script>
     <script src="sandbox_overworld.js"></script>
+    <script src="camp_system.js"></script>
+	<script src="camp_system_combat.js"></script>
 	<script src="viewport_culling.js"></script>
 	<script src="viewport_culling_battles.js"></script>
 	<script src="update.js"></script>
 	<script src="settings_ui.js"></script> 
 	<script src="battle_enhancements.js"></script>		
 	<script src="mobile_ui.js"></script>
-
+    <script src="quest_system.js"></script>  
 	<script src="RTSControls.js"></script>
 	<script src="autoAttack.js"></script>
 	<script src="mobile_cleanup.js"></script>  
-<script src="save_system.js"></script> 
+    <script src="save_system.js"></script> 
 	<script src="world_map.js"></script> 
-	<script src="optimization.js"></script>  	
+	<script src="optimization-sandbox.js"></script>  
+	<script src="optimization-battles.js"></script>  
+	<script src="optimization-siege.js"></script>  	
 </body>
 </html>

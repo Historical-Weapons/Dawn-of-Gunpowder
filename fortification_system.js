@@ -452,7 +452,7 @@ function policeTroops(ctx, factionName, playerObj, allNPCs) {
                 ctx.save();
                 ctx.fillStyle = "#ffeb3b"; ctx.font = "bold 14px monospace";
                 ctx.textAlign = "center"; ctx.shadowBlur = 5; ctx.shadowColor = "black";
-                ctx.fillText("PRESS [P] TO EXIT", gx, gy + (g.y === margin ? -40 : 40) + Math.sin(now/200)*3);
+                ctx.fillText("PRESS P or ↩️ TO EXIT", gx, gy + (g.y === margin ? -40 : 40) + Math.sin(now/200)*3);
                 ctx.restore();
             }
         }

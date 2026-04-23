@@ -115,60 +115,83 @@ case "RANDOM":
                 parleDialogue.innerText = "There is much to discuss, but perhaps another time.";
             }
             break;
-
-        case "DECLARE_WAR":
-isDiplomacyProcessing = true; // LOCK UI
+case "DECLARE_WAR":
+            isDiplomacyProcessing = true;
             parleDialogue.innerText = `Quick, send a messenger! The ${npc.faction} must declare war!`;
             if (!player.enemies) player.enemies = [];
             if (!player.enemies.includes(npc.faction)) {
                 player.enemies.push(npc.faction);
             }
             setTimeout(() => {
-                executeAttackAction(npc); 
+                showPreBattleOptions(npc); // <-- CHANGED from executeAttackAction
             }, 1500);
             break;
 
         case "LEAVE": {
-    const isCivilianOrCommerce = npc.role === "Civilian" || npc.role === "Commerce";
-    const isHostileCombatType = (npc.role === "Bandit" || npc.role === "Military" || npc.role === "Patrol");
+            const isCivilianOrCommerce = npc.role === "Civilian" || npc.role === "Commerce";
+            const isHostileCombatType = (npc.role === "Bandit" || npc.role === "Military" || npc.role === "Patrol");
 
-    // Civilian / commerce NPCs always allow you to leave
-    if (isCivilianOrCommerce) {
-        isDiplomacyProcessing = true;
-        parleDialogue.innerText = `Goodbye.`;
-        setTimeout(() => {
-            leaveParle(player);
-        }, 1200);
-
-    // Hostile military / patrol / bandits only let you leave if massively outnumbering them
-    } else if ((isEnemy || isBandit || isHostileCombatType) && isOverwhelmingOdds) {
-        isDiplomacyProcessing = true;
-        parleDialogue.innerText = `You left with confidence.`;
-        setTimeout(() => {
-            leaveParle(player);
-        }, 2000);
-
-    } else if (isAlly || isNeutral) {
-        isDiplomacyProcessing = true;
-        leaveParle(player);
-
-    } else {
-        isDiplomacyProcessing = true;
-        parleDialogue.innerText = `You can't walk away from us, you fool. We'll take what is ours! Prepare yourself!`;
-        setTimeout(() => {
-            executeAttackAction(npc);
-        }, 1500);
-    }
-		break;}
+            if (isCivilianOrCommerce) {
+                isDiplomacyProcessing = true;
+                parleDialogue.innerText = `Goodbye.`;
+                setTimeout(() => { leaveParle(player); }, 1200);
+            } else if ((isEnemy || isBandit || isHostileCombatType) && isOverwhelmingOdds) {
+                isDiplomacyProcessing = true;
+                parleDialogue.innerText = `You left with confidence.`;
+                setTimeout(() => { leaveParle(player); }, 2000);
+            } else if (isAlly || isNeutral) {
+                isDiplomacyProcessing = true;
+                leaveParle(player);
+            } else {
+                isDiplomacyProcessing = true;
+                parleDialogue.innerText = `You can't walk away from us, you fool. We'll take what is ours! Prepare yourself!`;
+                setTimeout(() => {
+                    showPreBattleOptions(npc); // <-- CHANGED from executeAttackAction
+                }, 1500);
+            }
+            break;
+        }
 
         case "ATTACK":
-isDiplomacyProcessing = true; // LOCK UI
+            isDiplomacyProcessing = true; 
             parleDialogue.innerText = `Prepare for Battle!`;
             setTimeout(() => {
-                executeAttackAction(npc); 
+                showPreBattleOptions(npc); // <-- CHANGED from executeAttackAction
             }, 1000);
             break;
     }
+}
+
+function showPreBattleOptions(npc) {
+    const actionBox = document.getElementById('parle-action-box');
+    const parleDialogue = document.getElementById('parle-dialogue');
+    
+    // Clear existing dialogue and buttons
+    actionBox.innerHTML = '';
+    parleDialogue.innerText = `The forces are ready. Will you take to the field, or send your troops to resolve this?`;
+    
+    // Allow clicking again
+    isDiplomacyProcessing = false; 
+
+    // Button 1: Send Troops (Autoresolve)
+    const sendTroopsBtn = createDiplomacyButton("Send Troops (Autoresolve)", () => {
+        if (isDiplomacyProcessing) return;
+        startAutoresolve(npc);
+    });
+    sendTroopsBtn.style.background = "linear-gradient(to bottom, #d4a373, #faedcd)";
+    sendTroopsBtn.style.color = "#333";
+    actionBox.appendChild(sendTroopsBtn);
+
+    // Button 2: Lead Troops (Manual Battle)
+    const leadTroopsBtn = createDiplomacyButton("Lead Troops (Take the field)", () => {
+        if (isDiplomacyProcessing) return;
+        isDiplomacyProcessing = true;
+        parleDialogue.innerText = "To battle!";
+        setTimeout(() => {
+            executeAttackAction(npc);
+        }, 800);
+    }, true); // Red attack styling
+    actionBox.appendChild(leadTroopsBtn);
 }
 
 function executeAttackAction(npc) {
@@ -177,6 +200,22 @@ function executeAttackAction(npc) {
     // Check external references: enterBattlefield, player (from index.html scope)
     if (typeof enterBattlefield === 'function') {
         leaveParle(player, true); // Close diplomacy state, but flag that we are going to battle (don't set BATTLE_COOLDOWN)
+		
+		// --- AUDIO SURGERY: SILENCE START ---
+    if (typeof AudioManager !== 'undefined') {
+        const now = Date.now();
+        AudioManager._sfxGateTime = now + 1200;    // 1.2 seconds of total silence
+        AudioManager._combatGateTime = now + 2500; // 2.5 seconds of no clashing/swings
+        
+        // Kill any sounds currently hanging over from the world map
+        if (AudioManager.activeOscillators) {
+            AudioManager.activeOscillators.forEach(osc => { try { osc.stop(); } catch(e) {} });
+            AudioManager.activeOscillators = [];
+        }
+    }
+    // --- END SURGERY ---
+	
+	
         enterBattlefield(npc, player, tile); // Launch Battlefield System
     } else {
         console.error("Battlefield System (enterBattlefield) not found! Diplomacy aborted.");
@@ -185,14 +224,12 @@ function executeAttackAction(npc) {
 }
 
 function initiateParleWithNPC(npc, tile) {
+	
 if (typeof inBattleMode !== 'undefined' && inBattleMode) return;
     if (typeof inCityMode !== 'undefined' && inCityMode) return; 
     isHoveringPlayer = false;
     window.isRosterOpen = false;
-
-
-// ---> ADD THIS COOLDOWN CHECK <---
-    // Wait 3 seconds (3000ms) after a battle or previous parley before allowing another one
+	
     if (typeof lastBattleTime !== 'undefined' && typeof BATTLE_COOLDOWN !== 'undefined') {
         if (Date.now() - lastBattleTime < BATTLE_COOLDOWN) {
             return; // Exit silently, giving the player time to walk away
@@ -267,6 +304,26 @@ if (typeof inBattleMode !== 'undefined' && inBattleMode) return;
     }
 
     populateParleButtons(npc);
+	// --- SURGERY: Inject NPC Cargo into the Parley UI ---
+    if (npc.cargo && Object.keys(npc.cargo).length > 0 && typeof RESOURCE_CATALOG !== 'undefined') {
+        let cargoLi = document.createElement('li');
+        cargoLi.style.marginTop = "8px";
+        cargoLi.style.borderTop = "1px solid rgba(212, 184, 134, 0.3)";
+        cargoLi.style.paddingTop = "6px";
+        
+        let cargoStrings = [];
+        for (let rid in npc.cargo) {
+            if (npc.cargo[rid] > 0 && RESOURCE_CATALOG[rid]) {
+                cargoStrings.push(`${npc.cargo[rid]}x ${RESOURCE_CATALOG[rid].emoji} ${RESOURCE_CATALOG[rid].label}`);
+            }
+        }
+        
+        if (cargoStrings.length > 0) {
+            cargoLi.innerHTML = `<span style="color:#888; font-size:11px; text-transform:uppercase; letter-spacing:1px;">Caravan Cargo:</span><br><span style="color:#d4b886; font-size:13px;">${cargoStrings.join('<br>')}</span>`;
+            unitListUL.appendChild(cargoLi);
+        }
+    }
+    // ----------------------------------------------------
 }
 function populateParleButtons(npc) {
     const actionBox = document.getElementById('parle-action-box');
@@ -423,4 +480,394 @@ function createDiplomacyButton(text, clickHandler, isAttack = false) {
     if (dialogue) dialogue.innerText = "";
 
     console.log("Parle UI force-closed.");
+}
+
+
+/* =========================================================================
+   AUTORESOLVE SYSTEM
+   Appended to Parler System
+========================================================================= */
+
+function startAutoresolve(npc) {
+    isDiplomacyProcessing = true; // Lock UI
+    const actionBox = document.getElementById('parle-action-box');
+    const parleDialogue = document.getElementById('parle-dialogue');
+
+    actionBox.innerHTML = ''; // Clear buttons
+    parleDialogue.innerText = "The battle is raging. Waiting for the dust to settle...";
+
+    // Create Progress Bar UI
+    const progressContainer = document.createElement('div');
+    progressContainer.style.width = "100%";
+    progressContainer.style.height = "20px";
+    progressContainer.style.backgroundColor = "#222";
+    progressContainer.style.border = "1px solid #555";
+    progressContainer.style.marginTop = "15px";
+    progressContainer.style.position = "relative";
+
+    const progressBar = document.createElement('div');
+    progressBar.style.width = "0%";
+    progressBar.style.height = "100%";
+    progressBar.style.backgroundColor = "#8b0000"; // Deep red for battle
+    progressBar.style.transition = "width 0.1s linear";
+
+    const progressText = document.createElement('div');
+    progressText.style.position = "absolute";
+    progressText.style.width = "100%";
+    progressText.style.textAlign = "center";
+    progressText.style.color = "#fff";
+    progressText.style.fontSize = "12px";
+    progressText.style.top = "2px";
+    progressText.innerText = "Calculating Tactics...";
+
+    progressContainer.appendChild(progressBar);
+    progressContainer.appendChild(progressText);
+    actionBox.appendChild(progressContainer);
+
+    // Simulate Calculation over 2.5 seconds
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += Math.random() * 5 + 2; // Random increments
+        if (progress > 30) progressText.innerText = "Clashing lines...";
+        if (progress > 60) progressText.innerText = "Counting casualties...";
+        
+        if (progress >= 100) {
+            progress = 100;
+            clearInterval(interval);
+            progressBar.style.width = progress + "%";
+            
+            setTimeout(() => {
+                processAutoresolveMath(npc);
+            }, 500);
+        } else {
+            progressBar.style.width = progress + "%";
+        }
+    }, 100);
+}
+
+function processAutoresolveMath(npc) {
+    // 1. Analyze Armies
+    const playerStats = analyzeArmy(player.roster || []);
+    const npcStats = analyzeArmy(npc.roster || []);
+
+    // 2. Apply Rock-Paper-Scissors (RPS) Modifiers
+    // Infantry > Cav (+25%), Cav > Ranged (+25%), Ranged > Infantry (+25%)
+    const applyRPS = (attacker, defender) => {
+        let bonus = 0;
+        bonus += Math.min(attacker.infantryPower, defender.cavalryPower) * 0.25;
+        bonus += Math.min(attacker.cavalryPower, defender.rangedPower) * 0.25;
+        bonus += Math.min(attacker.rangedPower, defender.infantryPower) * 0.25;
+        return bonus;
+    };
+
+    let playerEffectivePower = playerStats.totalPower + applyRPS(playerStats, npcStats);
+    let npcEffectivePower = npcStats.totalPower + applyRPS(npcStats, playerStats);
+playerEffectivePower *= 1.10;//10 percent bonus
+    // Add slight RNG variance (+/- 10%)
+    playerEffectivePower *= (0.9 + Math.random() * 0.2);
+    npcEffectivePower *= (0.9 + Math.random() * 0.2);
+
+    // Prevent divide by zero
+    if (playerEffectivePower < 1) playerEffectivePower = 1;
+    if (npcEffectivePower < 1) npcEffectivePower = 1;
+
+    // 3. Determine Winner & Casualties using Lanchester's Square Law logic
+    let playerWon = playerEffectivePower >= npcEffectivePower;
+    
+    let playerLossPercent = 0;
+    let npcLossPercent = 0;
+
+    const baseCasualtyCap = 0.6; // Max 60% loss for the winner in an even fight
+
+    if (playerWon) {
+        const powerRatio = npcEffectivePower / playerEffectivePower; // e.g. 0.1 for 10x outnumber
+        playerLossPercent = Math.pow(powerRatio, 2) * baseCasualtyCap;
+        npcLossPercent = 1.0; // Loser gets wiped (or you can set this to 0.8 to leave survivors)
+        
+        // Failsafe constraint: 10x ratio = max 2% loss
+        if (playerEffectivePower >= npcEffectivePower * 10) {
+            playerLossPercent = Math.min(playerLossPercent, 0.02);
+        }
+    } else {
+        const powerRatio = playerEffectivePower / npcEffectivePower;
+        npcLossPercent = Math.pow(powerRatio, 2) * baseCasualtyCap;
+        playerLossPercent = 1.0; 
+
+        if (npcEffectivePower >= playerEffectivePower * 10) {
+            npcLossPercent = Math.min(npcLossPercent, 0.02);
+        }
+    }
+
+    // 4. Apply Casualties to Rosters
+    const playerCasualties = inflictCasualties(player.roster, playerLossPercent);
+    const npcCasualties = inflictCasualties(npc.roster, npcLossPercent);
+
+    // Recalculate totals
+    player.troops = getRosterTotal(player.roster);
+    npc.count = getRosterTotal(npc.roster);
+
+    displayAutoresolveResults(npc, playerWon, playerCasualties, npcCasualties);
+}
+function analyzeArmy(roster) {
+    let stats = {
+        totalPower: 0,
+        infantryPower: 0,
+        rangedPower: 0,
+        cavalryPower: 0,
+        totalTroops: 0
+    };
+
+    roster.forEach(unit => {
+        // FIX: Default to 1 if it's a flat roster array without a count property
+        const count = unit.count !== undefined ? unit.count : 1;
+        stats.totalTroops += count;
+
+        let baseCost = 10; // Fallback
+        let unitClass = "Infantry"; // Fallback
+        
+        // Grab template data from global UnitRoster
+        if (typeof UnitRoster !== 'undefined' && UnitRoster.allUnits[unit.type]) {
+            const template = UnitRoster.allUnits[unit.type];
+            baseCost = template.cost || baseCost;
+            
+            // FIX: Map your native 'role' system to the RPS logic
+            const roleStr = String(template.role || "").toLowerCase();
+            if (roleStr.match(/(cav|horse|mount|elephant)/)) {
+                unitClass = "Cavalry";
+            } else if (roleStr.match(/(archer|crossbow|gun|bomb|throw|rocket)/)) {
+                unitClass = "Ranged";
+            } else {
+                unitClass = "Infantry";
+            }
+        }
+
+        // Exp factor: Check both exp and level for compatibility
+        const levelFactor = 1 + ((unit.exp || unit.level || 1) * 0.1); 
+        const unitPower = count * baseCost * levelFactor;
+
+        stats.totalPower += unitPower;
+
+        if (unitClass === "Infantry") stats.infantryPower += unitPower;
+        else if (unitClass === "Ranged") stats.rangedPower += unitPower;
+        else if (unitClass === "Cavalry") stats.cavalryPower += unitPower;
+    });
+
+    return stats;
+}
+
+function inflictCasualties(roster, lossPercent) {
+    if (!roster || roster.length === 0) return 0;
+    if (lossPercent <= 0) return 0;
+
+    let totalTroops = getRosterTotal(roster);
+    let expectedLoss = totalTroops * lossPercent;
+    
+    // Floor it, then roll probability for the decimal remainder
+    let definiteLoss = Math.floor(expectedLoss);
+    let chanceForExtraLoss = expectedLoss - definiteLoss;
+    
+    if (Math.random() < chanceForExtraLoss) {
+        definiteLoss += 1;
+    }
+
+    // Ensure we don't kill more than exist
+    definiteLoss = Math.min(definiteLoss, totalTroops);
+    let totalLost = 0;
+
+    // FIX: Properly handle both Flat Rosters (splice) and Stacked Rosters (decrement)
+    for (let i = 0; i < definiteLoss; i++) {
+        if (roster.length === 0) break;
+        
+        // Pick a random soldier/stack to take the hit
+        let randIndex = Math.floor(Math.random() * roster.length);
+        let unit = roster[randIndex];
+        let count = unit.count !== undefined ? unit.count : 1;
+        
+        if (count > 1) {
+            unit.count--; // Shrink the stack
+        } else {
+            roster.splice(randIndex, 1); // Kill the individual soldier
+        }
+        totalLost++;
+    }
+
+    return totalLost;
+}
+
+function getRosterTotal(roster) {
+    if (!roster) return 0;
+    // FIX: Safely sum up troops whether they use counts or are flat arrays
+    return roster.reduce((sum, unit) => sum + (unit.count !== undefined ? unit.count : 1), 0);
+}
+function displayAutoresolveResults(npc, playerWon, playerLosses, npcLosses) {
+    const actionBox = document.getElementById('parle-action-box');
+    const parleDialogue = document.getElementById('parle-dialogue');
+    
+    // Update UI troop numbers instantly
+    document.getElementById('parle-player-troops').innerText = player.troops || 0;
+    document.getElementById('parle-npc-troops').innerText = npc.count || 0;
+
+    actionBox.innerHTML = ''; // Clear progress bar
+
+    let resultHtml = "";
+    if (playerWon) {
+        parleDialogue.innerText = `Victory! The enemy forces have been routed or destroyed.`;
+        resultHtml = `
+            <div style="padding: 10px; background: rgba(0,255,0,0.1); border: 1px solid #2e7d32; margin-bottom: 10px;">
+                <p><strong>Outcome: Victory</strong></p>
+                <p style="color: #ffcccc;">Your Casualties: -${playerLosses}</p>
+                <p style="color: #99ff99;">Enemy Casualties: -${npcLosses}</p>
+            </div>
+        `;
+        
+// --- SURGERY: AUTORESOLVE LOOT SYSTEM ---
+        console.log("[AUTORESOLVE] Victory! Calculating loot...");
+        
+        let winSeverity = npcLosses / Math.max(1, (npcLosses + (npc.roster ? npc.roster.length : 0)));
+        let randMod = 0.8 + (Math.random() * 0.4);
+        
+        // 1. Gold & Food Transfer
+        let stolenGold = Math.floor((npc.gold || 0) * winSeverity * randMod);
+        let stolenFood = Math.floor((npc.food || 0) * winSeverity * randMod);
+        let bountyGold = Math.floor(npcLosses * 5 * randMod); // Battlefield scavenging
+        
+        player.gold += (stolenGold + bountyGold);
+        player.food = (player.food || 0) + stolenFood;
+        
+        console.log(`[AUTORESOLVE] Gained ${stolenGold + bountyGold} Gold and ${stolenFood} Food.`);
+
+        // 2. Cargo/Inventory Transfer
+        if (npc.cargo && Object.keys(npc.cargo).length > 0) {
+            let currentCargoLoad = Object.values(player.inventory || {}).reduce((a, b) => a + b, 0);
+            let capacity = Math.max(50, (player.roster.length || 1) * 5);
+
+            Object.keys(npc.cargo).forEach(rid => {
+                let qty = npc.cargo[rid];
+                if (qty > 0) {
+                    let stolenQty = Math.floor(qty * winSeverity * randMod);
+                    if (stolenQty < 1 && Math.random() < winSeverity) stolenQty = 1;
+
+                    let freeSpace = capacity - currentCargoLoad;
+                    if (stolenQty > freeSpace) stolenQty = Math.max(0, freeSpace);
+
+                    if (stolenQty > 0) {
+                        if (!player.inventory) player.inventory = {};
+                        player.inventory[rid] = (player.inventory[rid] || 0) + stolenQty;
+                        currentCargoLoad += stolenQty;
+                        console.log(`[AUTORESOLVE] ++ Looted ${stolenQty}x ${rid}`);
+                    }
+                }
+            });
+        }
+        
+        // 3. Experience Hook
+        if (player.roster) {
+            player.roster.forEach(t => t.exp = (t.exp || 0) + (npcLosses * 2));
+        }
+        // --- END SURGERY ---
+		
+		
+		
+} else {
+        parleDialogue.innerText = `Defeat! Your forces have been crushed and scattered.`;
+
+        // --- SURGERY: AUTORESOLVE DEFEAT PENALTY ---
+        console.log("[AUTORESOLVE] Defeat! Calculating wealth loss...");
+        
+        // Calculate how much of your total army was lost
+        let pInitial = playerLosses + (player.roster ? player.roster.length : 0);
+        let lossSeverity = playerLosses / Math.max(1, pInitial); // 0.0 to 1.0
+        let randMod = 0.8 + (Math.random() * 0.4);
+
+        // 1. Lose Gold & Food (Up to 50% based on loss severity)
+        let goldLost = Math.floor(player.gold * lossSeverity * 0.5 * randMod);
+        let foodLost = Math.floor((player.food || 0) * lossSeverity * 0.5 * randMod);
+
+        player.gold = Math.max(0, player.gold - goldLost);
+        player.food = Math.max(0, (player.food || 0) - foodLost);
+
+        // Enemy gets the gold you lost
+        npc.gold = (npc.gold || 0) + goldLost;
+        npc.food = (npc.food || 0) + foodLost;
+
+        // 2. Plunder Inventory
+        if (player.inventory) {
+            Object.keys(player.inventory).forEach(rid => {
+                let qty = player.inventory[rid];
+                if (qty > 0) {
+                    let stolenQty = Math.floor(qty * lossSeverity * randMod);
+                    if (stolenQty < 1 && Math.random() < lossSeverity) stolenQty = 1;
+
+                    if (stolenQty > 0) {
+                        player.inventory[rid] -= stolenQty;
+                        if (player.inventory[rid] <= 0) delete player.inventory[rid];
+
+                        // Logic: Traders keep it, Soldiers/Bandits scatter it to cities
+                        if (npc.role === "Commerce" || npc.role === "Civilian") {
+                            if (!npc.cargo) npc.cargo = {};
+                            npc.cargo[rid] = (npc.cargo[rid] || 0) + stolenQty;
+                        } else {
+                            // Find nearest city to "scatter" the lost goods to market
+                            let nearestCity = npc.originCity;
+                            if (!nearestCity && typeof cities !== 'undefined' && cities.length > 0) {
+                                let minDist = Infinity;
+                                cities.forEach(c => {
+                                    let dist = Math.hypot(c.x - npc.x, c.y - npc.y);
+                                    if (dist < minDist) { minDist = dist; nearestCity = c; }
+                                });
+                            }
+                            // Add to city market
+                            if (nearestCity && nearestCity.market) {
+                                if (!nearestCity.market[rid]) {
+                                    let base = (typeof RESOURCE_CATALOG !== 'undefined' && RESOURCE_CATALOG[rid]) ? RESOURCE_CATALOG[rid].basePrice : 50;
+                                    nearestCity.market[rid] = { stock: 0, idealStock: 10, price: Math.round(base * 0.8) };
+                                }
+                                nearestCity.market[rid].stock += stolenQty;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Add a line to the UI so the player knows they were robbed
+        let lootLossText = (goldLost > 0 || foodLost > 0) ? 
+            `<p style="color: #ff9999; font-size: 10px;">The enemy plundered ${goldLost} Gold and ${foodLost} Food.</p>` : "";
+
+        resultHtml = `
+            <div style="padding: 10px; background: rgba(255,0,0,0.1); border: 1px solid #c62828; margin-bottom: 10px;">
+                <p><strong>Outcome: Defeat</strong></p>
+                <p style="color: #ffcccc;">Your Casualties: -${playerLosses}</p>
+                <p style="color: #99ff99;">Enemy Casualties: -${npcLosses}</p>
+                ${lootLossText}
+            </div>
+        `;
+        // --- END SURGERY ---
+    }
+
+    actionBox.innerHTML = resultHtml;
+
+    // Continue Button
+    const continueBtn = createDiplomacyButton("Continue", () => {
+        isDiplomacyProcessing = false;
+        
+        if (playerWon) {
+            // Remove NPC from world map
+            if (typeof WorldMap !== 'undefined' && typeof WorldMap.removeEntity === 'function') {
+                WorldMap.removeEntity(npc);
+            } else {
+                npc.isDead = true; // Fallback
+            }
+            leaveParle(player);
+        } else {
+            // Handle player wipe logic
+            if (player.troops <= 0) {
+                // Hook to your game over / captured state
+                console.log("Player army wiped out.");
+            }
+            leaveParle(player);
+        }
+    });
+
+    actionBox.appendChild(continueBtn);
 }

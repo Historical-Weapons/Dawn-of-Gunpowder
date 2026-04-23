@@ -1,4 +1,5 @@
-// settings_ui.js - Mobile-friendly Volume Controls
+window.attritionDifficultyMultiplier = window.attritionDifficultyMultiplier ?? 1.0;
+
 window.SettingsUI = {
     isOpen: false,
 
@@ -31,6 +32,12 @@ window.SettingsUI = {
                     style="width:100%; height:30px; margin:10px 0;">
             </div>
 
+            <div style="margin: 20px 0;">
+                <label>ATTRITION RATE (<span id="diff-val">${Math.round(window.attritionDifficultyMultiplier * 100)}%</span>)</label><br>
+                <input type="range" id="diff-slider" min="0" max="2" step="0.1" value="${window.attritionDifficultyMultiplier}" 
+                    style="width:100%; height:30px; margin:10px 0;">
+            </div>
+
             <button id="close-settings" style="
                 background: #d4af37; border: none; padding: 10px 20px; 
                 cursor: pointer; font-weight: bold; width: 100%; margin-top:10px;
@@ -39,9 +46,11 @@ window.SettingsUI = {
 
         document.body.appendChild(modal);
 
-        // --- HOOKS TO AUDIO SYSTEM ---
+        // --- HOOKS TO AUDIO & GAME SYSTEMS ---
         const musicSlider = document.getElementById("music-slider");
         const sfxSlider = document.getElementById("sfx-slider");
+        const diffSlider = document.getElementById("diff-slider");
+        const diffVal = document.getElementById("diff-val");
 
         // Set initial values based on current state
         if (typeof AudioManager !== 'undefined') {
@@ -49,22 +58,29 @@ window.SettingsUI = {
             sfxSlider.value = AudioManager.masterSfxVolume / 0.5;
         }
 
-        musicSlider.addEventListener("input", (e) => {
+musicSlider.addEventListener("input", (e) => {
             const val = parseFloat(e.target.value);
-            // Default 0.15 * (0 to 2) = 0% to 200% (+100%)
             if (typeof AudioManager !== 'undefined') {
                 AudioManager.masterMusicVolume = 0.15 * val;
+                AudioManager.mp3Volume = AudioManager.masterMusicVolume; // <--- KEEP PLAYLIST SYNCED
                 // Update active MP3 volume immediately
                 if (AudioManager.currentMp3) AudioManager.currentMp3.volume = AudioManager.masterMusicVolume;
             }
         });
-
         sfxSlider.addEventListener("input", (e) => {
             const val = parseFloat(e.target.value);
             if (typeof AudioManager !== 'undefined') {
                 AudioManager.masterSfxVolume = 0.5 * val;
             }
         });
+
+        if (diffSlider) {
+            diffSlider.addEventListener("input", (e) => {
+                const val = parseFloat(e.target.value);
+                window.attritionDifficultyMultiplier = val;
+                diffVal.innerText = Math.round(val * 100) + "%";
+            });
+        }
 
         document.getElementById("close-settings").onclick = () => {
             modal.style.display = "none";

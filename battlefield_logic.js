@@ -855,7 +855,18 @@ if (type === "javelin") {
     }
 }
 function leaveBattlefield(playerObj) {
-	
+	// Force immediate GPU memory release
+if (battleEnvironment.bgCanvas) {
+    battleEnvironment.bgCanvas.width = 0;
+    battleEnvironment.bgCanvas.height = 0;
+    battleEnvironment.bgCanvas = null;
+}
+if (battleEnvironment.fgCanvas) {
+    battleEnvironment.fgCanvas.width = 0;
+    battleEnvironment.fgCanvas.height = 0;
+    battleEnvironment.bgCanvas = null;
+}
+
 	
 console.log("Leaving battlefield. Restoring overworld state...");
 // --- ADD THIS LINE TO SHUT DOWN THE ENEMY GENERAL ---

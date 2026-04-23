@@ -819,8 +819,7 @@ function startCustomBattleMonitor() {
 
    
 function launchCustomBattle() {
-	// Hide old errors immediately
-
+window.__IS_CUSTOM_BATTLE__ = true; // <--- NEW SURGERY
         // 🔴 FIX 1: FETCH CANVAS FIRST TO PREVENT TDZ CRASH
         const canvas = document.getElementById("gameCanvas");
 
@@ -929,13 +928,24 @@ function launchCustomBattle() {
         const dipContainer = document.getElementById("diplomacy-container");
         if (dipContainer) dipContainer.style.display = "none";
 
-        // Hijack exit
+// Hijack exit
         if (!originalLeaveBattlefield) originalLeaveBattlefield = window.leaveBattlefield;
         window.leaveBattlefield = handleCustomBattleExit;
-if (customBattleMode === "siege" && typeof window.launchCustomSiege === "function") { 
-window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
-    return; 
-}
+	
+        // ---> SURGERY: Safely pull initial counts directly from the roster arrays
+        // instead of waiting for currentBattleData to be built later.
+        preBattleStats = {
+            playerTotalHP: 0, // Not needed at spawn since units are empty here
+            enemyTotalHP: 0,
+            playerMen: playerSetup.roster.length + 1, // +1 for the Commander
+            enemyMen: enemySetup.roster.length + 1    // +1 for the Commander
+        };	
+		
+		if (customBattleMode === "siege" && typeof window.launchCustomSiege === "function") {
+		window.launchCustomSiege(playerSetup, enemySetup, selectedMap);
+			return; 
+		}
+
         else if (selectedMap === "Ocean" || selectedMap === "Coastal") {
             window.launchCustomNavalBattle(playerSetup, enemySetup, selectedMap, pNavalShipSize, eNavalShipSize);
 		return; }
@@ -1008,17 +1018,6 @@ else {
             player.ammo = playerCommander.ammo; // <--- SURGERY: SYNC AMMO TO GLOBAL PLAYER
         }
 
-        // Record initial stats
-        preBattleStats = {
-            playerTotalHP: battleEnvironment.units
-                .filter(u => u.side === "player")
-                .reduce((sum, u) => sum + (u.hp || 0), 0),
-            enemyTotalHP: battleEnvironment.units
-                .filter(u => u.side === "enemy")
-                .reduce((sum, u) => sum + (u.hp || 0), 0),
-            playerMen: currentBattleData.initialCounts.player,
-            enemyMen: currentBattleData.initialCounts.enemy
-        };
 
         // 🔴 FIX 5: Canvas is already defined at the top, just assign properties here
         if (canvas) {
@@ -1217,7 +1216,7 @@ cmdrStats.experienceLevel = cmdrStats.experienceLevel || 5;
 function handleCustomBattleExit() {
     if (window.__CUSTOM_BATTLE_EXITING__) return;
     window.__CUSTOM_BATTLE_EXITING__ = true;
-
+window.__IS_CUSTOM_BATTLE__ = false; // <--- NEW SURGERY
     if (window.cbRegicideMonitor) {
         clearInterval(window.cbRegicideMonitor);
         window.cbRegicideMonitor = null;
@@ -1226,7 +1225,8 @@ if (window.cbCustomBattleMonitor) {
         clearInterval(window.cbCustomBattleMonitor);
         window.cbCustomBattleMonitor = null;
     }
-    
+    window.GLOBAL_BATTLE_SCALE = 1;
+	window.CURRENT_MOBILE_RATIO = 0;
     // --- NEW: STOP ENEMY TACTICAL AI WHEN EXITING CUSTOM BATTLE ---
     if (typeof EnemyTacticalAI !== 'undefined') EnemyTacticalAI.stop();
 
@@ -1385,26 +1385,12 @@ selectedMap = "Siege City"; // <--- ADD THIS LINE
         parentContainer.appendChild(modalBg);
     }
 
-    // --- UTILITIES ---
+// --- UTILITIES ---
     function exitCustomBattleMenu() {
-        const container = document.getElementById("cb-menu-container");
-        if (container) container.remove();
-        customBattleActive = false;
-        
-        // FIX: Properly unhide the Main Menu so buttons return
-        const mainMenu = document.getElementById("main-menu");
-        if (mainMenu) {
-            mainMenu.style.display = "flex"; 
-            // Seek out the uiContainer wrapper holding the buttons and show it
-            const uiContainer = Array.from(mainMenu.children).find(c => c.tagName === "DIV" && c.style.zIndex === "1");
-            if (uiContainer) uiContainer.style.display = "flex";
-        } else if (typeof showMainMenu === 'function') {
-            showMainMenu();
-        } else {
-            window.isPaused = false; 
-        }
+        // A full page reload guarantees a 100% clean slate, destroying all ghost 
+        // loops and variables. Save files in localStorage remain completely safe.
+        window.location.reload();
     }
-
     function createCBBtn(text, onClick) {
         const btn = document.createElement("button");
         btn.innerText = text;

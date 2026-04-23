@@ -41,10 +41,17 @@ const SHIP_TYPES = {
     MEDIUM: { maxMen:80,   width:1200, height:480, color:"#2e1a0f", deck:"#6e5030", mastCount:3, sailScale:0.48 },
     HEAVY:  { maxMen:9999, width:1800, height:660, color:"#1e1008", deck:"#5e4228", mastCount:3, sailScale:0.74 }
 };
-
-// ============================================================================
-// INIT
-// ============================================================================
+// --- ADD THIS BLOCK ---
+const IS_NATIVE = (
+    typeof window.Capacitor !== 'undefined' ||
+    /\bwv\b/.test(navigator.userAgent) ||
+    window.AndroidInterface != null ||
+    (
+        /Android/.test(navigator.userAgent) &&
+        !/Chrome\/\d/.test(navigator.userAgent) &&
+        !/Firefox\/\d/.test(navigator.userAgent)
+    )
+);
 
 function initNavalBattle(enemyNPC, playerObj, tileType, pCount, eCount) {
     window.inNavalBattle = true;
@@ -282,14 +289,16 @@ function clearShipLanes() {
 function generateCosmetics() {
     navalEnvironment.waves = []; navalEnvironment.fishes = []; navalEnvironment.seagulls = [];
 
-    for (let i = 0; i < 300; i++) {
+     // AFTER:
+     const waveCount = IS_NATIVE ? 100 : 300;
+     for (let i = 0; i < waveCount; i++) { 
         navalEnvironment.waves.push({
             x:Math.random()*BATTLE_WORLD_WIDTH, y:Math.random()*BATTLE_WORLD_HEIGHT,
             speed:0.2+Math.random()*0.4, length:30+Math.random()*50, offset:Math.random()*100
         });
     }
-// Inside generateCosmetics:
-for (let i = 0; i < 40; i++) {
+     const fishCount = IS_NATIVE ? 10 : 40;
+     for (let i = 0; i < fishCount; i++) { 
     let x, y, tries = 0;
     do {
         x = Math.random() * BATTLE_WORLD_WIDTH;

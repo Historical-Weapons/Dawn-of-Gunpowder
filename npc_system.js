@@ -72,6 +72,9 @@ const SYLLABLE_POOLS = {
   "Ying", "Cheung", "Chung", "Lok", "Lam"
 ]
 };
+
+
+
 const NPC_CARRY_CAPACITY_PER_UNIT = 10; // Each person/soldier can carry 20 units of goods
 let globalNPCs = [];
 let worldMapRef = null; 
@@ -235,6 +238,8 @@ city.militaryPop = Math.min(MAX_GARRISON, Math.floor(city.pop * city.conscriptio
 
     city.gold = Math.floor(city.civilianPop * (Math.random() * 2 + 1)); 
     city.food = Math.floor(city.pop * (Math.random() * 3 + 2)); 
+	
+	if (typeof initCityMarket === 'function') initCityMarket(city);
 }
 
 function updateCityEconomies(cities) {
@@ -338,7 +343,7 @@ function updateCityEconomies(cities) {
         if (city.gold < 0) city.gold = 0;
 
         // Underdog garrison logic
-let targetGarrison = Math.min(MAX_GARRISON, Math.floor(city.pop * city.conscriptionRate * 0.9 * mods.draftMultiplier));
+		let targetGarrison = Math.min(MAX_GARRISON, Math.floor(city.pop * city.conscriptionRate * 0.9 * mods.draftMultiplier));
 
         if (city.militaryPop < targetGarrison) {
             let draft = Math.min(3, targetGarrison - city.militaryPop);
@@ -377,18 +382,17 @@ function getWealthyCity(citiesArr, excludeCity) {
 
 
 function spawnNPCFromCity(city, role, citiesArr) {
-if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
-// 1. FIX: Removed the floating 'id:' line. 
-    // 2. FIX: Properly declare targetX and targetY with 'let' so they exist safely.
+    if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
+    
     let target = null; 
     let targetX = city.x; 
     let targetY = city.y;
-    let speed = 0.5, count = 0; //default speed is 0.5
+    let speed = 0.5, count = 0; 
     let carriedGold = 0, carriedFood = 0;
     let travelDist = 0;
+    let npc_cargo_temp = {}; // <--- ADDED: It now always exists!
 
-
-
+	let capacityPerUnit = 2; 
 
     if (role === "Civilian") {
         count = Math.min(Math.floor(Math.random() * 8) + 5, city.civilianPop);
@@ -399,30 +403,56 @@ if (globalNPCs.length >= MAX_GLOBAL_NPCS) return; // ENFORCE CAP
         carriedFood = count * 2;
         city.civilianPop -= count; city.pop -= count;
         city.gold -= carriedGold; city.food -= carriedFood;
-    } 
+		
+		
+		
+    }
+	
 else if (role === "Commerce") {
-    count = Math.floor(Math.random() * 12) + 8; 
-    if (city.civilianPop < count || city.food < 100) return;
+        count = Math.floor(Math.random() * 12) + 8; 
+        if (city.civilianPop < count || city.food < 100) return;
 
-    speed = 0.5;
-    target = getRandomTargetCity(citiesArr, city);
-    travelDist = Math.hypot(target.x - city.x, target.y - city.y);
+        speed = 0.5;
+        target = getRandomTargetCity(citiesArr, city);
+        travelDist = Math.hypot(target.x - city.x, target.y - city.y);
 
-    const capacityPerUnit = 25; 
-    const maxCapacity = count * capacityPerUnit;
+        // SURGERY: 10x Carrying Capacity Bonus for Commerce Caravans
+        capacityPerUnit = 20; 
+        const maxCapacity = count * capacityPerUnit;
+        let potentialFood = Math.floor(city.food * 0.03);
+        let potentialGold = Math.floor(city.gold * 0.05);
 
-    let potentialFood = Math.floor(city.food * 0.03);
-    let potentialGold = Math.floor(city.gold * 0.05);
+        carriedFood = Math.min(maxCapacity * 0.6, potentialFood, 200); 
+        carriedGold = Math.min(maxCapacity - carriedFood, potentialGold, 150);
 
-    carriedFood = Math.min(maxCapacity * 0.6, potentialFood, 200); 
-    carriedGold = Math.min(maxCapacity - carriedFood, potentialGold, 150);
+        city.civilianPop -= count;
+        city.pop -= count;
+        city.food -= carriedFood;
+        city.gold -= carriedGold;
 
-    city.civilianPop -= count;
-    city.pop -= count;
-    city.food -= carriedFood;
-    city.gold -= carriedGold;
-}
+        // ── HOOK C (spawn side): load native goods into cargo ──────────────
+        if (typeof _getTileAtCity === 'function') {
+            const _tN = _getTileAtCity(city);
+            const _nIds = (typeof TILE_RESOURCES !== 'undefined' && TILE_RESOURCES[_tN]) || [];
+            const _cap = count * 5;
+            let _load = 0;
+           // npc_cargo_temp = {};
+            _nIds.slice(0, 2).forEach(rid => {
+                if (!city.market || !city.market[rid]) return;
+                const e = city.market[rid];
+                const qty = Math.min(Math.floor(e.stock * 0.2), _cap - _load, 15);
+                if (qty > 0) { e.stock -= qty; npc_cargo_temp[rid] = qty; _load += qty; }
+            });
+        }
+        // ───────────────────────────────────────────────────────────────────
+    }
+
 else if (role === "Patrol") {
+	// Patrol carries some equifgpment
+const _milGoods = ["leather_hides", "iron_tools", "felt_cloth"];
+const _rid2 = _milGoods[Math.floor(Math.random() * _milGoods.length)];
+npc_cargo_temp[_rid2] = Math.floor(Math.random() * 4) + 1; // 1-4 units
+
     count = Math.min(Math.floor(Math.random() * 20) + 50, city.militaryPop);
     if (count < 10) return;
     speed = 0.5;
@@ -435,6 +465,12 @@ else if (role === "Patrol") {
     city.food -= carriedFood;
 } 
     else if (role === "Military") {
+		
+// War spoils: military carries some looted goods worth plundering
+const _milGoods = ["leather_hides", "iron_tools", "felt_cloth"];
+const _rid = _milGoods[Math.floor(Math.random() * _milGoods.length)];
+npc_cargo_temp[_rid] = Math.floor(Math.random() * 8) + 3; // 3-10 units
+
  
     count = Math.min(Math.floor(Math.random() * 180) + 30, city.militaryPop);
     if (count < 20) return;     //military number count
@@ -470,7 +506,8 @@ if (target) { targetX = target.x; targetY = target.y; }
         originCity: city, 
         targetCity: target,
         travelDist: travelDist,
-		
+		        // ── HOOK C: attach cargo so npcArriveAndTrade can read it ──
+        cargo: npc_cargo_temp,
   // Scatter them slightly around the city center
         x: city.x + (Math.random() - 0.5) * 30, 
         y: city.y + (Math.random() - 0.5) * 30,
@@ -484,8 +521,7 @@ if (target) { targetX = target.x; targetY = target.y; }
         battleTarget: null, 
         gold: carriedGold, 
         food: carriedFood,
-		// --- ADD THIS LINE (around line 250-260) ---
-decisionTimer: 0
+        decisionTimer: 0
     });
 }
 
@@ -508,23 +544,29 @@ function spawnBandit(padX, padY) {
         x: coords.x, y: coords.y,
         targetX: coords.x + (Math.random() - 0.5) * 400, //instead of letting them wander up to 1000 pixels away, limit them to 400 pixels.
         targetY: coords.y + (Math.random() - 0.5) * 400,
-        speed: 0.4, 
+        speed: 0.45, 
         anim: Math.floor(Math.random() * 100), 
         isMoving: true, 
         waitTimer: 0,
         battlingTimer: 0,   
         battleTarget: null, 
         gold: 0, 
-        food: 30,
-		// --- ADD THIS LINE (around line 250-260) ---
-decisionTimer: 0
+        food: 50,
+		// ADD this line right above decisionTimer:
+		cargo: {},        
+		decisionTimer: 0
     });
 }
 
 function initializeNPCs(cities, mapData, tileSize, cols, rows, padX, padY) {
+	
     console.log("Drafting Dynamic Populations & Armies...");
     
     worldMapRef = mapData;
+	
+	window._tradeWorldRef = mapData;
+window._tradeTileSize = tileSize;
+
     tSize = tileSize;
     maxCols = cols;
     maxRows = rows;
@@ -561,7 +603,7 @@ let banditCount = Math.min(10, cities.length * 2);//<<<<<<<<<<<<<<<<<<<<10 bandi
 
 function updateNPCs(cities) {
     // Clean up dead units first
-// --- FIX: CLEAN UP DEAD UNITS & UNSTUCK SURVIVORS ---
+    // --- FIX: CLEAN UP DEAD UNITS & UNSTUCK SURVIVORS ---
     globalNPCs = globalNPCs.filter(npc => {
         if (npc.count <= 0) {
             // If this unit is dying, make sure anyone targeting it gets released
@@ -647,7 +689,7 @@ function updateNPCs(cities) {
 
             if (areEnemies) {
                 // --- REVISED A. INITIATE COMBAT (FIXED) ---
-                 if (distSq < 625 && !npc.battleTarget && !other.battleTarget && 
+                if (distSq < 625 && !npc.battleTarget && !other.battleTarget && 
                     npc.battlingTimer === 0 && other.battlingTimer === 0 && 
                     npc.waitTimer === 0 && other.waitTimer === 0) {
 
@@ -675,8 +717,8 @@ function updateNPCs(cities) {
                     }
                     
                     // 3. ENGAGE IN COMBAT
-                    npc.battlingTimer = 90; 
-                    other.battlingTimer = 90;
+                    npc.battlingTimer = 400; // Increased from 90 to allow players to witness the battle
+                    other.battlingTimer = 400;
                     npc.battleTarget = other; 
                     other.battleTarget = npc;
                     
@@ -741,47 +783,47 @@ function updateNPCs(cities) {
                 else if (typeof enterBattlefield === 'function') enterBattlefield(npc, player, currentTile);
             }
 
-			// Player Tracking for AI
-			if (!npc.isSieging && npc.role !== "Civilian" && npc.role !== "Commerce") {
-				
-				// 1. SURGERY: Use the master diplomacy check instead of the hardcoded array check
-				let isPlayerEnemy = isHostile(npc.faction, "Player's Kingdom");
+            // Player Tracking for AI
+            if (!npc.isSieging && npc.role !== "Civilian" && npc.role !== "Commerce") {
+                
+                // 1. SURGERY: Use the master diplomacy check instead of the hardcoded array check
+                let isPlayerEnemy = isHostile(npc.faction, "Player's Kingdom");
 
-				// 2. SURGERY: Match NPC-to-NPC radar range (160000 = 400px radius) instead of the blind 100px range
-				if (isPlayerEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 100000) {
-					
-					// 3. SURGERY: Assess if the NPC outnumbers the player
-					let playerTroops = player.troops || 1; 
-					let isOutnumbered = npc.count < playerTroops * 0.6; // Matches your NPC vs NPC combat logic
+                // 2. SURGERY: Match NPC-to-NPC radar range (160000 = 400px radius) instead of the blind 100px range
+                if (isPlayerEnemy && !(player.isSieging && npc.role !== "Military") && distSqToPlayer < 100000) {
+                    
+                    // 3. SURGERY: Assess if the NPC outnumbers the player
+                    let playerTroops = player.troops || 1; 
+                    let isOutnumbered = npc.count < playerTroops * 0.6; // Matches your NPC vs NPC combat logic
 
-					if (!isOutnumbered) {
-						// The NPC feels confident enough to pursue you!
-						let playerScore = -distSqToPlayer + 4000000; 
-						
-						if (playerScore > bestTargetScore) {
-							bestTargetScore = playerScore;
-							// 'disableAICombat: true' tells the later flight-or-fight logic to commit to the chase
-							bestTarget = { x: player.x, y: player.y, role: "Player", disableAICombat: true }; 
-						}
-					} else {
-						// The NPC is outnumbered! Mark the player as a "Scary Enemy" so they actively run away
-						if (distSqToPlayer < minScaryDistSq) {
-							minScaryDistSq = distSqToPlayer; 
-							// Feed dummy object with x/y so the flee logic later in the script works
-							closestScaryEnemy = { x: player.x, y: player.y }; 
-						}
-					}
-				}
-			}
+                    if (!isOutnumbered) {
+                        // The NPC feels confident enough to pursue you!
+                        let playerScore = -distSqToPlayer + 4000000; 
+                        
+                        if (playerScore > bestTargetScore) {
+                            bestTargetScore = playerScore;
+                            // 'disableAICombat: true' tells the later flight-or-fight logic to commit to the chase
+                            bestTarget = { x: player.x, y: player.y, role: "Player", disableAICombat: true }; 
+                        }
+                    } else {
+                        // The NPC is outnumbered! Mark the player as a "Scary Enemy" so they actively run away
+                        if (distSqToPlayer < minScaryDistSq) {
+                            minScaryDistSq = distSqToPlayer; 
+                            // Feed dummy object with x/y so the flee logic later in the script works
+                            closestScaryEnemy = { x: player.x, y: player.y }; 
+                        }
+                    }
+                }
+            }
         }
 
         // --- 1. COMBAT SEQUENCE ---
         if (npc.battlingTimer > 0) {
             npc.battlingTimer--;
             npc.isMoving = false;
-
             if (npc.battleTarget && npc.battleTarget.count > 0) {
-                if (npc.battlingTimer % 10 === 0) {
+                // Check every 20 frames instead of 10 to balance the longer duration
+                if (npc.battlingTimer % 20 === 0) {
                     let other = npc.battleTarget;
                     let dmgToOther = Math.max(1, Math.floor(npc.count * (Math.random() * 0.05 + 0.01)));
                     let dmgToNpc = Math.max(1, Math.floor(other.count * (Math.random() * 0.05 + 0.01)));
@@ -817,26 +859,50 @@ function updateNPCs(cities) {
                             other.targetX = other.x + Math.cos(angle2) * 100; other.targetY = other.y + Math.sin(angle2) * 100;
                             other.decisionTimer = 60;
                         } 
-                        // Existing logic: If only one side survived (or one died)
                         else {
                             let actualSurvivor = (npc.count > 0) ? npc : ((other.count > 0) ? other : null);
                             let loser = (npc.count <= 0) ? npc : other;
 
                             if (actualSurvivor) {
-                                let maxCapacity = actualSurvivor.count * (typeof NPC_CARRY_CAPACITY_PER_UNIT !== 'undefined' ? NPC_CARRY_CAPACITY_PER_UNIT : 10);
-                                let roomLeft = Math.max(0, maxCapacity - (actualSurvivor.gold + actualSurvivor.food));
-                                if (roomLeft > 0) {
-                                    let totalLoot = loser.gold + loser.food;
-                                    let ratio = Math.min(1, roomLeft / Math.max(1, totalLoot));
-                                    actualSurvivor.gold += Math.floor(loser.gold * ratio);
-                                    actualSurvivor.food += Math.floor(loser.food * ratio);
+                                let baseCap = 2; 
+                                let capMultiplier = (actualSurvivor.role === "Commerce") ? 50 : 1; 
+                                let maxCapacity = actualSurvivor.count * (baseCap * capMultiplier);
+
+                                let currentCargoLoad = Object.values(actualSurvivor.cargo || {}).reduce((a, b) => a + b, 0);
+                                let roomLeft = Math.max(0, maxCapacity - currentCargoLoad);
+
+                                let stolenGold = Math.floor(loser.gold * 0.6);
+                                let stolenFood = Math.floor(loser.food * 0.5);
+                                actualSurvivor.gold += stolenGold;
+                                actualSurvivor.food += stolenFood;
+                                loser.gold = Math.max(0, loser.gold - stolenGold);
+                                loser.food = Math.max(0, loser.food - stolenFood);
+
+                                if (roomLeft > 0 && loser.cargo) {
+                                    if (!actualSurvivor.cargo) actualSurvivor.cargo = {};
+                                    let cargoRatio = Math.min(1, roomLeft / Math.max(1, Object.values(loser.cargo).reduce((a, b) => a + b, 0)));
+                                    Object.keys(loser.cargo).forEach(rid => {
+                                        let qty = loser.cargo[rid];
+                                        if (qty > 0) {
+                                            let stolenQty = Math.floor(qty * cargoRatio);
+                                            if (stolenQty > 0) {
+                                                actualSurvivor.cargo[rid] = (actualSurvivor.cargo[rid] || 0) + stolenQty;
+                                                loser.cargo[rid] -= stolenQty;
+                                            }
+                                        }
+                                    });
+                                }
+                                
+                                // BUG 2 FIX INCLUDED HERE: Changed 'ratio' to 'cargoRatio'
+                                if (typeof cargoRatio !== 'undefined' && cargoRatio < 1 && actualSurvivor.count < 10) {
+                                    console.log(`${actualSurvivor.role} survivors too small to carry all loot.`);
                                 }
 
+                                // ---> SURGICAL FIX: MOVED MOVEMENT LOGIC INSIDE THE SAFETY BLOCK <---
                                 let angle = Math.random() * Math.PI * 2;
                                 actualSurvivor.x += Math.cos(angle) * 30; 
                                 actualSurvivor.y += Math.sin(angle) * 30;
                                 
-                                // Force Movement State Unlocking
                                 actualSurvivor.waitTimer = 0; 
                                 actualSurvivor.isMoving = true;
                                 actualSurvivor.speed = 0.8; 
@@ -844,12 +910,10 @@ function updateNPCs(cities) {
                                 actualSurvivor.targetY = actualSurvivor.y + Math.sin(angle) * 100;
                                 actualSurvivor.decisionTimer = 60; 
 
-                                // Give survivor a nudge to prevent "stacking"
                                 actualSurvivor.x += (Math.random() - 0.5) * 15;
                                 actualSurvivor.y += (Math.random() - 0.5) * 15;
-                            }
-                        }
-                        
+                            } // <--- The bracket closes AFTER the movement, protecting the engine.
+                        }                     
                         // FIX: Clear BOTH units so nobody gets stuck
                         npc.battleTarget = null;
                         npc.battlingTimer = 0;
@@ -907,10 +971,9 @@ function updateNPCs(cities) {
                 if (isWorthDiverting || targetDistSq < 1500) { 
                     npc.targetX = bestTarget.x; npc.targetY = bestTarget.y;
                     npc.waitTimer = 0; npc.speed = 0.85; 
-					
-					
-				   // 🔧 CHANGE 1: commit longer (reduces flip-flopping)
-        npc.decisionTimer = (npc.role === "Bandit") ? 35 : 20;
+                    
+                    // 🔧 CHANGE 1: commit longer (reduces flip-flopping)
+                    npc.decisionTimer = (npc.role === "Bandit") ? 35 : 20;
                 }
             } 
             else {
@@ -933,7 +996,12 @@ function updateNPCs(cities) {
             if ((npc.role === "Military" || npc.role === "Bandit" || npc.role === "Patrol") && Math.random() < 0.002) { 
                 npc.food -= (1 + Math.floor(npc.count / 25));
                 if (npc.food <= 0) {
-                    npc.food = 0; npc.count -= Math.max(1, Math.floor(npc.count * 0.02)); 
+                    npc.food = 0; 
+                    // ---> SURGERY: Rapid desertion if BOTH food and gold are 0 <---
+                    let desertionRate = (npc.gold <= 0) ? 0.10 : 0.02; // 10% loss vs standard 2% loss
+                    npc.count -= Math.max(1, Math.floor(npc.count * desertionRate));
+                    // Keep their simulated roster length in sync with the new count
+                    while(npc.roster && npc.roster.length > npc.count) npc.roster.pop();
                 }
             }
             if (npc.food < 20 && Math.random() < 0.005) {
@@ -942,7 +1010,6 @@ function updateNPCs(cities) {
                 npc.food += forageAmount;
             }
         }
-
         // --- 6. MOVEMENT LOGIC ---
         if (npc.waitTimer > 0) {
             npc.waitTimer--; npc.isMoving = false;
@@ -960,7 +1027,8 @@ function updateNPCs(cities) {
                 if (isAtTargetCity) {
                     npc.x = tc.x + (Math.random() - 0.5) * 40; npc.y = tc.y + (Math.random() - 0.5) * 40;
                     
-                    if (npc.role === "Military" && npc.faction !== tc.faction) {
+                    // SURGERY: Allowed Patrols to enter the siege logic block
+                    if ((npc.role === "Military" || npc.role === "Patrol") && npc.faction !== tc.faction) {
                         if (typeof initiateSiege === 'function') {
                             if (!npc.isSieging) initiateSiege(npc, tc);
                             npc.waitTimer = 100; 
@@ -970,13 +1038,13 @@ function updateNPCs(cities) {
                         }
                         if (tc.militaryPop <= 10) {
                             tc.faction = npc.faction; tc.color = npc.color;
-tc.militaryPop = Math.min(MAX_GARRISON, Math.max(10, Math.floor(npc.count * 0.5))); 
-//you expend half your troops for garrison
+                            tc.militaryPop = Math.min(MAX_GARRISON, Math.max(10, Math.floor(npc.count * 0.5))); 
                             tc.troops = tc.militaryPop; tc.pop += tc.militaryPop;
                             npc.count -= tc.militaryPop; npc.targetCity = null; 
                         }
                     }
-                    else if ((npc.role === "Bandit" || npc.role === "Patrol") && npc.faction !== tc.faction) {
+                    // SURGERY: Removed Patrol from the "bounce away" logic so they don't retreat
+                    else if (npc.role === "Bandit" && npc.faction !== tc.faction) {
                         npc.targetX = npc.x + (Math.random() - 0.5) * 300;
                         npc.targetY = npc.y + (Math.random() - 0.5) * 300;
                         npc.waitTimer = Math.floor(Math.random() * 60) + 30;
@@ -989,40 +1057,55 @@ tc.militaryPop = Math.min(MAX_GARRISON, Math.max(10, Math.floor(npc.count * 0.5)
                             let cost = Math.floor(foodToTake * 0.05);
                             if (npc.gold >= cost) { npc.gold -= cost; tc.gold += cost; }
                         }
-let targetGarrison = Math.min(
-    MAX_GARRISON,
-    Math.floor(tc.pop * tc.conscriptionRate * 0.3)
-);
+                        let targetGarrison = Math.min(
+                            MAX_GARRISON,
+                            Math.floor(tc.pop * tc.conscriptionRate * 0.3)
+                        );
 
-if (tc.militaryPop < targetGarrison) {
-    let absorb = Math.min(
-        3,
-        npc.count,
-        targetGarrison - tc.militaryPop,
-        MAX_GARRISON - tc.militaryPop
-    );
+                        if (tc.militaryPop < targetGarrison) {
+                            let absorb = Math.min(
+                                3,
+                                npc.count,
+                                targetGarrison - tc.militaryPop,
+                                MAX_GARRISON - tc.militaryPop
+                            );
 
-    if (absorb > 0) {
-        tc.militaryPop += absorb;
-        tc.pop += absorb;
-        tc.troops = tc.militaryPop;
-        npc.count -= absorb;
-    }
-}
+                            if (absorb > 0) {
+                                tc.militaryPop += absorb;
+                                tc.pop += absorb;
+                                tc.troops = tc.militaryPop;
+                                npc.count -= absorb;
+                            }
+                        }
                         if (npc.count > 0) {
                             npc.targetCity = (typeof getEnemyCity === 'function' ? getEnemyCity(tc, cities) : null) || (typeof getRandomTargetCity === 'function' ? getRandomTargetCity(cities, tc) : null);
                             if (npc.targetCity) { npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y; }
                             npc.waitTimer = Math.floor(Math.random() * 100) + 50; 
                         }
                     }
+                    // ── HOOK C (arrival side): Commerce NPC trades materials ──
                     else if (npc.role === "Commerce") {
                         if (npc.targetCity === npc.originCity) {
-                            tc.civilianPop += npc.count; tc.pop += npc.count; npc.count = 0; 
+                            // Returned home: dissolve back into city population
+                            tc.civilianPop += npc.count;
+                            tc.pop += npc.count;
+                            npc.count = 0;
                         } else {
-                            tc.gold += Math.floor(npc.travelDist * 0.02) + npc.gold; 
-                            tc.food += npc.food; npc.gold = 0; npc.food = 0; 
-                            npc.targetCity = npc.originCity; 
-                            if (npc.targetCity) { npc.targetX = npc.targetCity.x; npc.targetY = npc.targetCity.y; }
+                            // Arrived at destination: run material trade first
+                            if (typeof npcArriveAndTrade === 'function') npcArriveAndTrade(npc, tc);
+
+                            // Classic gold/food exchange (unchanged)
+                            tc.gold += Math.floor(npc.travelDist * 0.02) + npc.gold;
+                            tc.food += npc.food;
+                            npc.gold = 0;
+                            npc.food = 0;
+
+                            // Head home
+                            npc.targetCity = npc.originCity;
+                            if (npc.targetCity) {
+                                npc.targetX = npc.targetCity.x;
+                                npc.targetY = npc.targetCity.y;
+                            }
                             npc.waitTimer = Math.floor(Math.random() * 100) + 50;
                         }
                     }
@@ -1048,41 +1131,40 @@ if (tc.militaryPop < targetGarrison) {
                 let terrainMod = currentTile.speed !== undefined ? currentTile.speed : 1.6;
                 let currentSpeed = npc.speed;
 
-if (npc.role === "Bandit") {
-    // Start penalties later (after 30 instead of 21)
-    let penaltySteps = Math.max(0, Math.floor((npc.count - 30) / 10) + 1);
+                if (npc.role === "Bandit") {
+                    // Start penalties later (after 30 instead of 21)
+                    let penaltySteps = Math.max(0, Math.floor((npc.count - 30) / 10) + 1);
 
-    // Much softer penalty (4% per step instead of 10%)
-    let speedMultiplier = 1 - (penaltySteps * 0.04);
+                    // Much softer penalty (4% per step instead of 10%)
+                    let speedMultiplier = 1 - (penaltySteps * 0.04);
 
-    // Higher floor so it never feels too punishing
-    speedMultiplier = Math.max(0.6, speedMultiplier);
+                    // Higher floor so it never feels too punishing
+                    speedMultiplier = Math.max(0.6, speedMultiplier);
 
-    currentSpeed *= speedMultiplier;
-}
+                    currentSpeed *= speedMultiplier;
+                }
 
                 let moveStep = Math.min(currentSpeed * terrainMod, 1); 
                 if (dist > 0) { npc.x += (dx / dist) * moveStep; npc.y += (dy / dist) * moveStep; }
                 npc.isMoving = true; npc.anim += moveStep * 1.5; 
             }
         }
-    } // End main NPC loop
+    }
 
-
- //global spawn
+    //global spawn
     if (Math.random() < 0.03 && cities.length > 0) {
         let rc = cities[Math.floor(Math.random() * cities.length)];
         if (Math.random() < 0.3 && rc.civilianPop > 20) spawnNPCFromCity(rc, "Commerce", cities);
         else if (Math.random() < 0.2 && rc.civilianPop > 50) spawnNPCFromCity(rc, "Civilian", cities);
-   else if (Math.random() < 0.3 && rc.militaryPop > 30) spawnNPCFromCity(rc, "Patrol", cities);
-else if (rc.pop > 500 && rc.militaryPop > 50 && Math.random() < 0.10) spawnNPCFromCity(rc, "Military", cities); //military spawn requirement
+        else if (Math.random() < 0.3 && rc.militaryPop > 30) spawnNPCFromCity(rc, "Patrol", cities);
+        else if (rc.pop > 500 && rc.militaryPop > 50 && Math.random() < 0.10) spawnNPCFromCity(rc, "Military", cities); //military spawn requirement
     }
     if (Math.random() < 0.005 && globalNPCs.filter(n => n.role === "Bandit").length < cities.length * 1.5) {
         if (typeof spawnBandit === 'function') spawnBandit(0, 0); 
     }
+    
+    if (typeof tickAllMarkets === 'function') tickAllMarkets(cities);
 }
-
-
 
 
 
@@ -1142,17 +1224,22 @@ let distSq = dx * dx + dy * dy;
         return distSq <= SPOTTING_RANGE_SQ;
     });
 
-    // --- PASS 1: DRAW SPRITES ---
+// --- PASS 1: DRAW SPRITES ---
     visibleNPCs.forEach(npc => {
-        let tx = Math.floor(npc.x / TILE_SIZE); 
-        let ty = Math.floor(npc.y / TILE_SIZE);
+        // Safety check: Attempt to use TILE_SIZE, fallback to tSize if it doesn't exist
+        let effectiveSize = (typeof TILE_SIZE !== 'undefined') ? TILE_SIZE : tSize;
+
+        let tx = Math.floor(npc.x / effectiveSize); 
+        let ty = Math.floor(npc.y / effectiveSize);
+        
         let tile = (worldMap[tx] && worldMap[tx][ty]) ? worldMap[tx][ty] : null;
         let useBoat = !tile || ["Coastal", "River", "Ocean", "Sea", "Deep Ocean"].includes(tile.name);
 
-		if (useBoat) {
-            // NOW PASSING npc.color!
+        if (useBoat) {
+            // Drawing the ship using the NPC's faction color
             drawShipFunc(npc.x, npc.y, npc.isMoving, npc.anim, npc.color);
         } else {
+            // Drawing the land caravan using the NPC's faction color
             drawCaravanFunc(npc.x, npc.y, npc.isMoving, npc.anim, npc.color); 
         }
     });
@@ -1164,12 +1251,13 @@ let distSq = dx * dx + dy * dy;
     ctx.textAlign = "center";
 
     visibleNPCs.forEach(npc => {
-        // Determine state and assign the appropriate icon
+// Determine state and assign the appropriate icon
         let statusIcon = "";
         if (npc.battlingTimer > 0) {
-            statusIcon = " ⚔️"; // NPC vs NPC Land Battle
+            statusIcon = "⚔️"; 
         } else if (npc.isSieging) {
-            statusIcon = " ⛺"; // Sieging a Settlement (Feel free to change to 🔥 or 🏰)
+            // SURGERY: Upgraded Siege Emoji for better visibility
+            statusIcon = "🪜"; 
         }
 
         let displayText = npc.role + statusIcon;
@@ -1205,4 +1293,146 @@ let distSq = dx * dx + dy * dy;
             }
         }
     });
+
+    // =========================================================================
+    // --- PASS 4: BANNERLORD-STYLE BATTLE CLASH EMOJIS (between armies) ---
+    // =========================================================================
+    // Renders ⚔️, 🗡️, 🛡️, 💥 at the midpoint between two fighting NPC units.
+    // Deduped per pair so we only draw once even though both sides hold a
+    // reference to each other.  All animation is time-based (no per-frame
+    // Math.random) so it's jitter-free and mobile-safe.
+    // =========================================================================
+    const _drawnBattlePairs = new Set();
+    const _T = Date.now();
+
+    ctx.save();
+    ctx.textAlign    = "center";
+    ctx.textBaseline = "middle";
+
+    visibleNPCs.forEach(npc => {
+        // Only process units that are actively fighting with a live target
+        if (!npc.battlingTimer || npc.battlingTimer <= 0) return;
+        if (!npc.battleTarget || npc.battleTarget.count <= 0)  return;
+
+        let other = npc.battleTarget;
+
+        // ── Deduplication: build a stable pair key from whichever id is smaller ──
+        let idA = npc.id   || (npc.x   + ':' + npc.y);
+        let idB = other.id || (other.x + ':' + other.y);
+        let pairKey = (idA < idB) ? (idA + '|' + idB) : (idB + '|' + idA);
+        if (_drawnBattlePairs.has(pairKey)) return;
+        _drawnBattlePairs.add(pairKey);
+
+        // ── Midpoint between the two combatants ──
+        let clashX = (npc.x + other.x) * 0.5;
+        let clashY = (npc.y + other.y) * 0.5;
+
+        // ── Viewport cull: skip if the clash point is off-screen ──
+        if (clashX < camLeft - 50 || clashX > camRight  + 50 ||
+            clashY < camTop  - 50 || clashY > camBottom + 50) return;
+
+        // ── Emoji size: stay visually consistent across zoom levels ──
+        // Clamp so they're readable on mobile without being huge when zoomed out.
+        let baseEm = Math.max(16, Math.min(34, 26 / zoom));
+
+        // ─────────────────────────────────────────────────────────────────────
+        // a) CENTRAL ⚔️ — pulses in and out like a heartbeat
+        // ─────────────────────────────────────────────────────────────────────
+        let pulse = 1 + 0.22 * Math.sin(_T / 190);
+        ctx.font = `${Math.round(baseEm * pulse)}px Arial, "Segoe UI Emoji", sans-serif`;
+        ctx.fillText("⚔️", clashX, clashY - 14);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // b) FLANKING 🗡️ / 🛡️ — orbit around the clash point
+        //    Two icons on opposite sides; each traces a small ellipse.
+        // ─────────────────────────────────────────────────────────────────────
+        let smallEm = Math.round(baseEm * 0.65);
+        ctx.font = `${smallEm}px Arial, "Segoe UI Emoji", sans-serif`;
+
+        let orbitAngle = (_T / 650) % (Math.PI * 2);
+        let orbitRx    = 11;   // horizontal radius
+        let orbitRy    = 6;    // vertical  radius (flatten the ellipse)
+
+        // 🗡️ at angle, 🛡️ exactly opposite
+        let sx1 = clashX + Math.cos(orbitAngle)           * orbitRx;
+        let sy1 = clashY - 14 + Math.sin(orbitAngle)      * orbitRy;
+        let sx2 = clashX + Math.cos(orbitAngle + Math.PI) * orbitRx;
+        let sy2 = clashY - 14 + Math.sin(orbitAngle + Math.PI) * orbitRy;
+
+        ctx.fillText("🗡️", sx1, sy1);
+        ctx.fillText("🛡️", sx2, sy2);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // c) PERIODIC 💥 FLASH — appears every ~600 ms, drifts slightly
+        //    Uses integer division of time so there's no randomness jitter.
+        // ─────────────────────────────────────────────────────────────────────
+        let flashSlot = Math.floor(_T / 600) % 4; // 0-3; only show on slot 0
+        if (flashSlot === 0) {
+            // Drift position using sin/cos so it moves smoothly, not randomly
+            let fx = clashX + Math.sin(_T / 290) * 10;
+            let fy = clashY + Math.cos(_T / 250) * 7 - 26;
+            ctx.font = `${Math.round(baseEm * 1.15)}px Arial, "Segoe UI Emoji", sans-serif`;
+            ctx.globalAlpha = 0.88;
+            ctx.fillText("💥", fx, fy);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // d) BATTLE-HEALTH BAR — thin strip below the clash showing relative
+        //    troop strength.  Helps the player understand who's winning at a
+        //    glance without needing to zoom in and read numbers.
+        // ─────────────────────────────────────────────────────────────────────
+        let totalTroops = Math.max(1, npc.count + other.count);
+        let barW        = Math.max(28, Math.min(52, 40 / zoom));
+        let barH        = Math.max(3, 5 / zoom);
+        let barX        = clashX - barW / 2;
+        let barY        = clashY + 4;
+
+        // Background
+        ctx.fillStyle   = "rgba(0,0,0,0.55)";
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+        // NPC side (left, uses npc color)
+        let npcFrac = npc.count / totalTroops;
+        ctx.fillStyle = npc.color || "#fff";
+        ctx.fillRect(barX, barY, barW * npcFrac, barH);
+
+        // OTHER side (right, uses other's color)
+        ctx.fillStyle = other.color || "#f44";
+        ctx.fillRect(barX + barW * npcFrac, barY, barW * (1 - npcFrac), barH);
+
+    }); // end visibleNPCs battle-emoji forEach
+
+    ctx.restore();
+    // =========================================================================
+    // --- END PASS 4 ---
+    // =========================================================================
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 16. INPUT BLOCKER — Prevents map zoom/scroll when Trade UI is active
+// ─────────────────────────────────────────────────────────────────────────────
+(function injectZoomBlocker() {
+    const blockEvent = (e) => {
+        if (window.inTradeMode) {
+            // Prevent the event from reaching the map's zoom/scroll listeners
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    };
+
+    // Block Mouse Wheel Zoom
+    window.addEventListener('wheel', blockEvent, { passive: false });
+
+    // Block Pinch-to-Zoom on Mobile/Touch devices
+    window.addEventListener('touchmove', (e) => {
+        if (window.inTradeMode && e.touches.length > 1) {
+            blockEvent(e);
+        }
+    }, { passive: false });
+    
+    // Optional: Block context menu (right click) if it interferes with trade logic
+    window.addEventListener('contextmenu', (e) => {
+        if (window.inTradeMode) e.preventDefault();
+    }, false);
+})();

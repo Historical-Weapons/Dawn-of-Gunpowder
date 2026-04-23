@@ -275,6 +275,16 @@ function populateCities() {
         }
     }
     console.log(`Successfully generated ${cities.length} dynamic cities.`);
+	
+	
+	
+	// ==========================================
+    // SURGERY: EXPOSE DATA TO WORLD MAP
+    // ==========================================
+    window.cities_sandbox = cities;
+    window.WORLD_WIDTH_sandbox = WORLD_WIDTH;
+    window.WORLD_HEIGHT_sandbox = WORLD_HEIGHT;
+	
 }
 	
 	
@@ -1363,7 +1373,7 @@ let peakSpawnThreshold = isMobile ? 0.991 : 0.984;
         window.hideLoadingScreen();
     }
 
-    AudioManager.playMusic("WorldMap_Calm");
+   
 }
 
 	

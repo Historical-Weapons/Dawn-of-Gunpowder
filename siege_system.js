@@ -9,8 +9,8 @@ let pendingSallyOut = null;
  
 function initiateSiege(attacker, city) {
     // ---> GATEKEEPER: Only the Player or Military Armies can lay siege <---
-    if (!attacker.disableAICombat && attacker.role !== "Military") {
-        return; 
+if (!attacker.disableAICombat && attacker.role !== "Military" && attacker.role !== "Patrol") {
+        return; //FOR DEBUGGING IM LETTING PATROL SIEGE TOO
     }
 
     // Prevent duplicate sieges on the same city
@@ -40,7 +40,11 @@ function initiateSiege(attacker, city) {
         id: Math.random().toString(36).substr(2, 9),
         attacker: attacker,
         defender: city,
-        ticks: 0
+        ticks: 0,
+        // ── NEW: 3-second visual startup delay for NPC vs NPC sieges ──
+        // 180 frames @ ~60fps = 3 seconds. Player siege starts immediately.
+        delayTimer: attacker.disableAICombat ? 0 : 180,
+        isDelaying:  !attacker.disableAICombat
     });
 }
 // 1. Update Initialization to show the new GUI
@@ -54,9 +58,7 @@ function initiatePlayerSiege(city) {
     initiateSiege(player, city);
     
     // Hide city panel
-	
     document.getElementById('city-panel').style.display = 'none';
-
 
     // Show persistent Siege GUI
     const gui = document.getElementById('siege-gui');
@@ -71,9 +73,33 @@ function initiatePlayerSiege(city) {
         statusText.style.color = "#ffca28";
     }
 	
-	const contBtn = document.getElementById('gui-continue-btn');
+    const contBtn = document.getElementById('gui-continue-btn');
     if (contBtn) contBtn.style.display = 'none';
 	
+    // ---> SURGERY: CREATE DYNAMIC ATTRITION UI <---
+    let attritionPanel = document.getElementById('mob-attrition-panel');
+    if (!attritionPanel) {
+        attritionPanel = document.createElement('div');
+        attritionPanel.id = 'mob-attrition-panel';
+        Object.assign(attritionPanel.style, {
+            position: 'fixed',
+            top: '70px',          // Positioned right below the mobile detail button
+            right: '12px',
+            width: '200px',
+            background: 'linear-gradient(to bottom, #1a0d0d, #0d0806)',
+            border: '2px solid #ffca28',
+            borderRadius: '6px',
+            padding: '10px',
+            color: '#d4b886',
+            fontFamily: 'Georgia, serif',
+            fontSize: '12px',
+            zIndex: '8999',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.7)',
+            pointerEvents: 'none' // Clicks pass through to the map
+        });
+        document.body.appendChild(attritionPanel);
+    }
+    attritionPanel.style.display = 'block';
 }
 
 
@@ -112,6 +138,8 @@ function endSiege(success = false) {
     }
     
     if(document.getElementById('siege-gui')) document.getElementById('siege-gui').style.display = 'none';
+	// SURGERY: Hide Attrition Panel
+    if(document.getElementById('mob-attrition-panel')) document.getElementById('mob-attrition-panel').style.display = 'none';
 }
 
 function promptSallyOut(siege, defenderMilitary, attackerCount) {
@@ -141,14 +169,16 @@ function updateSieges() {
         let atk = siege.attacker;
         let def = siege.defender;
 
-        let attackerCount = atk.disableAICombat ? player.troops : atk.count;
-		let attackerDead = atk.disableAICombat ? (player.troops <= 0) : atk.count <= 0;
+      let attackerCount = atk.disableAICombat ? player.troops : atk.count;
+        let attackerDead = atk.disableAICombat ? (player.troops <= 0) : atk.count <= 0;
         
-        let isInBattle = atk.disableAICombat ? (typeof inBattleMode !== 'undefined' && inBattleMode) : (atk.battlingTimer > 0);
-// Locate this in updateSieges()
-if (attackerDead || isInBattle) {
-    console.log(`The siege of ${def.name} has been broken!`);
-    
+        // SURGERY: Stop random peasant bumps from instantly deleting NPC sieges!
+        // NPCs will now maintain the siege while fighting off relief forces/patrols.
+        let isInBattle = atk.disableAICombat ? (typeof inBattleMode !== 'undefined' && inBattleMode) : false;
+
+        // Locate this in updateSieges()
+        if (attackerDead || isInBattle) {
+            console.log(`The siege of ${def.name} has been broken!`);
     // MOVE THIS HERE (Outside the death check)
     if (atk.disableAICombat) {
         const sBtn = document.getElementById('siege-button');
@@ -171,12 +201,56 @@ if (attackerDead || isInBattle) {
 
 // 2. ADD THIS LINE RIGHT HERE: Block attrition if paused
         if (siege.isPaused) continue;
+
+        // ── NEW: 3-SECOND STARTUP DELAY (NPC vs NPC sieges only) ─────────────
+        // During this window the attacker is visually locked in place so the
+        // player can actually see the 🪜 emoji before anything happens.
+        if (siege.delayTimer > 0) {
+            siege.delayTimer--;
+            // Keep NPC locked and facing the city while the delay ticks down
+            atk.waitTimer = 60;
+            atk.isSieging = true;          // Ensure the siege icon stays on
+            def.isUnderSiege = true;
+            if (siege.delayTimer === 0) {
+                siege.isDelaying = false;   // Flip to active state
+                console.log(`Siege of ${def.name} is now in full effect!`);
+            }
+            continue; // Skip all attrition logic this tick
+        }
+        // ─────────────────────────────────────────────────────────────────────
 		
+        // ---> SURGERY: LIVE ATTRITION UI UPDATER <---
+        if (atk.disableAICombat) {
+            const ui = document.getElementById('mob-attrition-panel');
+            if (ui && ui.style.display !== 'none') {
+                ui.innerHTML = `
+                    <div style="text-align:center; font-weight:bold; border-bottom:1px solid #3e2723; padding-bottom:4px; margin-bottom:6px;">ATTRITION PHASE</div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span style="color:#fff;">🛡️ Defender</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding-left:10px;">
+                        <span>Food: <span style="color:#8bc34a">${Math.floor(def.food)}</span></span>
+                        <span>Gold: <span style="color:#ffca28">${Math.floor(def.gold)}</span></span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top:8px;">
+                        <span style="color:#fff;">⚔️ Attacker</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding-left:10px;">
+                        <span>Food: <span style="color:#8bc34a">${Math.floor(player.food)}</span></span>
+                        <span>Gold: <span style="color:#ffca28">${Math.floor(player.gold)}</span></span>
+                    </div>
+                `;
+            }
+        }
+        
         siege.ticks++;
 
         // Continually enforce the movement lock
         if (!atk.disableAICombat) atk.waitTimer = 50; 
         else atk.isMoving = false; 
+		
+		
+		
 // --- NEW SALLY OUT LOGIC ---
         let defenderMilitary = def.militaryPop || def.troops || 0;
 
@@ -205,6 +279,7 @@ if (attackerDead || isInBattle) {
             activeSieges.splice(i, 1);
             continue;
         }
+		
 		
 		
         // 3. WAR OF ATTRITION
@@ -306,43 +381,172 @@ if (attackerDead || isInBattle) {
     }
 }
 
+// ============================================================================
+// drawSiegeVisuals — Bannerlord-style animated siege emoji layer
+// ============================================================================
+// Changes vs original:
+//  • 3-second "preparing" visual state (isDelaying) with ladders assembling
+//    near the attacker before they begin flying toward the walls.
+//  • After delay: 🪜 ladders arc from attacker to city walls, 🏹 arrows fly
+//    back from the garrison, a 💥 flash pulses at the clash point.
+//  • All animations are time-based (Date.now()) — no per-frame randomness
+//    that would cause jitter.
+//  • Mobile-friendly: no globalAlpha loops or overdraw; a flat maximum of
+//    ~8 emoji draw calls per active siege.
+// ============================================================================
 function drawSiegeVisuals(ctx) {
+    const T = Date.now(); // single timestamp — consistent within this draw call
+
     activeSieges.forEach(s => {
-        let def = s.defender;
-        let atk = s.attacker;
-        let attackerCount = atk.disableAICombat ? player.troops : atk.count;
+        let def  = s.defender;
+        let atk  = s.attacker;
+
+        let attackerCount = atk.disableAICombat ? player.troops   : atk.count;
         let defenderCount = def.militaryPop || def.troops || 0;
-        
-        let attackerFood = atk.disableAICombat ? player.food : atk.food;
-        let defenderFood = def.food;
+        let attackerFood  = atk.disableAICombat ? player.food     : atk.food;
+        let defenderFood  = def.food;
+
+        // Attacker world position
+        let atkX = atk.disableAICombat ? player.x : atk.x;
+        let atkY = atk.disableAICombat ? player.y : atk.y;
+
+        let cityR = def.radius || 20;
+
+        // ── Pre-compute direction and distance once ──────────────────────────
+        let dxAD  = def.x - atkX;
+        let dyAD  = def.y - atkY;
+        let distAD = Math.hypot(dxAD, dyAD) || 1;
 
         ctx.save();
+        ctx.textAlign   = "center";
+        ctx.textBaseline = "middle";
+
+        // ── 1. ANIMATED SIEGE RING ───────────────────────────────────────────
         ctx.beginPath();
-        ctx.arc(def.x, def.y, (def.radius || 20) + 18, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(220, 50, 47, 0.8)";
+        ctx.arc(def.x, def.y, cityR + 18, 0, Math.PI * 2);
+        ctx.strokeStyle = s.isDelaying
+            ? "rgba(255, 200, 40, 0.65)"
+            : "rgba(220, 50,  47, 0.85)";
         ctx.lineWidth = 3;
-        
-        // Animated dashes for visual flavor
-        ctx.setLineDash([8, 6]); 
-        ctx.lineDashOffset = -(Date.now() / 50) % 14; 
+        ctx.setLineDash([8, 6]);
+        ctx.lineDashOffset = -(T / 50) % 14;
         ctx.stroke();
-        
-        ctx.textAlign = "center";
-        ctx.shadowColor = "black";
-        ctx.shadowBlur = 4;
+        ctx.setLineDash([]);
 
-        // "UNDER SIEGE" text
-        ctx.fillStyle = "#ff5252";
-        ctx.font = "bold 13px Georgia";
-        ctx.fillText("UNDER SIEGE", def.x, def.y - (def.radius || 20) - 40);
+        // ── 2. STATUS TEXT & TROOP STATS ────────────────────────────────────
+        ctx.shadowColor = "rgba(0,0,0,0.9)";
+        ctx.shadowBlur  = 5;
 
-        // ⛺ Attacker Stats (Stacked above defender)
+        let statusLabel = s.isDelaying ? "⚔️ BESIEGING..." : "🔥 UNDER SIEGE";
+        ctx.fillStyle   = s.isDelaying ? "#ffca28" : "#ff5252";
+        ctx.font        = "bold 13px Georgia, serif";
+        ctx.fillText(statusLabel, def.x, def.y - cityR - 42);
+
         ctx.fillStyle = "#ffffff";
-        ctx.font = "12px Arial, 'Segoe UI Emoji'";
-        ctx.fillText(`⛺ ${attackerCount} (🍖 ${Math.floor(attackerFood)})`, def.x, def.y - (def.radius || 20) - 24);
-        
-        // 🏰 Defender Stats
-        ctx.fillText(`🏰 ${defenderCount} (🍖 ${Math.floor(defenderFood)})`, def.x, def.y - (def.radius || 20) - 8);
+        ctx.font      = "12px Arial, 'Segoe UI Emoji', sans-serif";
+        ctx.fillText(`⛺ ${attackerCount} (🍖 ${Math.floor(attackerFood)})`, def.x, def.y - cityR - 26);
+        ctx.fillText(`🏰 ${defenderCount} (🍖 ${Math.floor(defenderFood)})`, def.x, def.y - cityR - 10);
+
+        ctx.shadowBlur = 0;
+
+        // ── 3. BANNERLORD-STYLE EMOJI ANIMATIONS ────────────────────────────
+
+        if (s.isDelaying) {
+            // ─ PHASE 1: PREPARATION (delayTimer counts 180 → 0) ─────────────
+            // Ladders gather near the attacker and slowly shuffle forward.
+            // delayTimer is undefined-safe: if not set we skip.
+            if (typeof s.delayTimer !== 'undefined') {
+                let progress = 1 - (s.delayTimer / 180); // 0 → 1
+
+                ctx.font = "18px Arial, 'Segoe UI Emoji', sans-serif";
+
+                // Three ladders jostling around the attacker position
+                let laderData = [
+                    { ox: -12, oy:  0, wobbleF: 0.9,  wobbleA: 7  },
+                    { ox:   0, oy: -8, wobbleF: 1.1,  wobbleA: 5  },
+                    { ox:  12, oy:  4, wobbleF: 0.75, wobbleA: 8  }
+                ];
+
+                laderData.forEach((l, k) => {
+                    // Advance a fraction of the way to the wall as prep proceeds
+                    let advX = atkX + l.ox + dxAD * progress * 0.25 + Math.sin(T * l.wobbleF / 600 + k) * l.wobbleA;
+                    let advY = atkY + l.oy + dyAD * progress * 0.25 + Math.cos(T * l.wobbleF / 600 + k) * (l.wobbleA * 0.6);
+                    ctx.globalAlpha = 0.55 + 0.35 * Math.sin(T / 450 + k * 1.3);
+                    ctx.fillText("🪜", advX, advY);
+                });
+                ctx.globalAlpha = 1.0;
+            }
+
+        } else {
+            // ─ PHASE 2: ACTIVE SIEGE ─────────────────────────────────────────
+
+            // ── 3a. LADDERS flying from attacker → city walls ──
+            // Four ladders, each offset in phase so they stagger nicely.
+            const NUM_LADDERS = 4;
+            ctx.font = "17px Arial, 'Segoe UI Emoji', sans-serif";
+
+            for (let k = 0; k < NUM_LADDERS; k++) {
+                // phase: 0 = at attacker, 1 = at wall
+                let phase = ((T / 2200) + k / NUM_LADDERS) % 1;
+
+                // Lateral spread: ladders fan out slightly so they don't stack
+                let spread = (k - (NUM_LADDERS - 1) / 2) * 10;
+                let perpX  = -dyAD / distAD * spread;
+                let perpY  =  dxAD / distAD * spread;
+
+                let lx = atkX + dxAD * phase + perpX;
+                let ly = atkY + dyAD * phase + perpY - Math.sin(phase * Math.PI) * 30; // arc up
+
+                // Fade out as the ladder hits the wall
+                ctx.globalAlpha = (phase > 0.82) ? Math.max(0, (1 - phase) / 0.18) : 1.0;
+                ctx.fillText("🪜", lx, ly);
+            }
+            ctx.globalAlpha = 1.0;
+
+            // ── 3b. ARROWS flying back from garrison → attacker ──
+            const NUM_ARROWS = 3;
+            ctx.font = "13px Arial, 'Segoe UI Emoji', sans-serif";
+
+            for (let k = 0; k < NUM_ARROWS; k++) {
+                let phase = ((T / 1700) + k / NUM_ARROWS) % 1;
+
+                let spread = (k - 1) * 14;
+                let perpX  = -dyAD / distAD * spread;
+                let perpY  =  dxAD / distAD * spread;
+
+                // From city toward attacker
+                let ax = def.x + (-dxAD) * phase + perpX;
+                let ay = def.y + (-dyAD) * phase + perpY - Math.sin(phase * Math.PI) * 18;
+
+                ctx.globalAlpha = (phase > 0.80) ? Math.max(0, (1 - phase) / 0.20) : 1.0;
+                ctx.fillText("🏹", ax, ay);
+            }
+            ctx.globalAlpha = 1.0;
+
+            // ── 3c. CLASH FLASH at mid-point between the two forces ──
+            // Pulses every ~700 ms with a 💥, drifting slightly for variety.
+            let mx = (atkX + def.x) * 0.5;
+            let my = (atkY + def.y) * 0.5;
+
+            let flashCycle = Math.floor(T / 700) % 3; // 0, 1, 2 — only flash on 0
+            if (flashCycle === 0) {
+                // Drift using sin/cos so there's no per-frame randomness jitter
+                let driftX = Math.sin(T / 310) * 9;
+                let driftY = Math.cos(T / 270) * 6;
+                ctx.font        = "20px Arial, 'Segoe UI Emoji', sans-serif";
+                ctx.globalAlpha = 0.82;
+                ctx.fillText("💥", mx + driftX, my + driftY - 6);
+                ctx.globalAlpha = 1.0;
+            }
+
+            // ── 3d. Subtle ⚔️ pulse in the center (always visible) ──
+            let pulseFactor = 1 + 0.22 * Math.sin(T / 200);
+            let pulseSize   = Math.round(14 * pulseFactor);
+            ctx.font        = `${pulseSize}px Arial, 'Segoe UI Emoji', sans-serif`;
+            ctx.globalAlpha = 0.70;
+            ctx.fillText("⚔️", mx, my - 18);
+            ctx.globalAlpha = 1.0;
+        }
 
         ctx.restore();
     });
@@ -448,6 +652,9 @@ function triggerSiegeAssault() {
 	else {
         alert("Battlefield system not loaded! The assault failed.");
     }
+	
+	// SURGERY: Hide Attrition Panel
+    if(document.getElementById('mob-attrition-panel')) document.getElementById('mob-attrition-panel').style.display = 'none';
 }
 
 function restoreSiegeAfterBattle(didPlayerWin) {

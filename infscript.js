@@ -1,4 +1,11 @@
 function drawInfantryUnit(ctx, x, y, moving, frame, factionColor, type, isAttacking, side, unitName, isFleeing, cooldown, unitAmmo, unit, reloadProgress) {
+	
+	if (!unit || !unit.stats) {
+        // If the unit object is missing or stats aren't loaded, 
+        // return early to prevent the crash.
+        return; 
+    }
+	
 	ctx.save();
     ctx.translate(x, y);
 
@@ -435,28 +442,35 @@ else if (type === "peasant") {
 		
 				const isMilitia = unitName === "Militia";
 				
-				// 1. RESILIENT SEED GENERATION
-				let seed = 0;
-				if (typeof unit !== 'undefined' && unit !== null) {
-					if (typeof unit.id === 'number') {
-						seed = Math.abs(unit.id);
-					} else if (typeof unit.id === 'string') {
-						// Hash a string ID (like a UUID) into a number
-						for (let i = 0; i < unit.id.length; i++) {
-							seed += unit.id.charCodeAt(i);
+			// 1. RESILIENT SEED GENERATION & THEMATIC BANDIT WEAPONS
+				let weaponType = 0;
+				
+				if (unitName === "Club Bandit") {
+					weaponType = 7; // Sledgehammer/Club
+				} else if (unitName === "Hatchet Bandit") {
+					weaponType = 8; // Meat Cleaver (works well as a hatchet)
+				} else if (unitName === "Pitchfork Bandit") {
+					weaponType = 0; // Pitchfork
+				} else if (unitName === "Axe Bandit") {
+					weaponType = 2; // Woodcutter's Axe
+				} else {
+					let seed = 0;
+					if (typeof unit !== 'undefined' && unit !== null) {
+						if (typeof unit.id === 'number') {
+							seed = Math.abs(unit.id);
+						} else if (typeof unit.id === 'string') {
+							for (let i = 0; i < unit.id.length; i++) {
+								seed += unit.id.charCodeAt(i);
+							}
+						} else {
+							if (typeof unit._weaponSeed === 'undefined') {
+								unit._weaponSeed = Math.floor(Math.random() * 1000);
+							}
+							seed = unit._weaponSeed;
 						}
-					} else {
-						// If no ID exists, create a permanent random seed on the unit object
-						// This prevents the weapon from flickering every frame
-						if (typeof unit._weaponSeed === 'undefined') {
-							unit._weaponSeed = Math.floor(Math.random() * 1000);
-						}
-						seed = unit._weaponSeed;
 					}
+					weaponType = seed % 10;
 				}
-				
-				let weaponType = seed % 10; // Expanded to 10 weapons
-				
 			 
 
 				let wBob = (typeof weaponBob !== 'undefined') ? weaponBob : (typeof bob !== 'undefined' ? bob : 0);

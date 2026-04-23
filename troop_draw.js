@@ -1,6 +1,12 @@
 
     let lastSortTime = 0;
-    const SORT_INTERVAL = 100; 
+	
+const IS_NATIVE_DRAW = (
+    typeof window.Capacitor !== 'undefined' ||
+    /\bwv\b/.test(navigator.userAgent)
+);
+const SORT_INTERVAL = IS_NATIVE_DRAW ? 200 : 100;
+
 	let sortedUnitsCache = []; // Store the sorted copy here
  
 function drawBattleUnits(ctx) {
@@ -317,12 +323,15 @@ if (isDead) {
 battleEnvironment.projectiles.forEach(p => {
 		if (isNaN(p.x) || isNaN(p.y)) return; // Safety check
 		
-		
-// ---> INSERT CULLING HERE <---
+		 
         if (typeof camera !== 'undefined' && camera && typeof isOnScreen === 'function') {
             if (!isOnScreen(p, camera)) return;
         }
 		
+		 // ADD — distance cull (projectiles > 600 px from player are tiny):
+         var _pdx = p.x - player.x, _pdy = p.y - player.y;
+         if ((_pdx * _pdx + _pdy * _pdy) > 360000) return; 
+		 
 let vx = p.vx || p.dx || 0; 
 let vy = p.vy || p.dy || 0;
 let angle = (vx === 0 && vy === 0) ? 0 : Math.atan2(vy, vx);

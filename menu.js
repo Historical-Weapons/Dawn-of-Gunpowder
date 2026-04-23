@@ -147,6 +147,40 @@ window.addEventListener('keydown', startStandaloneMusic);
             btn.onclick = onClick;
             return btn;
         }
+		
+function quitGame() {
+    console.log("Quit requested");
+
+    try {
+        // Capacitor native app path
+        if (window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.App) {
+            if (typeof window.Capacitor.Plugins.App.exitApp === "function") {
+                window.Capacitor.Plugins.App.exitApp();
+                return;
+            }
+
+            if (typeof window.Capacitor.Plugins.App.minimizeApp === "function") {
+                window.Capacitor.Plugins.App.minimizeApp();
+                return;
+            }
+        }
+
+        // Cordova fallback
+        if (window.navigator?.app?.exitApp) {
+            window.navigator.app.exitApp();
+            return;
+        }
+    } catch (err) {
+        console.error("Quit failed:", err);
+    }
+
+    // Browser fallback only
+    if (window.opener) {
+        window.close();
+    } else {
+        location.href = "about:blank";
+    }
+}
 
 function destroyMenu() {
     // Stop the MP3 if it's still playing
@@ -248,6 +282,12 @@ const optionsBtn = createBtn("Options", () => {
 // like your other buttons, or leave it visible.
 optionsBtn.style.display = "block";
 
+
+const quitBtn = createBtn("Quit Game", () => {
+    quitGame();
+});
+quitBtn.style.marginTop = "clamp(20px, 5vh, 40px)";
+ 
 
 // Start hidden to match your "Manual First" flow
 customBattleBtn.style.display = "none";
@@ -368,18 +408,13 @@ manualContent.innerHTML = `
     </h2>
 
     <div style="line-height: 1.6; font-size: clamp(0.8rem, 2.2vh, 1.1rem); margin-top: clamp(10px, 2.5vh, 25px); color: #d4b886;">
-        <strong>DAWN OF GUNPOWDER</strong> is a tactical strategy game set in a 13th-century world of conquest and shifting alliances.
+        <strong>DAWN OF GUNPOWDER</strong> is a tactical strategy game set in a 13th-century world of conquest and shifting alliances. 
         <br><br>
         
-        <strong style="color: #d4b886; letter-spacing: 1px;">THE FACTIONS</strong><br>
-        • <b>Steppe Confederations:</b> Swift horse archers and raiders.<br>
-        • <b>Gunpowder Dynasties:</b> Experts in rockets, firelances, and bombs.<br>
-        • <b>Cavalry Kingdoms:</b> Heavy riders and disciplined spear formations.<br>
-        • <b>Regional Powers:</b> Japanese, Korean, Vietnamese, and Jurchen traditions.
-        <br><br>
+
 
         <strong style="color: #d4b886; letter-spacing: 1px;">THE STRATEGY</strong><br>
-        • <b>Diverse Terrain:</b> Combat across steppes, river valleys, and mountains.<br>
+        • <b>Diverse Terrain:</b> Combat across steppes, oceans, and cities.<br>
         • <b>Veterancy:</b> Armies gain strength through battle experience.<br>
         • <b>Tactical Choice:</b> Success depends on composition and environment.
     </div>
@@ -426,11 +461,13 @@ uiContainer.appendChild(playBtn);
 uiContainer.appendChild(customBattleBtn);
 uiContainer.appendChild(loadGameBtn); // Surgery 7: Appended here
 uiContainer.appendChild(optionsBtn);
+uiContainer.appendChild(quitBtn); // <--- ADD THIS LINE
         menu.appendChild(uiContainer);
 
         menu.appendChild(manualModal); // Append Modal to menu
         menu.appendChild(credits);     // Append Credits to menu
-        
+ 
+
         // CRITICAL: Append the menu to the webpage FIRST
         document.body.appendChild(menu);
 

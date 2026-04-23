@@ -546,6 +546,15 @@ if (cityPanel) {
             t.fireCooldown = Math.floor(Math.random() * 200 + 80);
         });
     }
+
+    // ---> SURGERY: FORCE GATES OPEN FOR CITY VISITS <---
+    // Ensures the gates are visually removed and functionally open so the player can walk through
+    if (typeof overheadCityGates !== 'undefined') {
+        overheadCityGates.forEach(g => {
+            g.isOpen = true;
+            g.gateHP = 0; 
+        });
+    }
     // Extra safety wipe
     const panel = document.getElementById('parle-panel');
     if (panel) panel.style.display = 'none';
@@ -608,13 +617,26 @@ function leaveCity(playerObj) {
     playerObj.x = savedWorldPlayerState.x;
     playerObj.y = savedWorldPlayerState.y;
     
-    // 3. Reset Physics
+   // 3. Reset Physics
     playerObj.speed = 15; 
     playerObj.isMoving = false;
     playerObj.anim = 0; // Reset animation frame to prevent jitter
 
-    console.log("Returned to world map: Physics and Input cleared.");
-	
+    // ---> SURGERY: HEAL AND CLOSE GATES ON EXIT <---
+    // Resets the gates to 1000 HP and closes them so they are ready for a potential future siege
+    if (typeof overheadCityGates !== 'undefined') {
+        overheadCityGates.forEach(g => {
+            g.isOpen = false;
+            g.gateHP = 1000;
+            // Restore the physics box X coordinate that was yeeted during the open state
+            if (g.pixelRect && g.pixelRect.x === -9999) {
+                // Calculation: (center x - gateRadius) * CITY_TILE_SIZE
+                g.pixelRect.x = (g.x - 6) * 8; 
+            }
+        });
+    }
+
+    console.log("Returned to world map: Physics and Input cleared. Gates secured.");
 	// ---> PASTE HERE <---
     AudioManager.playMusic("WorldMap_Calm");
 	
@@ -811,17 +833,19 @@ function generateCityCosmeticNPCs(factionName, grid) {
                 let randomHat = fStyles.hats[Math.floor(Math.random() * fStyles.hats.length)];
                 let randomCloth = fStyles.clothes[Math.floor(Math.random() * fStyles.clothes.length)];
 
+// REPLACE WITH THIS:
                 // --- NEW: ASSIGN ROLES & STATES ---
                 let roleRoll = Math.random();
                 let role = "wanderer"; // Default: Walk a bit, pause a bit
-                let baseSpeed = 0.8;
+                // ---> SURGERY: REDUCE NPC SPEED BY 5x <---
+                let baseSpeed = 0.16; // Was 0.8
                 
                 if (roleRoll < 0.25) {
                     role = "idler"; // Stands around mostly
-                    baseSpeed = 0.5;
+                    baseSpeed = 0.1; // Was 0.5
                 } else if (roleRoll < 0.5) {
                     role = "commuter"; // Walks fast in long, straight lines
-                    baseSpeed = 1.3;
+                    baseSpeed = 0.26; // Was 1.3
                 }
 
                 cityCosmeticNPCs[factionName].push({

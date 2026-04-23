@@ -64,18 +64,18 @@ const RAW_SFX_LIST = {
 
 class SoundEffectsSystem {
     constructor() {
-        // Hooks into your existing AudioManager's master SFX volume
         this.sfxVolume = AudioManager.masterSfxVolume || 0.5;
         this.list = RAW_SFX_LIST;
         
-        // --- RTS AUDIO OPTIMIZATION SYSTEM ---
         this.activeSfxCount = 0;
-        this.MAX_CONCURRENT_SFX = 24; // Prevents browser memory crashing & audio clipping
-        this.lastPlayedMap = new Map(); // Tracks when a sound was last played to prevent machine-gunning
+        this.MAX_CONCURRENT_SFX = 24; 
+        this.lastPlayedMap = new Map(); 
         
-        // Spatial Audio Properties
+        // ---> SURGERY: Add a registry to hold actively playing SFX
+        this.activeAudios = new Set(); 
+        
         this.listenerEntity = null; 
-        this.MAX_HEARING_DISTANCE = 1500; 
+        this.MAX_HEARING_DISTANCE = 1000; 
     }
 
     setListener(entity) {
@@ -97,20 +97,20 @@ class SoundEffectsSystem {
     /**
      * CORE PLAY FUNCTION - Culling, Throttling, Spatial distance, and Pitch/Vol Variance
      */
-// --- SURGERY: DURATION CLAMPING & CRISP FADE ---
 play(soundKey, x = undefined, y = undefined, volMultiplier = 1.0, throttleMs = 50, pitchVariance = 0.1, volVariance = 0.1, duration = 0) {
-    // 1. Hard Limit Check
+    const timestamp = Date.now(); 
+    if (AudioManager._sfxGateTime && timestamp < AudioManager._sfxGateTime) return;
+    
     if (this.activeSfxCount >= this.MAX_CONCURRENT_SFX) return;
-        // 2. Distance Culling Check
-        const distVol = this._getDistanceMultiplier(x, y);
-        if (distVol <= 0.01) return; 
+    const distVol = this._getDistanceMultiplier(x, y);
+    if (distVol <= 0.01) return; 
 
-        // 3. Throttling Check
-        const now = performance.now();
-        const lastPlayed = this.lastPlayedMap.get(soundKey) || 0;
-        if (now - lastPlayed < throttleMs) return; 
+    const perfNow = performance.now(); // Renamed to avoid conflict
+    const lastPlayed = this.lastPlayedMap.get(soundKey) || 0;
+    if (perfNow - lastPlayed < throttleMs) return; 
 
-        this.lastPlayedMap.set(soundKey, now);
+    this.lastPlayedMap.set(soundKey, perfNow);
+    // ... rest of the function ...
 
         const url = this.list[soundKey];
         if (!url) {
@@ -119,7 +119,8 @@ play(soundKey, x = undefined, y = undefined, volMultiplier = 1.0, throttleMs = 5
         }
 
         const sfx = new Audio(url);
-        
+        // ---> SURGERY: Register the audio so we can track it
+        this.activeAudios.add(sfx);
         // Apply volume variance + distance scaling
         const randomVolMod = 1.0 - volVariance + (Math.random() * volVariance * 2);
         sfx.volume = Math.min(Math.max(this.sfxVolume * volMultiplier * distVol * randomVolMod, 0), 1);
@@ -150,20 +151,35 @@ play(soundKey, x = undefined, y = undefined, volMultiplier = 1.0, throttleMs = 5
             }
         }, duration);
     }
-
-        sfx.addEventListener('ended', () => {
+sfx.addEventListener('ended', () => {
             this.activeSfxCount--;
+            this.activeAudios.delete(sfx); // ---> SURGERY: Unregister
             sfx.removeAttribute('src');
             sfx.load();
         }, { once: true });
     }
-			// Helper to ensure activeSfxCount stays accurate
-		_cleanupSfx(sfx) {
-			if (sfx.src) {
-				this.activeSfxCount--;
-				sfx.removeAttribute('src');
-				sfx.load();
-		}}
+
+    // Helper to ensure activeSfxCount stays accurate
+    _cleanupSfx(sfx) {
+        if (sfx.src) {
+            this.activeSfxCount--;
+            this.activeAudios.delete(sfx); // ---> SURGERY: Unregister
+            sfx.removeAttribute('src');
+            sfx.load();
+        }
+    }
+
+    // ---> SURGERY: Add the master kill switch
+    stopAll() {
+        this.activeAudios.forEach(sfx => {
+            sfx.pause();
+            sfx.removeAttribute('src'); // Dumps it from browser memory
+            sfx.load();
+        });
+        this.activeAudios.clear();
+        this.activeSfxCount = 0;
+        this.lastPlayedMap.clear();
+    }
 }
 
 // Global instance to be called anywhere in your game logic

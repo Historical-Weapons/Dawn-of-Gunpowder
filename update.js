@@ -1,5 +1,7 @@
  let economyTick = 0;
  let uiSyncTick = 0;
+ 
+let wasInCity = false; // Tracks the previous frame state
 function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     if (window.isMobileDrawerOpen) {
         player.isMoving = false;
@@ -17,7 +19,12 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
     let currentSpeed = speed;
     let isClimbing = false;
     let isMounted = false;
-
+ 
+    if (window.inCampMode) {
+        currentSpeed *= 0.4; //useless
+		
+    }
+	
     let activeUnit = player;
     if (inBattleMode && typeof battleEnvironment !== 'undefined') {
         let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
@@ -41,8 +48,14 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
 
         if (!isMounted && (tile === 9 || tile === 12)) isClimbing = true;
     }
-
+ 
     currentSpeed *= 0.5;
+    
+    // ---> SURGERY: TRIPLE PLAYER SPEED IN CITIES <---
+    if (inCityMode && !inBattleMode) {
+        currentSpeed *= 3.0; 
+    }
+
     if (isClimbing) {
         currentSpeed *= 0.20;
     }
@@ -208,7 +221,7 @@ function calculateMovement(speed, map, tileSize, cols, rows, isCity = false) {
 const SAFE_WIDTH = typeof WORLD_WIDTH !== 'undefined' ? WORLD_WIDTH : 2000;
 const SAFE_HEIGHT = typeof WORLD_HEIGHT !== 'undefined' ? WORLD_HEIGHT : 2000;
 
-
+//overworld PLAYER STUFF HERE MAN
 let player = {
     // --- POSITION & PHYSICS ---
     x: SAFE_WIDTH * 0.5,
@@ -229,7 +242,18 @@ let player = {
     food: 100,
     maxFood: 2000,
     troops: 20, //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>dpnt forget
-
+	inventory: { 
+	"leather_hides": 3,   // 🟫 Common Steppe resource
+    "timber_logs": 3,    // 🪵 Common Forest resource
+    "sea_salt": 3,        // 🧂 Common Ocean resource
+    "linen_cloth": 3,     // 🧵 Common Plains resource
+    "clay_pots": 3      	},   
+    cargoCapacity: 50,     // Corrected: Key/Value format
+    cargoUsed: 0,          // Corrected: Key/Value format
+	
+	// ---> ADD THIS RIGHT HERE <---
+    questLog: { active: [], completed: [] },
+	
     // --- PROGRESSION ---
     experience: 0,
     experienceLevel: 1,
@@ -269,6 +293,7 @@ function initPlayer() {
     player.x = worldW * 0.5;
     player.y = worldH * 0.45;
 }
+
 function enterOverworldMode() {
     // Ensure constants are available or use fallbacks
     const w = (typeof WORLD_WIDTH !== 'undefined') ? WORLD_WIDTH : 2000;
@@ -281,8 +306,12 @@ function enterOverworldMode() {
     player.isInitialized = true;
     AudioManager.init();
     AudioManager.stopMusic();
+    
+    // ---> SURGERY: Nuke all battlefield SFX instantly upon re-entering the map
+    if (typeof SfxManager !== 'undefined') {
+        SfxManager.stopAll();
+    }
 }
-
 // 1. ADD THIS: Tell the game when a key is pressed!
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
 window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
@@ -292,7 +321,7 @@ window.onwheel = (e) => {
         return;
     }
 
-    
+
     // 2. If player scrolls normally, cancel cinematic instantly
     if (window.isZoomAnimating) { 
         window.isZoomAnimating = false; 
@@ -301,14 +330,10 @@ window.onwheel = (e) => {
 };
 
 function update() {
-	// --- PRECISION SURGERY: HIDE UI DURING BATTLE/SIEGE ---
-let uiElement = document.getElementById("ui");
-if (uiElement) {
-    // inBattleMode typically covers both field battles and sieges. 
-    // If true, hide it. If false, show it.
-    uiElement.style.display = inBattleMode ? "none" : "block";
-}
-// ------------------------------------------------------
+ 
+	let uiElement = document.getElementById("ui");
+	if (uiElement) {    uiElement.style.display = inBattleMode ? "none" : "block";}
+
 
     const aliveEnemies = battleEnvironment.units.filter(u => u.side !== 'player' && u.hp > 0).length;
     let pCmdr = battleEnvironment.units.find(u => u.isCommander && u.side === "player");
@@ -317,6 +342,10 @@ if (uiElement) {
     // SURGERY 2: Freeze the entire game loop if in Diplomacy OR the Mobile Detail Drawer is open
     if ((typeof inParleMode !== 'undefined' && inParleMode) || window.isMobileDrawerOpen) return;
 
+// ⬇ ADD THIS IMMEDIATELY AFTER:
+	if (window.inCampMode) return;  
+    if (window.inTradeMode) return; // <-- ADD THIS
+	
     const parlePanel = document.getElementById('parle-panel');
     if ((inBattleMode || (typeof inCityMode !== 'undefined' && inCityMode)) && parlePanel?.style.display !== 'none') {
         parlePanel.style.display = 'none';
@@ -444,95 +473,226 @@ if (uiElement) {
 						ctx.restore();
 					}
     } 
- else { //USED FOR Overworld and visiting city mode both
-    player.size = 24;
+	
+// --- REPLACE THAT ENTIRE SECTION WITH THIS ---
+  else if (typeof inCityMode !== 'undefined' && inCityMode) {
+        // ==========================================
+        // 🏰 CITY VISITING MODE
+        // ==========================================
+        player.size = 24;
+        
+        // Constant speed in city (No overworld penalties)
+        player.speed = player.baseSpeed * 0.60; 
 
-    if (++economyTick > 300) {
-        updateCityEconomies(cities);
-        economyTick = 0;
-    }
+        // calculateMovement handles city wall/stairs collision internally
+        calculateMovement(player.speed / 4, worldMap, TILE_SIZE, COLS, ROWS, false);
 
-    if (typeof updateDiplomacy === 'function') updateDiplomacy();
-    if (typeof updateSieges === 'function') updateSieges();
+        // Throttle UI updates to prevent lag
+        if (++uiSyncTick % 15 === 0) { 
+            let locEl = document.getElementById('loc-text');
+            if (locEl) {
+                if (locEl.parentElement) locEl.parentElement.style.display = 'block';
+                locEl.innerText = `${Math.round(player.x)}, ${Math.round(player.y)}`;
+            }
 
-    const tx = Math.max(0, Math.min(COLS - 1, Math.floor(player.x / TILE_SIZE)));
-    const ty = Math.max(0, Math.min(ROWS - 1, Math.floor(player.y / TILE_SIZE)));
-    const currentTile = worldMap?.[tx]?.[ty] || { name: "Plains", speed: 1 };
+            let terrainEl = document.getElementById('terrain-text');
+            if (terrainEl) terrainEl.innerText = "City";
 
-    const oldX = player.x, oldY = player.y;
+            const speedEl = document.getElementById('speed-text');
+            if (speedEl) speedEl.style.display = 'none';
 
-    let starvPenalty = player.food > 0 ? 1.0 : 0.6;
-    let troopPenalty = Math.max(0.4, 1.0 - (player.troops * 0.002));
-
-    player.speed = player.baseSpeed * starvPenalty * troopPenalty * currentTile.speed * 0.60;
-
-    calculateMovement(player.speed / 4, worldMap, TILE_SIZE, COLS, ROWS, false);
-
-    const step = Math.hypot(player.x - oldX, player.y - oldY);
-    if (step > 0 && (player.distTrack += step) >= 1000) {
-        player.distTrack = 0;
-        if (player.food > 0) {
-            player.food = Math.max(0, player.food - (1 + Math.floor(player.troops / 5)));
-        } else if (player.troops > 0) {
-            player.troops--;
-            if (player.roster.length > 0) player.roster.pop();
+            let zoomEl = document.getElementById('zoom-text');
+            if (zoomEl) zoomEl.innerText = zoom.toFixed(2) + "x";
         }
-    }
+		
+					// ============================================================================
+			// CITY MUSIC STATE ENGINE
+			// ============================================================================
+			if (inCityMode && !inBattleMode) {
+				// TRIGGER: Runs only ONCE the moment you enter a city
+				if (!wasInCity) {
+					if (typeof AudioManager !== 'undefined') {
+						AudioManager.playCityPlaylist();
+					}
+					wasInCity = true;
+				}
+			} else {
+				// TRIGGER: Runs only ONCE the moment you leave a city
+				if (wasInCity) {
+					console.log("🌲 Leaving City: Reverting music.");
+					
+					// Return to your standard game loops
+					if (typeof AudioManager !== 'undefined') {
+						AudioManager.currentMusicType = "world"; // Clear the city lock
+						AudioManager.playRandomMP3List([
+							'music/gameloop1.mp3', 'music/gameloop2.mp3', 'music/gameloop3.mp3', 
+							'music/gameloop4.mp3', 'music/gameloop5.mp3', 'music/gameloop6.mp3', 
+							'music/gameloop7.mp3', 'music/gameloop8.mp3', 'music/gameloop9.mp3', 
+							'music/gameloop10.mp3'
+						]);
+					}
+					wasInCity = false;
+				}
+			}
 
-    updateNPCs(cities);
+    } else {
+        // ==========================================
+        // 🌍 OVERWORLD MODE
+        // ==========================================
+        player.size = 24;
 
-    // --- OPTIMIZATION 1: Throttle Proximity Math (Run every 15 frames instead of 1) ---
-    if (++uiSyncTick % 15 === 0) { 
-        if (typeof globalNPCs !== 'undefined' && player) {
-            let closestDistSq = 1000000; // 1000 squared
-            let closestEnemy = null;
+        // Overworld-only system updates
+        if (++economyTick > 300) {
+            updateCityEconomies(cities);
+            economyTick = 0;
+        }
+        if (typeof updateDiplomacy === 'function') updateDiplomacy();
+        if (typeof updateSieges === 'function') updateSieges();
 
-            for (let npc of globalNPCs) {
-                if (npc.faction !== player.faction) {
-                    // FAST DISTANCE: No Math.hypot
-                    let dx = npc.x - player.x;
-                    let dy = npc.y - player.y;
-                    let dSq = (dx * dx) + (dy * dy); 
-                    
-                    if (dSq < closestDistSq) {
-                        closestDistSq = dSq;
-                        closestEnemy = npc;
+        // Overworld Terrain Lookup
+        const tx = Math.max(0, Math.min(COLS - 1, Math.floor(player.x / TILE_SIZE)));
+        const ty = Math.max(0, Math.min(ROWS - 1, Math.floor(player.y / TILE_SIZE)));
+        const currentTile = worldMap?.[tx]?.[ty] || { name: "Plains", speed: 1 };
+
+        const oldX = player.x, oldY = player.y;
+
+        // Overworld Speed Penalties
+        let starvPenalty = player.food > 0 ? 1.0 : 0.6;
+        let troopPenalty = Math.max(0.4, 1.0 - (player.troops * 0.002));
+        player.speed = player.baseSpeed * starvPenalty * troopPenalty * currentTile.speed * 0.60;
+
+        calculateMovement(player.speed / 4, worldMap, TILE_SIZE, COLS, ROWS, false);
+        const step = Math.hypot(player.x - oldX, player.y - oldY);
+
+        // Cohesion decay from moving
+        if (step > 0) {
+            player.cohesion = Math.max(0, (player.cohesion || 100) - (0.002 * step));
+        }
+    
+        // OVERWORLD ATTRITION & RESOURCES LOGIC
+        if (step > 0 && (player.distTrack += step) >= 1000) {
+            player.distTrack = 0;
+            
+            let desertFactor = (typeof window.campCohesionDesertionFactor === 'function') ? window.campCohesionDesertionFactor() : 1;
+            let diffMulti = (typeof window.attritionDifficultyMultiplier !== 'undefined') ? window.attritionDifficultyMultiplier : 1.0;
+
+            // --- PRECISE WAGE CALCULATION ---
+            let totalWageCost = 0;
+            if (player.roster && player.roster.length > 0) {
+                for (let t of player.roster) {
+                    let baseCost = (typeof UnitRoster !== 'undefined' && UnitRoster.allUnits[t.type] && UnitRoster.allUnits[t.type].cost) 
+                                   ? UnitRoster.allUnits[t.type].cost : 20;
+                    totalWageCost += (baseCost / 10);
+                }
+            } else if (player.troops > 0) {
+                totalWageCost = player.troops * (20 / 10);
+            }
+
+            totalWageCost *= diffMulti;
+            player.pendingWages = (player.pendingWages || 0) + totalWageCost;
+            let wagesToPay = Math.floor(player.pendingWages);
+
+            let outOfGold = (player.gold <= 0);
+            let outOfFood = (player.food <= 0);
+
+            if (wagesToPay >= 1) {
+                if (player.gold >= wagesToPay) {
+                    player.gold -= wagesToPay;
+                } else {
+                    player.gold = 0;
+                    outOfGold = true;
+                }
+                player.pendingWages -= wagesToPay;
+            }
+
+            let foodCost = (2 + Math.floor(player.troops / 3)) * diffMulti;
+
+            // CASCADING FAILURES
+            if (outOfGold) {
+                foodCost *= 2.0; 
+                player.cohesion = Math.max(0, (player.cohesion || 100) - (8 * diffMulti));
+            }
+            if (outOfFood) {
+                let stolenGold = Math.floor(player.troops * 1.5 * diffMulti); 
+                player.gold = Math.max(0, player.gold - stolenGold);
+                player.cohesion = Math.max(0, (player.cohesion || 100) - (8 * diffMulti));
+            }
+
+            player.food = Math.max(0, player.food - foodCost);
+            outOfFood = (player.food <= 0); 
+
+            // EXPONENTIAL DESERTION LOGIC
+            if (!outOfFood && !outOfGold) {
+                if (desertFactor > 1.5 && Math.random() < (0.05 * desertFactor * diffMulti) && player.troops > 0) {
+                    player.troops--;
+                    if (player.roster && player.roster.length > 0) player.roster.pop();
+                }
+            } else if (player.troops > 0) {
+                let cohesionPenaltyExp = Math.pow(2, (100 - Math.max(0, player.cohesion || 0)) / 25);
+                let doubleCrisisMulti = (outOfFood && outOfGold) ? 3.0 : 1.0;
+                let desertionCount = Math.floor(player.troops * 0.05 * cohesionPenaltyExp * doubleCrisisMulti * diffMulti);
+                
+                if (desertionCount < 1 && diffMulti > 0) desertionCount = 1;
+
+                for (let i = 0; i < desertionCount; i++) {
+                    if (player.troops > 0) {
+                        player.troops--;
+                        if (player.roster && player.roster.length > 0) player.roster.pop();
                     }
                 }
             }
-
- 
-                    AudioManager.playRandomMP3List(['music/gameloop1.mp3', 'music/gameloop2.mp3', 'music/gameloop3.mp3']);
-                 
-
         }
+        
+        updateNPCs(cities);
 
-        // --- OPTIMIZATION 2: Throttle UI/DOM Updates ---
-        let locEl = document.getElementById('loc-text');
-        let topGuiContainer = locEl ? locEl.parentElement : null;
+        // --- OPTIMIZED OVERWORLD PROXIMITY & UI SYNC ---
+        if (++uiSyncTick % 15 === 0) { 
+            if (typeof globalNPCs !== 'undefined' && player) {
+                let closestDistSq = 1000000;
+                let closestEnemy = null;
 
-        if (topGuiContainer) {
-            topGuiContainer.style.display = (inBattleMode || player.isSieging) ? 'none' : 'block';
-        }
+                for (let npc of globalNPCs) {
+                    if (npc.faction !== player.faction) {
+                        let dx = npc.x - player.x;
+                        let dy = npc.y - player.y;
+                        let dSq = (dx * dx) + (dy * dy); 
+                        
+                        if (dSq < closestDistSq) {
+                            closestDistSq = dSq;
+                            closestEnemy = npc;
+                        }
+                    }
+                }
 
-        if (locEl) locEl.innerText = `${Math.round(player.x)}, ${Math.round(player.y)}`;
+                if (typeof AudioManager !== 'undefined') {
+                    AudioManager.playRandomMP3List([
+                        'music/gameloop1.mp3', 'music/gameloop2.mp3', 'music/gameloop3.mp3', 
+                        'music/gameloop4.mp3', 'music/gameloop5.mp3', 'music/gameloop6.mp3', 
+                        'music/gameloop7.mp3', 'music/gameloop8.mp3', 'music/gameloop9.mp3', 
+                        'music/gameloop10.mp3'
+                    ]);
+                }
+            }
 
-        let terrainEl = document.getElementById('terrain-text');
-        if (terrainEl) terrainEl.innerText = (typeof inCityMode !== 'undefined' && inCityMode) ? "City" : currentTile.name;
+            let locEl = document.getElementById('loc-text');
+            if (locEl) {
+                let topGuiContainer = locEl.parentElement;
+                if (topGuiContainer) topGuiContainer.style.display = player.isSieging ? 'none' : 'block';
+                locEl.innerText = `${Math.round(player.x)}, ${Math.round(player.y)}`;
+            }
 
-        const speedEl = document.getElementById('speed-text');
-        if (speedEl) {
-            if (inBattleMode || (typeof inCityMode !== 'undefined' && inCityMode)) {
-                speedEl.style.display = 'none';
-            } else {
+            let terrainEl = document.getElementById('terrain-text');
+            if (terrainEl) terrainEl.innerText = currentTile.name;
+
+            const speedEl = document.getElementById('speed-text');
+            if (speedEl) {
                 speedEl.style.display = 'block';
                 speedEl.innerText = currentTile.speed + "x";
             }
-        }
 
-        document.getElementById('zoom-text').innerText = zoom.toFixed(2) + "x";
+            let zoomEl = document.getElementById('zoom-text');
+            if (zoomEl) zoomEl.innerText = zoom.toFixed(2) + "x";
 
-        if (!inCityMode) {
             // FAST CITY COLLISION
             let touchingCity = null;
             for (let c of cities) {
@@ -545,21 +705,24 @@ if (uiElement) {
                 }
             }
 
+            const cityPanel = document.getElementById('city-panel');
             if (touchingCity) {
                 if (activeCity !== touchingCity) {
                     activeCity = touchingCity;
                     document.getElementById('city-name').innerText = activeCity.name;
                     document.getElementById('city-name').style.color = activeCity.color;
                     document.getElementById('city-faction').innerText = activeCity.faction;
-                    cityPanel.style.display = 'block';
+                    if (cityPanel) cityPanel.style.display = 'block';
 
                     const isEnemy = player.enemies?.includes(activeCity.faction);
                     const recruitBox = document.getElementById('recruit-box');
                     const hostileBox = document.getElementById('hostile-box');
 
-                    recruitBox.style.opacity = isEnemy ? '0.3' : '1';
-                    recruitBox.style.pointerEvents = isEnemy ? 'none' : 'auto';
-                    hostileBox.style.display = isEnemy ? 'flex' : 'none';
+                    if (recruitBox) {
+                        recruitBox.style.opacity = isEnemy ? '0.3' : '1';
+                        recruitBox.style.pointerEvents = isEnemy ? 'none' : 'auto';
+                    }
+                    if (hostileBox) hostileBox.style.display = isEnemy ? 'flex' : 'none';
 
                     if (isEnemy) {
                         player.stunTimer = 60;
@@ -573,14 +736,11 @@ if (uiElement) {
                 document.getElementById('city-food').innerText = Math.floor(activeCity.food).toLocaleString();
             } else if (activeCity !== null) {
                 activeCity = null;
-                cityPanel.style.display = 'none';
+                if (cityPanel) cityPanel.style.display = 'none';
             }
-        
-    
-			
-			}
-		}
-	 }
+        }
+    }
+
     if (++uiSyncTick % 30 === 0) syncSiegeUIVisibility();
 }
 
@@ -833,6 +993,9 @@ if (canDrawForts) {
 drawMasterStateOverlay(ctx, canvas.width, canvas.height);
 drawVictoryStateOverlay(ctx, canvas.width, canvas.height);
 }
+
+
+
 // A dedicated function that ONLY runs at the very end of the frame
 function drawMasterStateOverlay(ctx, canvasWidth, canvasHeight) {
     if (typeof inBattleMode === 'undefined' || !inBattleMode) return;
@@ -984,6 +1147,7 @@ function syncSiegeUIVisibility() {
 
 // Add this inside your script tag to handle the UI toggle
 function updateCityPanelUI(city) {
+	if (typeof refreshTradeButton === 'function') refreshTradeButton(city);
     const recruitBox = document.getElementById('recruit-box');
     const hostileBox = document.getElementById('hostile-box');
     
@@ -1056,3 +1220,36 @@ let drownThreshold = Math.max(1500, 15000 - ((unit.stats.weightTier||1)*2500) - 
 
 // Optimized: Run bounds check every 100ms instead of every frame (Lag Fix)
 setInterval(() => {if (typeof globalNPCs !== 'undefined') {globalNPCs.forEach(npc => enforceNPCBounds(npc, WORLD_WIDTH, WORLD_HEIGHT));}}, 100);
+
+// ============================================================================
+// CAMP HOOKS: EXP & MORALE BOOST (FIXED)
+// ============================================================================
+setInterval(() => {
+    // Only patch if the function exists and hasn't been patched yet
+    if (typeof window.packUpCamp === 'function' && !window._packUpPatched) {
+        const originalPackUp = window.packUpCamp;
+        
+        window.packUpCamp = function() {
+            // ONLY apply buffs if we are currently IN the camp mode
+            // This prevents the "Camp Broken" log when initializing the camp state
+            if (window.inCampMode) { 
+                if (player.roster && player.roster.length > 0) {
+                    player.roster.forEach(troop => {
+                        troop.exp = (troop.exp || 1) + 2;
+                        let maxM = troop.maxMorale || 20;
+                        troop.morale = Math.min(maxM, (troop.morale || maxM * 0.5) + 5);
+                    });
+                    
+                    console.log("Camp broken: Troops are well-rested. (+EXP, +Morale)");
+                    if (typeof logGameEvent === 'function') {
+                        logGameEvent("The army breaks camp. Troops are well-rested.", "positive");
+                    }
+                }
+            }
+            
+            // Execute the actual visual/state pack up
+            originalPackUp(); 
+        };
+        window._packUpPatched = true;
+    }
+}, 1000);

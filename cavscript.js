@@ -135,6 +135,13 @@ function drawSpokedWheel(ctx, x, y, radius) {
 
 
 function drawCavalryUnit(ctx, x, y, moving, frame, factionColor, isAttacking, type, side, unitName, isFleeing, cooldown, unitAmmo, unit, reloadProgress) {
+	
+	if (!unit || !unit.stats) {
+        // If the unit object is missing or stats aren't loaded, 
+        // return early to prevent the crash.
+        return; 
+    }
+	
     ctx.save();
     ctx.translate(x, y);
     
