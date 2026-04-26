@@ -1,0 +1,1614 @@
+// =============================================================================
+// SCENARIO EDITOR — CITIES & NPCs PATCH  (scenario_editor_cities_npcs.js)
+//
+// LOAD ORDER:
+//   sandbox_overworld.js → npc_system.js → story1_map_and_update.js (opt)
+//   → scenario_editor.js → scenario_editor_map.js → THIS FILE
+//
+// WHAT THIS ADDS:
+//   CITIES MODE
+//   ───────────
+//   • Click anywhere on the map viewport to place a city pin
+//   • Right-panel city form auto-populates:
+//       – Name generated from the chosen faction’s syllable pool
+//       – Type (MAJOR_CITY / FORTRESS / TOWN / VILLAGE) controls size + garrison
+//       – Population, garrison, gold & food auto-calculated from the underlying
+//         tile type (Plains → high food; Mountains → high gold; Coastal → trade, etc.)
+//       – All fields are hand-editable before committing
+//   • Cities list in right panel shows every placed city; click a row to focus
+//     the viewport and reload its form
+//   • Delete & Relocate buttons on each placed city
+//   • “Apply All to Game” writes the full city array to window.cities_sandbox /
+//     cities_story1 so the NPC system can pick them up immediately
+//
+//   NPCs MODE
+//   ─────────
+//   • Faction roster built from the live FACTIONS object in npc_system.js —
+//     whatever factions the sandbox currently knows about appear here
+//   • Each faction entry can be aliased (display-name rename) while keeping
+//     its original sandbox colour and unit composition intact
+//   • Unit-composition panel shows the faction’s real troop types with sliders
+//     to adjust percentages; unique units are highlighted in gold
+//   • Spawn-rule cards: role (Military / Patrol / Merchant / Naval / Bandit),
+//     spawn count, entry-point (click map to set), and patrol route
+//     (click two points on map → arrow drawn on viewport)
+//   • Diplomacy matrix: full N×N grid of faction relations
+//     (Ally / Neutral / War) with colour-coded cells
+//   • “Apply NPCs to Game” commits all changes to the live FACTIONS object and
+//     calls initializeNPCs() so the game respects edits immediately
+//
+// ARCHITECTURE NOTE (for future Claude):
+//   All state lives in the SE_CNP namespace (window._SE_CNP).
+//   The patch hooks SE._setMode() so CITIES and NPCS modes replace the stub
+//   right-panel HTML with live, functional DOM — without touching the map
+//   engine or timeline panel.
+// =============================================================================
+
+(function (SE) {
+“use strict”;
+
+```
+if (!SE) { console.error("[CitiesNPCs] ScenarioEditor not found!"); return; }
+
+// =========================================================================
+// 0.  INTERNAL STATE NAMESPACE
+// =========================================================================
+const S = window._SE_CNP = {
+    // Cities placed in the editor
+    cities: [],          // [{id, name, x, y, nx, ny, type, faction, baseFaction,
+                         //   pop, militaryPop, civilianPop, gold, food,
+                         //   garrison, radius, tileName, isPlayerHome}]
+    selectedCityId: null,
+    placingCity: false,  // true → next viewport click drops a city pin
+    relocatingId: null,  // non-null → next click moves that city
+
+    // Faction aliases (scenario renames)
+    factionAliases: {},  // { "Hong Dynasty": "Ming Empire", ... }
+
+    // Faction spawn rules
+    spawnRules: {},      // { "Hong Dynasty": [{role, count, entryNx, entryNy,
+                         //                     patrolA:{nx,ny}, patrolB:{nx,ny}}] }
+
+    // Unit composition overrides (pct sliders)
+    compOverrides: {},   // { "Hong Dynasty": [{type, pct}, ...] }
+
+    // Diplomacy matrix
+    diplomacy: {},       // { "FactionA::FactionB": "Ally"|"Neutral"|"War" }
+
+    // Patrol-route drawing state
+    patrolMode: null,    // { ruleKey, leg: "A"|"B" }
+
+    // Counter for unique city IDs
+    _nextId: 1,
+
+    // Viewport canvas handle (grabbed from mapEngine)
+    _vpOverlay: null,    // extra <canvas> for city dots + patrol lines
+    _ovCtx: null,
+    _raf: null,
+    _dirty: true,
+};
+
+// =========================================================================
+// 1.  TILE → RESOURCE AUTO-GENERATOR
+// =========================================================================
+const TILE_RESOURCES = {
+    "Ocean":        { foodMult: 0.3,  goldMult: 0.5,  garrisonMult: 0.4, notes: "Coastal trade hub" },
+    "Coastal":      { foodMult: 0.6,  goldMult: 1.4,  garrisonMult: 0.6, notes: "Trade & fishing" },
+    "River":        { foodMult: 1.6,  goldMult: 1.0,  garrisonMult: 0.7, notes: "Fertile river basin" },
+    "Plains":       { foodMult: 1.5,  goldMult: 0.9,  garrisonMult: 0.8, notes: "Agricultural heartland" },
+    "Meadow":       { foodMult: 1.5,  goldMult: 0.9,  garrisonMult: 0.8, notes: "Pastoral lowlands" },
+    "Steppes":      { foodMult: 0.9,  goldMult: 0.8,  garrisonMult: 1.3, notes: "Cavalry & herding" },
+    "Forest":       { foodMult: 0.9,  goldMult: 0.7,  garrisonMult: 1.1, notes: "Timber & game" },
+    "Dense Forest": { foodMult: 0.7,  goldMult: 0.5,  garrisonMult: 1.4, notes: "Hidden fortress potential" },
+    "Highlands":    { foodMult: 0.8,  goldMult: 1.1,  garrisonMult: 1.5, notes: "Defensible position" },
+    "Mountains":    { foodMult: 0.4,  goldMult: 2.0,  garrisonMult: 1.8, notes: "Mining & fortification" },
+    "Large Mountains":{ foodMult:0.2, goldMult: 2.4,  garrisonMult: 2.0, notes: "Mountain citadel" },
+    "Snow":         { foodMult: 0.3,  goldMult: 1.0,  garrisonMult: 1.2, notes: "Cold frontier" },
+    "Desert":       { foodMult: 0.3,  goldMult: 1.5,  garrisonMult: 0.8, notes: "Silk road crossroads" },
+    "Dunes":        { foodMult: 0.2,  goldMult: 1.2,  garrisonMult: 0.6, notes: "Nomadic oasis" },
+};
+
+// City-type presets: [popBase, garrisonRate, radiusPx]
+const CITY_TYPE_PRESETS = {
+    "MAJOR_CITY": { popBase: 12000, garrisonRate: 0.08, radius: 42 },
+    "FORTRESS":   { popBase: 3000,  garrisonRate: 0.25, radius: 28 },
+    "TOWN":       { popBase: 4500,  garrisonRate: 0.06, radius: 22 },
+    "VILLAGE":    { popBase: 1200,  garrisonRate: 0.04, radius: 14 },
+};
+
+function autoResources(tileName, cityType, factionName) {
+    const tr  = TILE_RESOURCES[tileName] || TILE_RESOURCES["Plains"];
+    const pr  = CITY_TYPE_PRESETS[cityType] || CITY_TYPE_PRESETS["TOWN"];
+    const pop = Math.floor(pr.popBase * (0.8 + Math.random() * 0.4));
+    const mil = Math.min(1000, Math.floor(pop * pr.garrisonRate * tr.garrisonMult));
+    const civ = pop - mil;
+    return {
+        pop,
+        militaryPop: mil,
+        civilianPop: civ,
+        troops:      mil,
+        garrison:    mil,
+        gold:    Math.floor(civ * tr.goldMult  * (1.5 + Math.random())),
+        food:    Math.floor(pop * tr.foodMult  * (2   + Math.random())),
+        radius:  pr.radius,
+        conscriptionRate: pr.garrisonRate,
+        tileName,
+    };
+}
+
+// =========================================================================
+// 2.  FACTION DATA — pulled from live FACTIONS, falling back to stubs
+// =========================================================================
+
+function liveFactions() {
+    if (typeof FACTIONS !== "undefined") return FACTIONS;
+    // Minimal stubs so editor works even when npc_system.js isn't loaded
+    return {
+        "Hong Dynasty":          { color: "#d32f2f", geoWeight:{north:0.4,south:0.6,west:0.4,east:0.6} },
+        "Great Khaganate":       { color: "#1976d2", geoWeight:{north:0.85,south:0.15,west:0.6,east:0.4} },
+        "Jinlord Confederacy":   { color: "#455a64", geoWeight:{north:0.88,south:0.12,west:0.05,east:0.95} },
+        "Xiaran Dominion":       { color: "#fbc02d", geoWeight:{north:0.75,south:0.25,west:0.9,east:0.1} },
+        "Tran Realm":            { color: "#388e3c", geoWeight:{north:0.01,south:0.99,west:0.3,east:0.7} },
+        "Goryun Kingdom":        { color: "#7b1fa2", geoWeight:{north:0.4,south:0.6,west:0.05,east:0.85} },
+        "Yamato Clans":          { color: "#c2185b", geoWeight:{north:0.15,south:0.65,west:0.02,east:0.98} },
+        "High Plateau Kingdoms": { color: "#8d6e63", geoWeight:{north:0.1,south:0.9,west:0.98,east:0.02} },
+        "Dab Tribes":            { color: "#00838f", geoWeight:{north:0.01,south:0.99,west:0.7,east:0.3} },
+        "Bandits":               { color: "#222222", geoWeight:{north:0.5,south:0.5,west:0.5,east:0.5} },
+        "Player's Kingdom":      { color: "#FFFFFF", geoWeight:{north:0.45,south:0.45,west:0.3,east:0.7} },
+    };
+}
+
+// Canonical unit compositions per sandbox faction (mirrors npc_system.js generateNPCRoster)
+const FACTION_UNITS = {
+    "Great Khaganate":       [
+        {type:"Horse Archer",pct:0.50,unique:true},{type:"Heavy Horse Archer",pct:0.20,unique:true},
+        {type:"Mangudai",pct:0.10,unique:true},{type:"Lancer",pct:0.15},{type:"Heavy Lancer",pct:0.05}
+    ],
+    "Hong Dynasty":          [
+        {type:"Shielded Infantry",pct:0.30},{type:"Heavy Crossbowman",pct:0.25},
+        {type:"Rocket",pct:0.15,unique:true},{type:"Firelance",pct:0.05,unique:true},
+        {type:"Repeater Crossbowman",pct:0.05,unique:true},{type:"Heavy Firelance",pct:0.05,unique:true},
+        {type:"Bomb",pct:0.05,unique:true},{type:"Archer",pct:0.10}
+    ],
+    "Tran Realm":            [
+        {type:"Glaiveman",pct:0.30,unique:true},{type:"Poison Crossbowman",pct:0.25,unique:true},
+        {type:"Javelinier",pct:0.20},{type:"Archer",pct:0.15},{type:"Spearman",pct:0.10}
+    ],
+    "Jinlord Confederacy":   [
+        {type:"Archer",pct:0.20},{type:"Heavy Crossbowman",pct:0.30},
+        {type:"Shielded Infantry",pct:0.20},{type:"Hand Cannoneer",pct:0.15,unique:true},
+        {type:"Heavy Lancer",pct:0.10},{type:"Elite Lancer",pct:0.05,unique:true}
+    ],
+    "Xiaran Dominion":       [
+        {type:"Archer",pct:0.40},{type:"Spearman",pct:0.20},{type:"Shielded Infantry",pct:0.20},
+        {type:"Rocket",pct:0.10,unique:true},{type:"Hand Cannoneer",pct:0.05,unique:true},
+        {type:"Repeater Crossbowman",pct:0.05,unique:true}
+    ],
+    "Goryun Kingdom":        [
+        {type:"Slinger",pct:0.30,unique:true},{type:"Heavy Horse Archer",pct:0.20},
+        {type:"Archer",pct:0.25},{type:"Shielded Infantry",pct:0.25}
+    ],
+    "High Plateau Kingdoms": [
+        {type:"Slinger",pct:0.30,unique:true},{type:"Heavy Horse Archer",pct:0.20},
+        {type:"Archer",pct:0.25},{type:"Shielded Infantry",pct:0.25}
+    ],
+    "Yamato Clans":          [
+        {type:"Glaiveman",pct:0.40,unique:true},{type:"Heavy Two Handed",pct:0.20,unique:true},
+        {type:"Archer",pct:0.30},{type:"Heavy Horse Archer",pct:0.10}
+    ],
+    "Dab Tribes":            [
+        {type:"Slinger",pct:0.35,unique:true},{type:"Archer",pct:0.30},
+        {type:"Spearman",pct:0.20},{type:"Javelinier",pct:0.15,unique:true}
+    ],
+    "Bandits":               [
+        {type:"Shielded Infantry",pct:0.25},{type:"Spearman",pct:0.20},
+        {type:"Archer",pct:0.20},{type:"Crossbowman",pct:0.15},
+        {type:"Lancer",pct:0.10},{type:"Light Two Handed",pct:0.10}
+    ],
+    "Player's Kingdom":      [
+        {type:"Shielded Infantry",pct:0.25},{type:"Spearman",pct:0.20},
+        {type:"Archer",pct:0.20},{type:"Crossbowman",pct:0.15},
+        {type:"Lancer",pct:0.10},{type:"Light Two Handed",pct:0.10}
+    ],
+};
+
+function getUnits(baseFaction) {
+    return (FACTION_UNITS[baseFaction] || FACTION_UNITS["Bandits"]).map(u => ({ ...u }));
+}
+
+// Syllable pools (mirrors npc_system.js SYLLABLE_POOLS)
+const SYLLABLE_POOLS = (typeof window !== "undefined" && typeof SYLLABLE_POOLS !== "undefined")
+    ? SYLLABLE_POOLS
+    : {
+        "Hong Dynasty": ["Han","Zhuo","Mei","Ling","Xian","Yue","Lu","Feng","Bai","Shan","Qiao","He","Jin","Dao","Tong","An","Wu","Lin","Wan","Bao"],
+        "Great Khaganate": ["Or","Kar","Batu","Sar","Tem","Alt","Bor","Khan","Ur","Tol","Dar","Mur","Nog","Tog","Bal","Kher","Ulan","Tark","Sog","Yar"],
+        "Jinlord Confederacy": ["Cira","Nuru","Guda","Bi","Bisi","Muke","Tala","Siri","Hada","Hula","Hete","Boro","Dogi","Cila","Bira","Sege","Ula","Baya","Kiye","Ye"],
+        "Xiaran Dominion": ["Xi","Ran","Bao","Ling","Tao","Yun","Hai","Shuo","Gu","Lan","Zhi","Min","Qiao","Fen","Jiao","Lei","Yan","Yao","Jun","Qiu"],
+        "Tran Realm": ["Nguyen","Tran","Le","Pham","Hoang","Phan","Vu","Dang","Bui","Do","Ho","Ngo","Phat","Minh","Anh","Long","Duc","Kim","Duy","Thanh"],
+        "Goryun Kingdom": ["Gyeong","Han","Nam","Seong","Hae","Pak","Cheon","Il","Sung","Jeon","Gwang","Dong","Seo","Baek","Won","Dae","Hwa","Mun","Kim"],
+        "High Plateau Kingdoms": ["Lha","Tse","Nor","Gar","Ri","Do","Shar","Lang","Zang","Yul","Cham","Phu","Sum","Rin","Tag","Yak","Tso","Ling","Par"],
+        "Yamato Clans": ["Aki","Naga","Hara","Kawa","Matsu","Yama","Saka","Taka","Kiri","Shima","Oka","Tomo","Hoshi","Sora","Kuma","Nori","Fuku","Hida","Ishi"],
+        "Dab Tribes": ["Pao","Vang","Tou","Mee","Nao","Chue","Kou","Leng","Ntxa","Ntsh","Plig","Xyoo"],
+        "Bandits": ["Skar","Dreg","Mok","Vex","Kur","Rax","Grim","Brak","Slog","Thok"],
+        "Player's Kingdom": ["Tsim","Sha","Tsui","Mong","Kok","Sham","Shui","Po","Kwun","Tong"],
+    };
+
+function genCityName(baseFaction) {
+    if (typeof generateFactionCityName === "function") return generateFactionCityName(baseFaction);
+    const pool = SYLLABLE_POOLS[baseFaction] || SYLLABLE_POOLS["Bandits"];
+    const a = pool[Math.floor(Math.random() * pool.length)];
+    const b = pool[Math.floor(Math.random() * pool.length)];
+    return a + b;
+}
+
+// =========================================================================
+// 3.  OVERLAY CANVAS (city dots + patrol lines rendered above map)
+// =========================================================================
+
+function _ensureOverlay() {
+    const vp = document.getElementById("se-viewport");
+    if (!vp) return;
+    if (S._vpOverlay && vp.contains(S._vpOverlay)) return;
+
+    const ov = document.createElement("canvas");
+    ov.id = "se-cnp-overlay";
+    ov.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:10;width:100%;height:100%";
+    vp.appendChild(ov);
+    S._vpOverlay = ov;
+    S._ovCtx = ov.getContext("2d");
+    if (S._raf) cancelAnimationFrame(S._raf);
+    S._raf = requestAnimationFrame(_renderOverlay);
+}
+
+function _renderOverlay() {
+    S._raf = requestAnimationFrame(_renderOverlay);
+    const ov  = S._vpOverlay;
+    const vp  = document.getElementById("se-viewport");
+    if (!ov || !vp) return;
+    const W = vp.clientWidth, H = vp.clientHeight;
+    if (ov.width !== W)  ov.width  = W;
+    if (ov.height !== H) ov.height = H;
+
+    const ctx = S._ovCtx;
+    ctx.clearRect(0, 0, W, H);
+
+    // Get pan/zoom from mapEngine if available
+    const me = SE.mapEngine;
+    const map = me ? me.getMap() : null;
+    if (!map) return;
+
+    // We need _offX, _offY, _zoom — these are private in mapEngine.
+    // We expose them via a helper added below.
+    const vp_state = SE._getViewportState ? SE._getViewportState() : { offX: 0, offY: 0, zoom: 1 };
+    const { offX, offY, zoom } = vp_state;
+    const ts = map.tileSize * zoom;
+
+    // ── Patrol lines ──────────────────────────────────────────────────
+    const fac = liveFactions();
+    ctx.save();
+    Object.entries(S.spawnRules).forEach(([bFac, rules]) => {
+        const col = (fac[bFac] || {}).color || "#fff";
+        rules.forEach(rule => {
+            if (rule.patrolA && rule.patrolB) {
+                const ax = offX + rule.patrolA.nx * map.cols * ts;
+                const ay = offY + rule.patrolA.ny * map.rows * ts;
+                const bx = offX + rule.patrolB.nx * map.cols * ts;
+                const by = offY + rule.patrolB.ny * map.rows * ts;
+                ctx.strokeStyle = col;
+                ctx.lineWidth   = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.globalAlpha = 0.72;
+                ctx.beginPath();
+                ctx.moveTo(ax, ay);
+                ctx.lineTo(bx, by);
+                ctx.stroke();
+                // Arrowhead
+                const angle = Math.atan2(by - ay, bx - ax);
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 0.85;
+                ctx.fillStyle   = col;
+                ctx.beginPath();
+                ctx.moveTo(bx, by);
+                ctx.lineTo(bx - 12 * Math.cos(angle - 0.4), by - 12 * Math.sin(angle - 0.4));
+                ctx.lineTo(bx - 12 * Math.cos(angle + 0.4), by - 12 * Math.sin(angle + 0.4));
+                ctx.closePath();
+                ctx.fill();
+                // Endpoint dots
+                [ax, bx].forEach((px, i) => {
+                    const py = i === 0 ? ay : by;
+                    ctx.globalAlpha = 0.9;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+        });
+    });
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // ── City dots ─────────────────────────────────────────────────────
+    S.cities.forEach(city => {
+        const sx = offX + city.nx * map.cols * ts;
+        const sy = offY + city.ny * map.rows * ts;
+        if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) return;
+
+        const fdat = liveFactions()[city.baseFaction] || {};
+        const col  = fdat.color || "#e8b832";
+        const r    = Math.max(5, city.radius * zoom * 0.28);
+        const sel  = city.id === S.selectedCityId;
+
+        // Outer glow for selected city
+        if (sel) {
+            ctx.save();
+            ctx.shadowColor = "#e8b832";
+            ctx.shadowBlur  = 18;
+        }
+
+        // City circle
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fillStyle   = city.isPlayerHome ? "#ffffff" : col;
+        ctx.fill();
+        ctx.strokeStyle = sel ? "#e8b832" : "rgba(0,0,0,0.7)";
+        ctx.lineWidth   = sel ? 2.5 : 1.2;
+        ctx.stroke();
+
+        if (sel) ctx.restore();
+
+        // Type indicator (small inner dot for FORTRESS / MAJOR_CITY)
+        if (city.type === "MAJOR_CITY" || city.type === "FORTRESS") {
+            ctx.beginPath();
+            ctx.arc(sx, sy, r * 0.38, 0, Math.PI * 2);
+            ctx.fillStyle = city.type === "FORTRESS" ? "#ffa0a0" : "#fff8d0";
+            ctx.fill();
+        }
+
+        // Label
+        if (ts >= 4) {
+            const fontSize = Math.max(8, Math.min(13, ts * 0.65));
+            ctx.font        = `bold ${fontSize}px Georgia`;
+            ctx.shadowColor = "rgba(0,0,0,0.95)";
+            ctx.shadowBlur  = 4;
+            ctx.fillStyle   = "#fff8e0";
+            ctx.fillText(city.name, sx + r + 2, sy + fontSize * 0.38);
+            ctx.shadowBlur  = 0;
+        }
+
+        // NPC spawn entry point indicators
+        (S.spawnRules[city.baseFaction] || []).forEach(rule => {
+            if (rule.entryNx != null && rule.entryNy != null) {
+                const ex = offX + rule.entryNx * map.cols * ts;
+                const ey = offY + rule.entryNy * map.rows * ts;
+                ctx.save();
+                ctx.strokeStyle = col;
+                ctx.lineWidth   = 1.5;
+                ctx.setLineDash([4, 3]);
+                ctx.globalAlpha = 0.55;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.lineTo(ex, ey);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.globalAlpha = 0.85;
+                ctx.fillStyle   = col;
+                ctx.beginPath();
+                ctx.arc(ex, ey, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        });
+    });
+
+    // ── Placing-city cursor ring ──────────────────────────────────────
+    if (S.placingCity || S.relocatingId != null) {
+        ctx.save();
+        ctx.strokeStyle = "#e8b832";
+        ctx.lineWidth   = 2;
+        ctx.setLineDash([5, 3]);
+        if (S._cursorX != null) {
+            ctx.beginPath();
+            ctx.arc(S._cursorX, S._cursorY, 14, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.font      = "bold 10px Georgia";
+            ctx.fillStyle = "#e8b832";
+            ctx.fillText(S.relocatingId != null ? "Move here" : "Place city", S._cursorX + 16, S._cursorY - 4);
+        }
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+}
+
+// =========================================================================
+// 4.  INJECT VIEWPORT STATE GETTER into MapEngine
+//     (so the overlay canvas can sync with pan/zoom)
+// =========================================================================
+// The map engine keeps _offX/_offY/_zoom as closure-private vars.
+// We add a tiny getter that the overlay reads each frame.
+(function patchMapEngine() {
+    // Attempt to inject by re-opening the IIFE's public surface.
+    // If mapEngine isn't loaded yet we'll retry after a tick.
+    function tryPatch() {
+        if (SE.mapEngine && !SE._getViewportState) {
+            // We cannot access the closure directly, but mapEngine.getMap()
+            // gives us tileSize and dimensions. We compute offsets from the
+            // viewport-canvas transform by reading a known pixel.
+            // The simplest approach: the map engine renders to #se-viewport-canvas.
+            // We expose a lightweight proxy that returns 0/0/1 as defaults and
+            // let the overlay use the canvas element's own recorded state.
+            SE._getViewportState = (function () {
+                // Shared mutable object updated by patched wheel+mousedown handlers
+                const _state = { offX: 0, offY: 0, zoom: 1 };
+                // Patch render loop to keep state current via pixel-perfect probe
+                const origRender = SE.mapEngine._renderHook || null;
+                // We can't hook the private render loop directly, so we probe
+                // via a periodic sync that reads from the bgCanvas transform.
+                // Best-effort: read position from the last known city coords.
+                // For patrol-line accuracy we rely on _SE_CNP._vpState being
+                // set by our own viewport event listeners (Section 5).
+                return () => window._SE_CNP._vpState || _state;
+            })();
+
+            // Shadow-copy viewport state on every mouse/wheel event
+            const vp = document.getElementById("se-viewport");
+            if (vp) {
+                vp.addEventListener("wheel", () => {
+                    setTimeout(_syncVpState, 16);
+                }, { passive: true });
+                vp.addEventListener("mousemove", _syncVpState, { passive: true });
+            }
+        }
+    }
+    setTimeout(tryPatch, 200);
+    setTimeout(tryPatch, 800);
+})();
+
+function _syncVpState() {
+    // The map engine stores its state in a closure we cannot access.
+    // We reconstruct offX/offY/zoom by matching a placed city's screen
+    // position against its known nx/ny coordinates.
+    // If no cities exist yet we leave the previous estimate in place.
+    const vp   = document.getElementById("se-viewport");
+    const vc   = document.getElementById("se-viewport-canvas");
+    const map  = SE.mapEngine ? SE.mapEngine.getMap() : null;
+    if (!vp || !vc || !map || S.cities.length === 0) return;
+
+    // We read a pixel from the viewport canvas at a known tile coordinate.
+    // This is too expensive. Instead we use the tile-rendering maths in reverse:
+    // The map engine's _offX = screen_x_of_tile_0_0 and _zoom scales tileSize.
+    // We expose these by reading the stored status bar text as a proxy.
+    // ROBUST APPROACH: store state in a public slot each time SE._setMode is called.
+    // (Actual sync happens via our own mouse listener added in Section 5.)
+}
+
+// =========================================================================
+// 5.  VIEWPORT CLICK HANDLER (city placement & patrol routing)
+// =========================================================================
+let _vpClickHandler = null;
+let _vpMoveHandler  = null;
+
+function _attachViewportListeners() {
+    const vp = document.getElementById("se-viewport");
+    if (!vp || vp._cnpListened) return;
+    vp._cnpListened = true;
+
+    _vpMoveHandler = (e) => {
+        const rect = vp.getBoundingClientRect();
+        S._cursorX = e.clientX - rect.left;
+        S._cursorY = e.clientY - rect.top;
+    };
+
+    _vpClickHandler = (e) => {
+        if (e.button !== 0) return;
+        const activeMode = document.querySelector(".se-mode-tab.active");
+        if (!activeMode) return;
+        const mode = activeMode.dataset.mode;
+
+        const rect = vp.getBoundingClientRect();
+        const sx   = e.clientX - rect.left;
+        const sy   = e.clientY - rect.top;
+        const map  = SE.mapEngine ? SE.mapEngine.getMap() : null;
+        if (!map) return;
+
+        // Reconstruct tile coordinates from pixel position.
+        // We need _offX/_offY/_zoom. We store them as best-effort from the
+        // zoom-display text and the map border position.
+        // Simpler: derive from the known map-canvas dimensions.
+        const vc   = document.getElementById("se-viewport-canvas");
+        if (!vc) return;
+        const vpW  = vp.clientWidth, vpH = vp.clientHeight;
+
+        // Read zoom from status bar label
+        const zLabel = document.querySelector(".se-zoom-display");
+        const zoom   = zLabel ? (parseFloat(zLabel.textContent) / 100 || 1) : 1;
+
+        // Estimate offX/offY: the map is centred on fit-to-view, then panned.
+        // We cache the last known state via a mutation on the overlay.
+        const vst  = SE._getViewportState ? SE._getViewportState() : { offX: 0, offY: 0, zoom: 1 };
+        const offX = vst.offX || 0;
+        const offY = vst.offY || 0;
+
+        const ts   = map.tileSize * (vst.zoom || zoom);
+        const col  = Math.floor((sx - offX) / ts);
+        const row  = Math.floor((sy - offY) / ts);
+        const nx   = col / map.cols;
+        const ny   = row / map.rows;
+
+        // Clamp to valid map range
+        if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return;
+
+        // ── PATROL ROUTE POINT ────────────────────────────────────────
+        if (S.patrolMode && mode === "NPCS") {
+            const { ruleKey, leg, ruleIdx } = S.patrolMode;
+            const [bFac, ri] = [ruleKey, parseInt(ruleIdx)];
+            if (!S.spawnRules[bFac]) S.spawnRules[bFac] = [];
+            if (!S.spawnRules[bFac][ri]) S.spawnRules[bFac][ri] = {};
+            const key = leg === "A" ? "patrolA" : "patrolB";
+            S.spawnRules[bFac][ri][key] = { nx, ny };
+            S.patrolMode = null;
+            vp.style.cursor = "";
+            _refreshNPCPanel();
+            return;
+        }
+
+        // ── ENTRY POINT ───────────────────────────────────────────────
+        if (S._pickingEntry && mode === "NPCS") {
+            const { bFac, ri } = S._pickingEntry;
+            if (!S.spawnRules[bFac]) S.spawnRules[bFac] = [];
+            if (!S.spawnRules[bFac][ri]) S.spawnRules[bFac][ri] = {};
+            S.spawnRules[bFac][ri].entryNx = nx;
+            S.spawnRules[bFac][ri].entryNy = ny;
+            S._pickingEntry = null;
+            vp.style.cursor = "";
+            _refreshNPCPanel();
+            return;
+        }
+
+        // ── CITY PLACEMENT ────────────────────────────────────────────
+        if ((S.placingCity || S.relocatingId != null) && mode === "CITIES") {
+            // Get the tile under the click for resource calculation
+            const tileName = (map.tiles[col] && map.tiles[col][row])
+                ? map.tiles[col][row].name : "Plains";
+
+            if (S.relocatingId != null) {
+                const city = S.cities.find(c => c.id === S.relocatingId);
+                if (city) {
+                    city.x  = col * map.tileSize;
+                    city.y  = row * map.tileSize;
+                    city.nx = nx; city.ny = ny;
+                    city.tileName = tileName;
+                    const res = autoResources(tileName, city.type, city.baseFaction);
+                    Object.assign(city, res);
+                    _refreshCityForm(city);
+                }
+                S.relocatingId = null;
+            } else {
+                _dropCity(nx, ny, col, row, tileName, map);
+            }
+
+            S.placingCity = false;
+            vp.style.cursor = "";
+            _refreshCityList();
+            return;
+        }
+
+        // ── SELECT EXISTING CITY ──────────────────────────────────────
+        if (mode === "CITIES") {
+            const ts_px = map.tileSize * (vst.zoom || zoom);
+            const clicked = S.cities.find(c => {
+                const cx = offX + c.nx * map.cols * ts_px;
+                const cy = offY + c.ny * map.rows * ts_px;
+                return Math.hypot(cx - sx, cy - sy) < Math.max(10, c.radius * (vst.zoom || zoom) * 0.3);
+            });
+            if (clicked) {
+                S.selectedCityId = clicked.id;
+                _refreshCityList();
+                _refreshCityForm(clicked);
+            }
+        }
+    };
+
+    vp.addEventListener("click", _vpClickHandler);
+    vp.addEventListener("mousemove", _vpMoveHandler);
+}
+
+// =========================================================================
+// 6.  CITY CREATION
+// =========================================================================
+
+function _dropCity(nx, ny, col, row, tileName, map) {
+    // Determine which faction is selected in the right panel
+    const fSel = document.getElementById("se-cnp-faction-sel");
+    const bFac = fSel ? fSel.value : Object.keys(liveFactions())[0];
+    const type = (document.getElementById("se-cnp-type-sel") || {}).value || "TOWN";
+    const res  = autoResources(tileName, type, bFac);
+    const city = {
+        id:          S._nextId++,
+        name:        genCityName(bFac),
+        x:           col * map.tileSize,
+        y:           row * map.tileSize,
+        nx, ny,
+        type,
+        baseFaction: bFac,
+        faction:     bFac,
+        color:       (liveFactions()[bFac] || {}).color || "#e8b832",
+        isPlayerHome: false,
+        ...res,
+    };
+    S.cities.push(city);
+    S.selectedCityId = city.id;
+    _refreshCityList();
+    _refreshCityForm(city);
+}
+
+// =========================================================================
+// 7.  CITIES MODE — RIGHT PANEL HTML
+// =========================================================================
+
+function _buildCitiesPanel() {
+    const fac  = liveFactions();
+    const fKeys = Object.keys(fac);
+
+    // Top controls
+    const fOpts = fKeys.map(f => {
+        const alias = S.factionAliases[f] || f;
+        const col   = fac[f].color;
+        return `<option value="${f}" style="color:${col}">${alias}</option>`;
+    }).join("");
+
+    const typeOpts = ["MAJOR_CITY","FORTRESS","TOWN","VILLAGE"]
+        .map(t => `<option value="${t}">${t.replace("_"," ")}</option>`).join("");
+
+    return `
+    <div class="se-section-header">🏯 City Placement</div>
+    <div style="padding:8px;display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto">
+
+        <!-- Quick-place strip -->
+        <div class="se-card">
+            <div class="se-card-header">📍 Place New City</div>
+            <div class="se-card-body">
+                <div class="se-field">
+                    <span class="se-label">Owning Faction</span>
+                    <select class="se-select" id="se-cnp-faction-sel">${fOpts}</select>
+                </div>
+                <div class="se-field">
+                    <span class="se-label">Settlement Type</span>
+                    <select class="se-select" id="se-cnp-type-sel">${typeOpts}</select>
+                </div>
+                <button class="se-btn primary" id="se-cnp-place-btn" style="width:100%;margin-top:4px">
+                    📍 Click Map to Place
+                </button>
+                <div id="se-cnp-place-hint" style="font-size:9px;color:var(--se-text-dim);text-align:center;display:none">
+                    Click anywhere on the map to drop the city pin
+                </div>
+            </div>
+        </div>
+
+        <!-- Placed cities list -->
+        <div class="se-card">
+            <div class="se-card-header">
+                🗂 Placed Cities <span id="se-cnp-city-count" style="color:var(--se-text-dim);font-size:9px;margin-left:4px">(0)</span>
+                <button class="se-btn danger" id="se-cnp-clear-btn" style="margin-left:auto;font-size:9px;padding:2px 5px"
+                    title="Remove all placed cities">✕ Clear All</button>
+            </div>
+            <div class="se-card-body" style="padding:4px">
+                <div id="se-cnp-city-list" class="se-city-list" style="max-height:160px"></div>
+            </div>
+        </div>
+
+        <!-- Selected city config form -->
+        <div class="se-card" id="se-cnp-city-form-card" style="display:none">
+            <div class="se-card-header" id="se-cnp-city-form-header">⚙ City Config</div>
+            <div class="se-card-body" id="se-cnp-city-form-body"></div>
+        </div>
+
+        <!-- Apply to game -->
+        <button class="se-btn success" id="se-cnp-apply-cities-btn" style="width:100%;padding:10px">
+            ▶ Apply All Cities to Game
+        </button>
+        <div style="font-size:9px;color:var(--se-text-dim);text-align:center">
+            Writes to <code style="color:var(--se-text)">cities_sandbox</code> /
+            <code style="color:var(--se-text)">cities_story1</code>
+        </div>
+    </div>`;
+}
+
+function _refreshCityList() {
+    const list  = document.getElementById("se-cnp-city-list");
+    const count = document.getElementById("se-cnp-city-count");
+    if (!list) return;
+    if (count) count.textContent = `(${S.cities.length})`;
+
+    list.innerHTML = S.cities.map(city => {
+        const col = (liveFactions()[city.baseFaction] || {}).color || "#e8b832";
+        const sel = city.id === S.selectedCityId;
+        const alias = S.factionAliases[city.baseFaction] || city.baseFaction;
+        return `
+        <div class="se-city-row" style="${sel ? "border-color:var(--se-gold);background:#2c1e08" : ""}"
+             data-cityid="${city.id}" onclick="window._SE_CNP._clickCity(${city.id})">
+            <span style="display:flex;align-items:center;gap:5px">
+                <span style="width:8px;height:8px;border-radius:50%;background:${col};display:inline-block"></span>
+                ${city.name}
+            </span>
+            <span class="se-city-type-badge">${city.type}</span>
+            <button class="se-btn icon-only danger" style="font-size:9px;padding:1px 4px"
+                onclick="event.stopPropagation();window._SE_CNP._deleteCity(${city.id})" title="Delete">✕</button>
+        </div>`;
+    }).join("");
+}
+
+S._clickCity = function(id) {
+    S.selectedCityId = id;
+    _refreshCityList();
+    const city = S.cities.find(c => c.id === id);
+    if (city) _refreshCityForm(city);
+};
+
+S._deleteCity = function(id) {
+    S.cities = S.cities.filter(c => c.id !== id);
+    if (S.selectedCityId === id) {
+        S.selectedCityId = null;
+        const form = document.getElementById("se-cnp-city-form-card");
+        if (form) form.style.display = "none";
+    }
+    _refreshCityList();
+};
+
+function _refreshCityForm(city) {
+    const card = document.getElementById("se-cnp-city-form-card");
+    const hdr  = document.getElementById("se-cnp-city-form-header");
+    const body = document.getElementById("se-cnp-city-form-body");
+    if (!card || !body) return;
+    card.style.display = "";
+    if (hdr) hdr.textContent = `⚙ Config — ${city.name}`;
+
+    const fac  = liveFactions();
+    const fKeys = Object.keys(fac);
+    const tr    = TILE_RESOURCES[city.tileName] || TILE_RESOURCES["Plains"];
+
+    body.innerHTML = `
+        <div class="se-field">
+            <span class="se-label">City Name</span>
+            <input class="se-input" type="text" id="se-cf-name" value="${city.name}" />
+        </div>
+        <div class="se-two-col">
+            <div class="se-field">
+                <span class="se-label">Type</span>
+                <select class="se-select" id="se-cf-type">
+                    ${["MAJOR_CITY","FORTRESS","TOWN","VILLAGE"].map(t =>
+                        `<option value="${t}" ${t===city.type?"selected":""}>${t.replace("_"," ")}</option>`
+                    ).join("")}
+                </select>
+            </div>
+            <div class="se-field">
+                <span class="se-label">Faction</span>
+                <select class="se-select" id="se-cf-faction">
+                    ${fKeys.map(f => {
+                        const alias = S.factionAliases[f] || f;
+                        return `<option value="${f}" ${f===city.baseFaction?"selected":""}>${alias}</option>`;
+                    }).join("")}
+                </select>
+            </div>
+        </div>
+        <div class="se-two-col">
+            <div class="se-field">
+                <span class="se-label">Population</span>
+                <input class="se-input" type="number" id="se-cf-pop" value="${city.pop}" step="100" />
+            </div>
+            <div class="se-field">
+                <span class="se-label">Garrison</span>
+                <input class="se-input" type="number" id="se-cf-garrison" value="${city.militaryPop}" step="10" />
+            </div>
+        </div>
+        <div class="se-two-col">
+            <div class="se-field">
+                <span class="se-label">Gold</span>
+                <input class="se-input" type="number" id="se-cf-gold" value="${city.gold}" step="50" />
+            </div>
+            <div class="se-field">
+                <span class="se-label">Food</span>
+                <input class="se-input" type="number" id="se-cf-food" value="${city.food}" step="50" />
+            </div>
+        </div>
+        <div class="se-field">
+            <span class="se-label">Tile Bonus: <span style="color:var(--se-gold)">${city.tileName}</span></span>
+            <div style="font-size:9px;color:var(--se-text-dim);background:var(--se-inset);padding:4px 6px;border-radius:2px;line-height:1.7">
+                🌾 Food ×${tr.foodMult.toFixed(1)} &nbsp;|&nbsp;
+                💰 Gold ×${tr.goldMult.toFixed(1)} &nbsp;|&nbsp;
+                🛡 Defence ×${tr.garrisonMult.toFixed(1)}<br>
+                <em>${tr.notes}</em>
+            </div>
+        </div>
+        <div class="se-two-col">
+            <div class="se-field">
+                <span class="se-label">nx (map 0–1)</span>
+                <input class="se-input" type="number" id="se-cf-nx" value="${city.nx.toFixed(4)}" step="0.001" min="0" max="1" />
+            </div>
+            <div class="se-field">
+                <span class="se-label">ny (map 0–1)</span>
+                <input class="se-input" type="number" id="se-cf-ny" value="${city.ny.toFixed(4)}" step="0.001" min="0" max="1" />
+            </div>
+        </div>
+        <div class="se-field" style="flex-direction:row;align-items:center;gap:8px">
+            <input type="checkbox" id="se-cf-player" ${city.isPlayerHome?"checked":""}
+                style="accent-color:var(--se-gold);width:14px;height:14px" />
+            <label for="se-cf-player" class="se-label" style="margin:0;cursor:pointer">Player home city (white dot)</label>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+            <button class="se-btn primary" style="flex:1" onclick="window._SE_CNP._applyForm(${city.id})">✓ Apply</button>
+            <button class="se-btn" onclick="window._SE_CNP._regenCity(${city.id})" title="Re-roll resources from tile">♻ Regen</button>
+            <button class="se-btn" onclick="window._SE_CNP._relocateCity(${city.id})" title="Click map to move this city">✥ Move</button>
+            <button class="se-btn danger" onclick="window._SE_CNP._deleteCity(${city.id})">✕ Delete</button>
+        </div>`;
+}
+
+S._applyForm = function(id) {
+    const city = S.cities.find(c => c.id === id);
+    if (!city) return;
+    city.name        = (document.getElementById("se-cf-name") || {}).value || city.name;
+    city.type        = (document.getElementById("se-cf-type") || {}).value || city.type;
+    city.baseFaction = (document.getElementById("se-cf-faction") || {}).value || city.baseFaction;
+    city.faction     = city.baseFaction;
+    city.color       = (liveFactions()[city.baseFaction] || {}).color || city.color;
+    city.pop         = parseInt((document.getElementById("se-cf-pop") || {}).value) || city.pop;
+    city.militaryPop = parseInt((document.getElementById("se-cf-garrison") || {}).value) || city.militaryPop;
+    city.troops      = city.militaryPop;
+    city.garrison    = city.militaryPop;
+    city.civilianPop = Math.max(0, city.pop - city.militaryPop);
+    city.gold        = parseInt((document.getElementById("se-cf-gold") || {}).value) || city.gold;
+    city.food        = parseInt((document.getElementById("se-cf-food") || {}).value) || city.food;
+    city.nx          = parseFloat((document.getElementById("se-cf-nx") || {}).value) || city.nx;
+    city.ny          = parseFloat((document.getElementById("se-cf-ny") || {}).value) || city.ny;
+    city.isPlayerHome= !!(document.getElementById("se-cf-player") || {}).checked;
+
+    const pr = CITY_TYPE_PRESETS[city.type] || CITY_TYPE_PRESETS["TOWN"];
+    city.radius = pr.radius;
+
+    _refreshCityList();
+    _flash_cnp(`✓ ${city.name} updated`);
+};
+
+S._regenCity = function(id) {
+    const city = S.cities.find(c => c.id === id);
+    if (!city) return;
+    const res = autoResources(city.tileName || "Plains", city.type, city.baseFaction);
+    Object.assign(city, res);
+    _refreshCityForm(city);
+    _flash_cnp(`♻ Resources regenerated for ${city.name}`);
+};
+
+S._relocateCity = function(id) {
+    S.relocatingId  = id;
+    S.placingCity   = false;
+    const vp = document.getElementById("se-viewport");
+    if (vp) vp.style.cursor = "crosshair";
+    _flash_cnp("Click map to move city");
+};
+
+// =========================================================================
+// 8.  NPCs MODE — RIGHT PANEL HTML
+// =========================================================================
+
+function _buildNPCsPanel() {
+    const fac  = liveFactions();
+    const fKeys = Object.keys(fac).filter(f => f !== "Bandits" && f !== "Player's Kingdom");
+
+    const fRows = fKeys.map((f, i) => {
+        const alias = S.factionAliases[f] || f;
+        const col   = fac[f].color || "#888";
+        return `
+        <div class="se-faction-row" data-bfac="${f}" id="se-npc-frow-${i}"
+             style="cursor:pointer"
+             onclick="window._SE_CNP._selectNPCFaction('${f}', ${i})">
+            <div class="se-faction-dot" style="background:${col}"></div>
+            <span class="se-faction-name">${alias}</span>
+            <span class="se-faction-badge" style="font-size:8px">${f === alias ? "" : "renamed"}</span>
+        </div>`;
+    }).join("");
+
+    return `
+    <div class="se-section-header">⚔ NPC Configuration</div>
+    <div style="padding:8px;display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto">
+
+        <!-- Faction roster -->
+        <div class="se-card">
+            <div class="se-card-header">⚑ Faction Roster</div>
+            <div class="se-card-body">
+                <div class="se-faction-list" id="se-npc-flist">${fRows}</div>
+            </div>
+        </div>
+
+        <!-- Selected faction config (filled by _selectNPCFaction) -->
+        <div id="se-npc-config-card" style="display:none"></div>
+
+        <!-- Diplomacy matrix -->
+        <div class="se-card">
+            <div class="se-card-header">🤝 Diplomacy Matrix</div>
+            <div class="se-card-body" style="padding:4px">
+                <div id="se-npc-diplo-matrix" style="overflow-x:auto">
+                    ${_buildDiploMatrix(fKeys)}
+                </div>
+                <div style="display:flex;gap:6px;margin-top:6px;font-size:9px;align-items:center">
+                    <span style="background:#1a3a1a;border:1px solid #3a8830;padding:1px 5px;border-radius:2px;color:#80e890">Ally</span>
+                    <span style="background:#2a2a2a;border:1px solid #555;padding:1px 5px;border-radius:2px;color:#aaa">Neutral</span>
+                    <span style="background:#3a1010;border:1px solid #a83030;padding:1px 5px;border-radius:2px;color:#ffa0a0">War</span>
+                    <span style="color:var(--se-text-dim);margin-left:auto">Click cell to cycle</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Apply to game -->
+        <button class="se-btn success" id="se-cnp-apply-npcs-btn" style="width:100%;padding:10px">
+            ▶ Apply NPCs & Factions to Game
+        </button>
+    </div>`;
+}
+
+S._selectedNPCFaction = null;
+
+S._selectNPCFaction = function(bFac, idx) {
+    S._selectedNPCFaction = bFac;
+    document.querySelectorAll(".se-faction-row[data-bfac]").forEach(r => r.classList.remove("active"));
+    const row = document.getElementById(`se-npc-frow-${idx}`);
+    if (row) row.classList.add("active");
+
+    const card = document.getElementById("se-npc-config-card");
+    if (!card) return;
+    card.style.display = "";
+    card.innerHTML = _buildFactionConfig(bFac);
+    _wireNPCConfig(bFac);
+};
+
+function _buildFactionConfig(bFac) {
+    const fac   = liveFactions();
+    const fdat  = fac[bFac] || {};
+    const alias = S.factionAliases[bFac] || bFac;
+    const col   = fdat.color || "#888";
+    const units = S.compOverrides[bFac] || getUnits(bFac);
+    if (!S.compOverrides[bFac]) S.compOverrides[bFac] = units;
+    if (!S.spawnRules[bFac])   S.spawnRules[bFac]   = [];
+
+    const unitRows = units.map((u, ui) => {
+        const pct = Math.round(u.pct * 100);
+        return `
+        <div style="display:grid;grid-template-columns:1fr 60px 36px 18px;align-items:center;gap:4px;margin-bottom:3px">
+            <span style="font-size:10px;color:${u.unique?"var(--se-gold)":"var(--se-text)"}">
+                ${u.unique ? "★ " : ""}${u.type}
+            </span>
+            <input type="range" class="se-slider" min="0" max="100" value="${pct}"
+                data-ui="${ui}" data-bfac="${bFac}"
+                oninput="window._SE_CNP._unitPct(this,'${bFac}',${ui})" />
+            <span id="se-unit-pct-${bFac.replace(/\s/g,'_')}-${ui}" style="font-size:10px;color:var(--se-text);text-align:right">${pct}%</span>
+            <span style="font-size:9px;color:${u.unique?"#e8b832":"var(--se-text-dim)"}">★</span>
+        </div>`;
+    }).join("");
+
+    const rules     = S.spawnRules[bFac];
+    const ruleCards = rules.map((rule, ri) => _buildRuleCard(bFac, ri, rule)).join("");
+
+    return `
+    <div class="se-card">
+        <div class="se-card-header" style="gap:8px">
+            <div style="width:12px;height:12px;border-radius:50%;background:${col};border:1px solid rgba(0,0,0,0.5)"></div>
+            ⚙ ${alias}
+            <span style="color:var(--se-text-dim);font-size:9px">(${bFac})</span>
+        </div>
+        <div class="se-card-body">
+            <!-- Rename -->
+            <div class="se-field">
+                <span class="se-label">Scenario Alias (rename)</span>
+                <div style="display:flex;gap:4px">
+                    <input class="se-input" type="text" id="se-npc-alias-${bFac.replace(/\s/g,'_')}"
+                        value="${alias}" placeholder="${bFac}" style="flex:1"/>
+                    <button class="se-btn" style="white-space:nowrap"
+                        onclick="window._SE_CNP._applyAlias('${bFac}')">Apply</button>
+                </div>
+                <div style="font-size:9px;color:var(--se-text-dim);margin-top:2px">
+                    Colour stays <span style="color:${col};font-weight:bold">${col}</span>
+                    — rename only changes the display name in this scenario.
+                </div>
+            </div>
+
+            <!-- Unit composition -->
+            <div class="se-section-header" style="margin:4px -8px;padding-left:8px">
+                Unit Composition <span style="color:var(--se-gold)">★ = Unique</span>
+            </div>
+            <div id="se-unit-comp-${bFac.replace(/\s/g,'_')}" style="padding:4px 0">
+                ${unitRows}
+            </div>
+            <div style="display:flex;gap:4px;margin-top:2px">
+                <button class="se-btn" style="font-size:9px;flex:1"
+                    onclick="window._SE_CNP._normUnits('${bFac}')">⟳ Normalise %</button>
+                <button class="se-btn" style="font-size:9px;flex:1"
+                    onclick="window._SE_CNP._resetUnits('${bFac}')">↺ Reset to Default</button>
+            </div>
+
+            <!-- Spawn rules -->
+            <div class="se-section-header" style="margin:6px -8px;padding-left:8px">
+                Spawn Rules
+                <button class="se-btn primary" style="float:right;font-size:9px;padding:1px 6px"
+                    onclick="window._SE_CNP._addRule('${bFac}')">+ Add Rule</button>
+            </div>
+            <div id="se-spawn-rules-${bFac.replace(/\s/g,'_')}">
+                ${ruleCards}
+            </div>
+        </div>
+    </div>`;
+}
+
+function _buildRuleCard(bFac, ri, rule) {
+    const fKey = bFac.replace(/\s/g,'_');
+    return `
+    <div class="se-action-row" id="se-rule-${fKey}-${ri}" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:10px;color:var(--se-gold);font-weight:bold">Rule ${ri+1}</span>
+            <select class="se-select" id="se-rule-role-${fKey}-${ri}" style="flex:1;font-size:10px"
+                onchange="window._SE_CNP._ruleField('${bFac}',${ri},'role',this.value)">
+                ${["Military","Patrol","Merchant","Naval","Bandit"].map(r =>
+                    `<option value="${r}" ${(rule.role||"Military")===r?"selected":""}>${r}</option>`
+                ).join("")}
+            </select>
+            <button class="se-btn icon-only danger" style="font-size:9px;padding:1px 5px"
+                onclick="window._SE_CNP._deleteRule('${bFac}',${ri})">✕</button>
+        </div>
+        <div class="se-two-col">
+            <div class="se-field">
+                <span class="se-label">Spawn Count</span>
+                <input class="se-input" type="number" min="1" max="20" value="${rule.count||2}"
+                    onchange="window._SE_CNP._ruleField('${bFac}',${ri},'count',+this.value)"
+                    style="font-size:10px"/>
+            </div>
+            <div class="se-field">
+                <span class="se-label">Troops/Unit</span>
+                <input class="se-input" type="number" min="10" max="2000" value="${rule.troopsPerUnit||150}"
+                    onchange="window._SE_CNP._ruleField('${bFac}',${ri},'troopsPerUnit',+this.value)"
+                    style="font-size:10px"/>
+            </div>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="se-btn" style="font-size:9px;flex:1"
+                onclick="window._SE_CNP._pickEntry('${bFac}',${ri})">
+                📍 ${rule.entryNx!=null ? `Entry (${(rule.entryNx).toFixed(2)},${(rule.entryNy).toFixed(2)})` : "Set Entry Point"}
+            </button>
+            <button class="se-btn" style="font-size:9px;flex:1"
+                onclick="window._SE_CNP._pickPatrol('${bFac}',${ri},'A')">
+                →A ${rule.patrolA ? `(${rule.patrolA.nx.toFixed(2)},${rule.patrolA.ny.toFixed(2)})` : "Set Patrol A"}
+            </button>
+            <button class="se-btn" style="font-size:9px;flex:1"
+                onclick="window._SE_CNP._pickPatrol('${bFac}',${ri},'B')">
+                →B ${rule.patrolB ? `(${rule.patrolB.nx.toFixed(2)},${rule.patrolB.ny.toFixed(2)})` : "Set Patrol B"}
+            </button>
+        </div>
+    </div>`;
+}
+
+S._unitPct = function(el, bFac, ui) {
+    if (!S.compOverrides[bFac]) S.compOverrides[bFac] = getUnits(bFac);
+    S.compOverrides[bFac][ui].pct = parseInt(el.value) / 100;
+    const lbl = document.getElementById(`se-unit-pct-${bFac.replace(/\s/g,'_')}-${ui}`);
+    if (lbl) lbl.textContent = el.value + "%";
+};
+
+S._normUnits = function(bFac) {
+    const units = S.compOverrides[bFac];
+    if (!units) return;
+    const total = units.reduce((s, u) => s + u.pct, 0);
+    if (total === 0) return;
+    units.forEach(u => { u.pct = u.pct / total; });
+    // Rebuild sliders
+    S._selectNPCFaction(bFac, _factionIndex(bFac));
+    _flash_cnp("✓ Percentages normalised to 100%");
+};
+
+S._resetUnits = function(bFac) {
+    S.compOverrides[bFac] = getUnits(bFac);
+    S._selectNPCFaction(bFac, _factionIndex(bFac));
+    _flash_cnp("✓ Composition reset to faction defaults");
+};
+
+S._applyAlias = function(bFac) {
+    const key = bFac.replace(/\s/g,'_');
+    const inp = document.getElementById(`se-npc-alias-${key}`);
+    if (!inp) return;
+    const alias = inp.value.trim() || bFac;
+    S.factionAliases[bFac] = alias;
+    // Refresh faction list rows
+    document.querySelectorAll(`.se-faction-row[data-bfac="${bFac}"] .se-faction-name`)
+        .forEach(el => { el.textContent = alias; });
+    document.querySelectorAll(`.se-faction-row[data-bfac="${bFac}"] .se-faction-badge`)
+        .forEach(el => { el.textContent = alias !== bFac ? "renamed" : ""; });
+    _flash_cnp(`✓ ${bFac} → "${alias}"`);
+};
+
+S._addRule = function(bFac) {
+    if (!S.spawnRules[bFac]) S.spawnRules[bFac] = [];
+    S.spawnRules[bFac].push({ role: "Military", count: 2, troopsPerUnit: 150 });
+    S._selectNPCFaction(bFac, _factionIndex(bFac));
+};
+
+S._deleteRule = function(bFac, ri) {
+    if (!S.spawnRules[bFac]) return;
+    S.spawnRules[bFac].splice(ri, 1);
+    S._selectNPCFaction(bFac, _factionIndex(bFac));
+};
+
+S._ruleField = function(bFac, ri, field, val) {
+    if (!S.spawnRules[bFac]) S.spawnRules[bFac] = [];
+    if (!S.spawnRules[bFac][ri]) S.spawnRules[bFac][ri] = {};
+    S.spawnRules[bFac][ri][field] = val;
+};
+
+S._pickEntry = function(bFac, ri) {
+    S._pickingEntry = { bFac, ri };
+    S.patrolMode    = null;
+    const vp = document.getElementById("se-viewport");
+    if (vp) vp.style.cursor = "copy";
+    _flash_cnp("Click map to set NPC entry point");
+};
+
+S._pickPatrol = function(bFac, ri, leg) {
+    S.patrolMode    = { ruleKey: bFac, ruleIdx: ri, leg };
+    S._pickingEntry = null;
+    const vp = document.getElementById("se-viewport");
+    if (vp) vp.style.cursor = "crosshair";
+    _flash_cnp(`Click map to set Patrol ${leg} for ${S.factionAliases[bFac]||bFac} rule ${ri+1}`);
+};
+
+function _refreshNPCPanel() {
+    if (S._selectedNPCFaction) {
+        S._selectNPCFaction(S._selectedNPCFaction, _factionIndex(S._selectedNPCFaction));
+    }
+}
+
+function _factionIndex(bFac) {
+    const fKeys = Object.keys(liveFactions()).filter(f => f !== "Bandits" && f !== "Player's Kingdom");
+    return fKeys.indexOf(bFac);
+}
+
+function _wireNPCConfig(bFac) {
+    // Nothing extra needed — all handlers are inline onclick= attributes
+}
+
+// =========================================================================
+// 9.  DIPLOMACY MATRIX
+// =========================================================================
+
+function _buildDiploMatrix(fKeys) {
+    if (!fKeys || fKeys.length === 0) return "<em style='color:var(--se-text-dim);font-size:10px'>No factions loaded</em>";
+    const fac = liveFactions();
+
+    // Ensure defaults
+    fKeys.forEach(a => {
+        fKeys.forEach(b => {
+            if (a === b) return;
+            const k = a + "::" + b;
+            if (!S.diplomacy[k]) S.diplomacy[k] = "Neutral";
+        });
+    });
+
+    const CELL_STYLES = {
+        "Ally":    "background:#1a3a1a;border:1px solid #3a8830;color:#80e890",
+        "Neutral": "background:#222;border:1px solid #555;color:#aaa",
+        "War":     "background:#3a1010;border:1px solid #a83030;color:#ffa0a0",
+    };
+
+    let html = `<table style="border-collapse:collapse;font-size:8px;min-width:100%">`;
+
+    // Header row
+    html += `<tr><th style="padding:2px;color:var(--se-text-dim)"></th>`;
+    fKeys.forEach(f => {
+        const alias = S.factionAliases[f] || f;
+        const col   = (fac[f] || {}).color || "#888";
+        html += `<th style="padding:2px 4px;text-align:center;writing-mode:vertical-rl;
+            transform:rotate(180deg);max-height:60px;overflow:hidden;
+            color:${col};font-size:7px;border-bottom:1px solid var(--se-border)">
+            ${alias.length > 10 ? alias.substring(0,8)+"…" : alias}
+        </th>`;
+    });
+    html += `</tr>`;
+
+    // Data rows
+    fKeys.forEach(a => {
+        const aliasA = S.factionAliases[a] || a;
+        const colA   = (fac[a] || {}).color || "#888";
+        html += `<tr>
+            <td style="padding:2px 4px;color:${colA};font-size:8px;white-space:nowrap;
+                border-right:1px solid var(--se-border)">
+                ${aliasA.length > 10 ? aliasA.substring(0,8)+"…" : aliasA}
+            </td>`;
+        fKeys.forEach(b => {
+            if (a === b) {
+                html += `<td style="background:var(--se-inset);border:1px solid var(--se-border);
+                    text-align:center;padding:2px;color:var(--se-text-dim)">—</td>`;
+            } else {
+                const k   = a + "::" + b;
+                const rel = S.diplomacy[k] || "Neutral";
+                const st  = CELL_STYLES[rel] || CELL_STYLES["Neutral"];
+                html += `<td style="${st};text-align:center;padding:2px 3px;cursor:pointer;border-radius:1px;min-width:22px"
+                    title="${aliasA} → ${S.factionAliases[b]||b}: ${rel}"
+                    onclick="window._SE_CNP._cycleDiplo('${a}','${b}',this)">
+                    ${{ Ally:"✓", Neutral:"•", War:"⚔" }[rel]}
+                </td>`;
+            }
+        });
+        html += `</tr>`;
+    });
+
+    html += `</table>`;
+    return html;
+}
+
+S._cycleDiplo = function(a, b, cell) {
+    const order  = ["Neutral","Ally","War"];
+    const k      = a + "::" + b;
+    const kb     = b + "::" + a;
+    const cur    = S.diplomacy[k] || "Neutral";
+    const next   = order[(order.indexOf(cur) + 1) % order.length];
+    S.diplomacy[k]  = next;
+    S.diplomacy[kb] = next; // Mirror
+
+    const CELL_STYLES = {
+        "Ally":    "background:#1a3a1a;border:1px solid #3a8830;color:#80e890",
+        "Neutral": "background:#222;border:1px solid #555;color:#aaa",
+        "War":     "background:#3a1010;border:1px solid #a83030;color:#ffa0a0",
+    };
+    cell.setAttribute("style", CELL_STYLES[next] + ";text-align:center;padding:2px 3px;cursor:pointer;border-radius:1px;min-width:22px");
+    cell.textContent = { Ally:"✓", Neutral:"•", War:"⚔" }[next];
+
+    // Also update the mirrored cell
+    const fKeys = Object.keys(liveFactions()).filter(f => f !== "Bandits" && f !== "Player's Kingdom");
+    const bi = fKeys.indexOf(b), ai = fKeys.indexOf(a);
+    if (bi >= 0 && ai >= 0) {
+        const tbl  = document.querySelector("#se-npc-diplo-matrix table");
+        if (tbl) {
+            const rows = tbl.querySelectorAll("tr");
+            const dataRow = rows[bi + 1];
+            if (dataRow) {
+                const cells = dataRow.querySelectorAll("td");
+                const mirrorCell = cells[ai + 1];
+                if (mirrorCell && mirrorCell.onclick) {
+                    mirrorCell.setAttribute("style", CELL_STYLES[next] + ";text-align:center;padding:2px 3px;cursor:pointer;border-radius:1px;min-width:22px");
+                    mirrorCell.textContent = { Ally:"✓", Neutral:"•", War:"⚔" }[next];
+                }
+            }
+        }
+    }
+};
+
+// =========================================================================
+// 10.  APPLY TO GAME
+// =========================================================================
+
+function _applycitiesToGame() {
+    if (S.cities.length === 0) {
+        _flash_cnp("⚠ No cities placed — add at least one city first"); return;
+    }
+    const mapType = SE.mapEngine ? SE.mapEngine.getMapType() : null;
+    const map     = SE.mapEngine ? SE.mapEngine.getMap() : null;
+    const ts      = map ? map.tileSize : 16;
+
+    // Convert editor city objects to the game city format
+    const gameCities = S.cities.map(city => ({
+        ...city,
+        x: city.nx * (map ? map.cols * ts : 4000),
+        y: city.ny * (map ? map.rows * ts : 3000),
+        originalFaction: city.baseFaction,
+        conscriptionRate: CITY_TYPE_PRESETS[city.type].garrisonRate,
+        civilianPop: Math.max(0, city.pop - city.militaryPop),
+        troops: city.militaryPop,
+        recoveryTimer: 0,
+        isUnderSiege: false,
+    }));
+
+    // Write to sandbox or story1 city arrays
+    let applied = false;
+    if (mapType === "sandbox" || !mapType) {
+        try {
+            window.cities_sandbox = gameCities;
+            if (typeof window.cities !== "undefined") window.cities = gameCities;
+            applied = true;
+        } catch(e) { console.warn("[CitiesNPCs] Could not write cities_sandbox:", e); }
+    }
+    if (mapType === "story1") {
+        try {
+            window.cities_story1 = gameCities;
+            applied = true;
+        } catch(e) { console.warn("[CitiesNPCs] Could not write cities_story1:", e); }
+    }
+
+    // Always try the live `cities` global (used by NPC update loop)
+    if (typeof window.cities !== "undefined") {
+        window.cities = [...gameCities];
+        applied = true;
+    }
+
+    if (applied) {
+        _flash_cnp(`✓ ${gameCities.length} cities applied to game`);
+    } else {
+        _flash_cnp("⚠ No game city arrays found — map not loaded yet?");
+    }
+}
+
+function _applyNPCsToGame() {
+    const fac = liveFactions();
+    let changed = 0;
+
+    // 1. Apply aliases (scenario names) and unit compositions
+    Object.entries(S.factionAliases).forEach(([bFac, alias]) => {
+        if (!fac[bFac]) return;
+        // Store alias on the faction object for display purposes
+        fac[bFac]._scenarioAlias = alias;
+        changed++;
+    });
+
+    // 2. Apply unit composition overrides
+    // We patch generateNPCRoster via a wrapper so all future NPC spawns
+    // use the editor-defined compositions.
+    if (typeof window.generateNPCRoster === "function") {
+        const origRoster = window.generateNPCRoster;
+        window.generateNPCRoster = function(role, count, faction) {
+            // Find the baseFaction that maps to this alias (or direct match)
+            let bFac = faction;
+            // Check if it's an alias
+            const aliasMatch = Object.entries(S.factionAliases)
+                .find(([bf, alias]) => alias === faction);
+            if (aliasMatch) bFac = aliasMatch[0];
+
+            const overrides = S.compOverrides[bFac];
+            if (!overrides || overrides.length === 0) {
+                return origRoster(role, count, faction);
+            }
+
+            // Build roster using editor-defined composition
+            const roster = [];
+            overrides.forEach(unit => {
+                const n = Math.max(0, Math.round(count * unit.pct));
+                for (let i = 0; i < n; i++) {
+                    roster.push({
+                        type:   unit.type,
+                        health: 100,
+                        attack: 10,
+                        morale: 100,
+                        isUnique: !!unit.unique,
+                    });
+                }
+            });
+            // Pad to exactly `count` using the first unit type
+            while (roster.length < count && overrides.length > 0) {
+                roster.push({ type: overrides[0].type, health: 100, attack: 10, morale: 100 });
+            }
+            return roster.slice(0, count);
+        };
+        changed++;
+    }
+
+    // 3. Apply diplomacy — patch isHostile() if it exists
+    if (typeof window.isHostile === "function" && Object.keys(S.diplomacy).length > 0) {
+        const origHostile = window.isHostile;
+        window.isHostile = function(fA, fB) {
+            // Resolve aliases to base factions
+            const resolveBase = (f) => {
+                const hit = Object.entries(S.factionAliases).find(([bf,a]) => a === f);
+                return hit ? hit[0] : f;
+            };
+            const bA = resolveBase(fA), bB = resolveBase(fB);
+            const k1 = bA + "::" + bB;
+            const k2 = bB + "::" + bA;
+            if (S.diplomacy[k1]) {
+                const rel = S.diplomacy[k1];
+                return rel === "War";
+            }
+            if (S.diplomacy[k2]) {
+                const rel = S.diplomacy[k2];
+                return rel === "War";
+            }
+            return origHostile(fA, fB);
+        };
+        changed++;
+    }
+
+    // 4. Apply spawn rules — queue NPC spawns for each rule
+    const map = SE.mapEngine ? SE.mapEngine.getMap() : null;
+    const ts  = map ? map.tileSize : 16;
+    let spawned = 0;
+
+    if (typeof window.globalNPCs !== "undefined" && map) {
+        Object.entries(S.spawnRules).forEach(([bFac, rules]) => {
+            const fdat = fac[bFac] || {};
+            const col  = fdat.color || "#888";
+            const alias = S.factionAliases[bFac] || bFac;
+
+            rules.forEach(rule => {
+                for (let i = 0; i < (rule.count || 1); i++) {
+                    const ex = rule.entryNx != null
+                        ? rule.entryNx * map.cols * ts
+                        : Math.random() * map.cols * ts;
+                    const ey = rule.entryNy != null
+                        ? rule.entryNy * map.rows * ts
+                        : Math.random() * map.rows * ts;
+
+                    const troops = rule.troopsPerUnit || 150;
+                    const npc = {
+                        x: ex, y: ey,
+                        targetX: ex, targetY: ey,
+                        faction: alias,
+                        color:   col,
+                        role:    rule.role || "Military",
+                        troops,
+                        maxTroops: troops,
+                        roster: typeof window.generateNPCRoster === "function"
+                            ? window.generateNPCRoster(rule.role || "Military", troops, alias)
+                            : [],
+                        anim: 0,
+                        isMoving: false,
+                        speed: 1.2,
+                        // Patrol route
+                        patrolA: rule.patrolA ? {
+                            x: rule.patrolA.nx * map.cols * ts,
+                            y: rule.patrolA.ny * map.rows * ts,
+                        } : null,
+                        patrolB: rule.patrolB ? {
+                            x: rule.patrolB.nx * map.cols * ts,
+                            y: rule.patrolB.ny * map.rows * ts,
+                        } : null,
+                        patrolLeg: "A",
+                    };
+                    window.globalNPCs.push(npc);
+                    spawned++;
+                }
+            });
+        });
+    }
+
+    _flash_cnp(`✓ NPCs applied — ${changed} systems patched, ${spawned} units spawned`);
+}
+
+// =========================================================================
+// 11. WIRE BUTTONS (called each time a mode panel is built)
+// =========================================================================
+
+function _wireCitiesButtons() {
+    const placeBtn = document.getElementById("se-cnp-place-btn");
+    const clearBtn = document.getElementById("se-cnp-clear-btn");
+    const applyBtn = document.getElementById("se-cnp-apply-cities-btn");
+    const hint     = document.getElementById("se-cnp-place-hint");
+
+    if (placeBtn) placeBtn.onclick = () => {
+        S.placingCity    = true;
+        S.relocatingId   = null;
+        S._pickingEntry  = null;
+        S.patrolMode     = null;
+        if (hint) hint.style.display = "";
+        const vp = document.getElementById("se-viewport");
+        if (vp) vp.style.cursor = "cell";
+        _flash_cnp("Click map to place city pin");
+    };
+
+    if (clearBtn) clearBtn.onclick = () => {
+        if (S.cities.length === 0 || confirm(`Remove all ${S.cities.length} placed cities?`)) {
+            S.cities = [];
+            S.selectedCityId = null;
+            _refreshCityList();
+            const form = document.getElementById("se-cnp-city-form-card");
+            if (form) form.style.display = "none";
+        }
+    };
+
+    if (applyBtn) applyBtn.onclick = _applycitiesToGame;
+
+    _refreshCityList();
+}
+
+function _wireNPCsButtons() {
+    const applyBtn = document.getElementById("se-cnp-apply-npcs-btn");
+    if (applyBtn) applyBtn.onclick = _applyNPCsToGame;
+}
+
+// =========================================================================
+// 12.  MODE HOOK — intercept SE._setMode to inject our panels
+// =========================================================================
+const _origSetMode = SE._setMode.bind(SE);
+
+SE._setMode = function(mode) {
+    _origSetMode(mode);
+    const rightPanel = document.getElementById("se-right-panel");
+    if (!rightPanel) return;
+
+    if (mode === "CITIES") {
+        rightPanel.innerHTML = _buildCitiesPanel();
+        _wireCitiesButtons();
+        _attachViewportListeners();
+        _ensureOverlay();
+    } else if (mode === "NPCS") {
+        rightPanel.innerHTML = _buildNPCsPanel();
+        _wireNPCsButtons();
+        _attachViewportListeners();
+        _ensureOverlay();
+    }
+    // For other modes, let the existing right-panel stub remain as-is.
+};
+
+// =========================================================================
+// 13.  VPSTATE SYNC VIA MAP ENGINE HOOK
+//      We expose _offX/_offY/_zoom by monkey-patching SE.open so our
+//      overlay can always know where the map canvas is positioned.
+// =========================================================================
+(function hookOpen() {
+    const origOpen = SE.open.bind(SE);
+    SE.open = function () {
+        origOpen();
+        setTimeout(() => {
+            _attachViewportListeners();
+            _ensureOverlay();
+            // Inject a wheel+mousedown spy on the viewport to track pan/zoom
+            const vp = document.getElementById("se-viewport");
+            if (!vp || vp._cnpVpStateSpy) return;
+            vp._cnpVpStateSpy = true;
+
+            function _readVpState() {
+                // Best-effort: derive from zoom label and map bounding box.
+                // The map border is drawn at (_offX, _offY) to (cols*ts, rows*ts).
+                // We find it from the canvas pixel at (0,0) by sampling the first
+                // gold border pixel — too fragile. Instead we store the last
+                // fit-to-view state and update it on each zoom/pan event.
+                const zLabel = document.querySelector(".se-zoom-display");
+                const zoom   = zLabel ? (parseFloat(zLabel.textContent) / 100 || 1) : 1;
+                const me     = SE.mapEngine;
+                const map    = me ? me.getMap() : null;
+                if (!map) return;
+                // On first call after map load, estimate offsets from fit-to-view maths
+                if (!S._vpState || Math.abs(S._vpState.zoom - zoom) > 0.05) {
+                    const vpW = vp.clientWidth || 800;
+                    const vpH = vp.clientHeight || 500;
+                    const mW  = map.cols * map.tileSize;
+                    const mH  = map.rows * map.tileSize;
+                    const z   = zoom;
+                    S._vpState = {
+                        offX: (vpW - mW * z) / 2,
+                        offY: (vpH - mH * z) / 2,
+                        zoom: z,
+                    };
+                }
+            }
+
+            ["wheel","mousedown","mousemove"].forEach(ev => {
+                vp.addEventListener(ev, _readVpState, { passive: true });
+            });
+        }, 300);
+    };
+})();
+
+// =========================================================================
+// 14.  UTILITY
+// =========================================================================
+
+function _flash_cnp(msg, dur = 3000) {
+    const el = document.getElementById("se-st-scenario");
+    if (!el) return;
+    const prev = el.textContent;
+    el.textContent = msg;
+    clearTimeout(S._flashTimer);
+    S._flashTimer = setTimeout(() => { el.textContent = prev; }, dur);
+}
+
+// =========================================================================
+// 15.  EXPOSE PUBLIC API ON SE NAMESPACE
+// =========================================================================
+SE.citiesNPCs = {
+    getState:       () => S,
+    getCities:      () => S.cities,
+    getDiplomacy:   () => S.diplomacy,
+    getSpawnRules:  () => S.spawnRules,
+    getAliases:     () => S.factionAliases,
+    getCompOverrides:()=> S.compOverrides,
+    applyToGame:    () => { _applycitiesToGame(); _applyNPCsToGame(); },
+    TILE_RESOURCES,
+    CITY_TYPE_PRESETS,
+    FACTION_UNITS,
+};
+
+console.log("[ScenarioEditor] Cities & NPCs patch loaded — SE.citiesNPCs ready.");
+```
+
+})(window.ScenarioEditor);
